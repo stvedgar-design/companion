@@ -128,7 +128,8 @@ export function openSettings(app) {
     try {
       const blob = await exportBackup();
       const date = new Date().toISOString().slice(0, 10);
-      await saveBlob(blob, `companion-copia-${date}.json`);
+      const { savedToDevice } = await saveBlob(blob, `companion-copia-${date}.json`);
+      if (savedToDevice) app.toast('Copia guardada en Documentos del teléfono.');
     } catch (err) {
       app.toast(err.message || 'No se pudo exportar la copia.');
     } finally {

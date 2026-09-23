@@ -73,15 +73,18 @@ export function pickFiles(opts = {}) {
  * Descarga un blob con el nombre de archivo indicado.
  * @param {Blob} blob
  * @param {string} filename
- * @returns {Promise<void>}
+ * @returns {Promise<{ savedToDevice: boolean }>} `savedToDevice: true` si se
+ *   escribió de verdad en el almacenamiento del teléfono (APK nativo); en el
+ *   navegador (`false`) el propio navegador ya avisa de la descarga.
  */
 export async function saveBlob(blob, filename) {
   const capacitor = window.Capacitor;
   if (capacitor && capacitor.isNativePlatform && capacitor.isNativePlatform()) {
     await saveBlobNative(blob, filename, capacitor);
-    return;
+    return { savedToDevice: true };
   }
   saveBlobWeb(blob, filename);
+  return { savedToDevice: false };
 }
 
 function saveBlobWeb(blob, filename) {
@@ -98,15 +101,17 @@ function saveBlobWeb(blob, filename) {
 
 // En el APK (WebView de Android), `<a download>` con un blob: URL no dispara
 // ninguna descarga real: el clic no hace nada y no lanza ningún error, así
-// que el guardado fallaba en silencio. Por eso ahí se usan los plugins
-// nativos Filesystem + Share: se escribe el archivo en el almacenamiento de
-// la app y se abre el panel nativo de "Compartir/Guardar" para que el
-// usuario elija dónde dejarlo (Drive, Archivos, etc.).
+// que el guardado fallaba en silencio. Por eso ahí se usa el plugin nativo
+// Filesystem: escribe el archivo directo en la carpeta "Documents" del
+// teléfono (visible desde cualquier explorador de archivos, sin pasar por
+// Google Drive ni ninguna otra app). Además, si está disponible, se ofrece
+// el panel nativo "Compartir" como atajo opcional — pero que falle o se
+// cancele no es un error, porque el archivo ya quedó guardado igual.
 async function saveBlobNative(blob, filename, capacitor) {
   const plugins = capacitor.Plugins || {};
   const { Filesystem, Share } = plugins;
-  if (!Filesystem || !Share) {
-    throw new Error('No se pudo guardar el archivo: faltan los plugins nativos de la app.');
+  if (!Filesystem) {
+    throw new Error('No se pudo guardar el archivo: falta el plugin nativo Filesystem de la app.');
   }
   const base64 = await blobToBase64(blob);
   let uri;
@@ -114,22 +119,24 @@ async function saveBlobNative(blob, filename, capacitor) {
     const result = await Filesystem.writeFile({
       path: filename,
       data: base64,
-      directory: 'CACHE',
+      directory: 'DOCUMENTS',
+      recursive: true,
     });
     uri = result.uri;
   } catch (err) {
     throw new Error('No se pudo guardar el archivo en el teléfono.');
   }
-  try {
-    await Share.share({
-      title: filename,
-      dialogTitle: 'Guardar ' + filename,
-      url: uri,
-    });
-  } catch (err) {
-    // El usuario cerró el panel de compartir sin elegir nada: no es un error real.
-    if (err && /cancel/i.test(err.message || '')) return;
-    throw new Error('No se pudo abrir el panel para guardar el archivo.');
+  if (Share) {
+    try {
+      await Share.share({
+        title: filename,
+        dialogTitle: 'Guardar ' + filename,
+        url: uri,
+      });
+    } catch (err) {
+      // El archivo ya se guardó en Documents; que el panel de compartir
+      // falle o se cancele no debe mostrarse como un error.
+    }
   }
 }
 

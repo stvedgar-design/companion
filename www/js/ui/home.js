@@ -30,7 +30,7 @@ export function init(root, appApi) {
       <div class="field home-search" id="home-search-wrap" hidden>
         <input class="inp" id="home-search" type="text" placeholder="Buscar personaje" autocomplete="off">
       </div>
-      <div class="home-grid" id="home-list"></div>
+      <div class="home-list" id="home-list"></div>
     </div>
     <div class="footbar">
       <button class="btn" id="home-add" type="button">Cargar character card</button>
@@ -119,11 +119,13 @@ function renderList() {
 }
 
 function renderRow(character) {
-  const card = document.createElement('div');
-  card.className = 'home-card';
+  const row = document.createElement('div');
+  row.className = 'list-row';
+  row.setAttribute('role', 'button');
+  row.tabIndex = 0;
 
   const avatar = document.createElement('div');
-  avatar.className = 'home-card__avatar';
+  avatar.className = 'av av--md';
   if (character.avatar) {
     const img = document.createElement('img');
     img.src = character.avatar;
@@ -135,8 +137,22 @@ function renderRow(character) {
     avatar.appendChild(initial);
   }
 
+  const main = document.createElement('div');
+  main.className = 'list-row__main';
+
+  const name = document.createElement('div');
+  name.className = 'list-row__title';
+  name.textContent = character.name;
+
+  const sub = document.createElement('div');
+  sub.className = 'list-row__sub';
+  sub.textContent = lastByCharacter[character.id] || 'Sin mensajes';
+
+  main.appendChild(name);
+  main.appendChild(sub);
+
   const del = document.createElement('button');
-  del.className = 'ib home-card__del';
+  del.className = 'ib';
   del.type = 'button';
   del.setAttribute('aria-label', 'Borrar');
   del.innerHTML = ICON_TRASH;
@@ -144,24 +160,21 @@ function renderRow(character) {
     e.stopPropagation();
     onDelete(character);
   });
-  avatar.appendChild(del);
 
-  const name = document.createElement('div');
-  name.className = 'home-card__name';
-  name.textContent = character.name;
+  row.appendChild(avatar);
+  row.appendChild(main);
+  row.appendChild(del);
 
-  const sub = document.createElement('div');
-  sub.className = 'home-card__sub';
-  sub.textContent = lastByCharacter[character.id] || 'Sin mensajes';
-
-  card.appendChild(avatar);
-  card.appendChild(name);
-  card.appendChild(sub);
-  card.addEventListener('click', () => {
-    app.navigate('chats', { characterId: character.id });
+  const open = () => app.navigate('chats', { characterId: character.id });
+  row.addEventListener('click', open);
+  row.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      open();
+    }
   });
 
-  els.list.appendChild(card);
+  els.list.appendChild(row);
 }
 
 async function onDelete(character) {

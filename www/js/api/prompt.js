@@ -99,6 +99,32 @@ export function initialMessages(character, settings, greetingIndex = 0) {
   ];
 }
 
+/**
+ * Mensaje inicial para un chat nuevo que tiene un escenario propio (adenda
+ * multi-chat). El `first_mes` de la card fue escrito para el escenario por
+ * defecto de la card, así que casi siempre no encaja con un escenario nuevo
+ * escrito a mano — por eso, en ese caso, se reemplaza por una nota entre
+ * paréntesis (estilo acotación de escena, en *asteriscos*) con el propio
+ * escenario, en vez del saludo de la card.
+ * @param {Character} character
+ * @param {Settings} settings
+ * @param {string} chatScenario
+ * @returns {Message[]} [] si `chatScenario` está vacío.
+ */
+export function scenarioGreeting(character, settings, chatScenario) {
+  const text = String(chatScenario || '').trim();
+  if (!text) return [];
+  const card = character.card;
+  const userName = (settings && settings.user) || 'User';
+  return [
+    {
+      role: 'char',
+      text: `*(${subMacros(text, card.name, userName)})*`,
+      ts: Date.now()
+    }
+  ];
+}
+
 // Bloque de cabecera común a ambos formatos de prompt: system_prompt de la
 // card (si existe), una instrucción breve de rol, y los campos de la card
 // con las macros ya resueltas. `chatScenario` es el escenario escrito a

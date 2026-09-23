@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   subMacros,
   initialMessages,
+  scenarioGreeting,
   buildPlainPrompt,
   buildChatMessages,
   cleanReply,
@@ -74,6 +75,23 @@ test('initialMessages devuelve [] si el saludo elegido está vacío', () => {
 
   const altVacio = { card: makeCard({ first_mes: 'Hola', alternate_greetings: [''] }) };
   assert.deepEqual(initialMessages(altVacio, makeSettings(), 1), []);
+});
+
+// ---------- scenarioGreeting ----------
+
+test('scenarioGreeting arma una nota entre asteriscos con el escenario, resolviendo macros', () => {
+  const character = { card: makeCard({ name: 'Luna' }) };
+  const msgs = scenarioGreeting(character, makeSettings(), 'Un bosque nevado espera a {{user}}.');
+  assert.equal(msgs.length, 1);
+  assert.equal(msgs[0].role, 'char');
+  assert.equal(msgs[0].text, '*(Un bosque nevado espera a Edgar.)*');
+  assert.equal(typeof msgs[0].ts, 'number');
+});
+
+test('scenarioGreeting devuelve [] si el escenario está vacío o solo espacios', () => {
+  const character = { card: makeCard() };
+  assert.deepEqual(scenarioGreeting(character, makeSettings(), ''), []);
+  assert.deepEqual(scenarioGreeting(character, makeSettings(), '   '), []);
 });
 
 // ---------- buildPlainPrompt ----------

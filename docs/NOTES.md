@@ -129,10 +129,61 @@ propio, viviendo solo dentro de `Documentos/companion/`, y se sobrescribió
 `stvedgar-design/companion` en GitHub con el estado actual (el remoto sólo
 tenía la primera versión, sin ninguno de los arreglos de este archivo).
 
+## Ronda de feedback tras probar el APK (2026-09-22)
+
+El usuario probó la APK con el fix de exportación y reportó varias cosas
+más, todas ya corregidas:
+
+- **Hub de personajes rediseñado**: era una grilla de 3 columnas con
+  recuadros grandes (`home-grid`/`home-card` en `home.css`); el usuario la
+  veía "enorme" y además no tenía sentido comparado con la lista vertical
+  de chats por personaje. Se reemplazó por una lista vertical, reusando
+  `.list-row`/`.av.av--md` de `base.css` (mismo patrón que `chats.js`).
+  `home.css` ya no tiene CSS propio de tarjetas, solo `.home-list` para el
+  padding del contenedor.
+- **Exportar ahora guarda directo en el teléfono**: `saveBlobNative()`
+  escribía en `Directory.CACHE` (carpeta privada de la app, invisible fuera
+  de compartir); ahora escribe en `Directory.DOCUMENTS` (carpeta pública,
+  visible en cualquier explorador de archivos) y el panel "Compartir" queda
+  como atajo opcional que no bloquea si falla. `saveBlob()` devuelve
+  `{ savedToDevice }` y `chat.js`/`settings.js` muestran un toast
+  confirmando dónde quedó guardado.
+- **Nota de escenario en vez de saludo por defecto**: si un chat nuevo
+  tiene `chat.scenario` propio, ya no se usa `card.first_mes` (escrito para
+  el escenario original de la card, casi nunca encaja) como primer mensaje.
+  Nueva función pura `scenarioGreeting()` en `prompt.js` arma en su lugar
+  una nota entre asteriscos con el propio escenario (ej.
+  `*(A rainy train station at midnight...)*`), que `chat.js` usa solo al
+  crear el chat por primera vez (no al usar "Cambiar saludo" a mano, que
+  sigue trayendo el `first_mes`/saludos alternativos literales de la card).
+- **Campo de escenario nuevo con guía y límite**: en `chats.js`, el
+  `<textarea>` de escenario al crear un chat ahora tiene `placeholder` en
+  inglés avisando que conviene escribirlo en ese idioma, `maxlength="500"`
+  y un contador `n/500` en vivo (constante `SCENARIO_MAX`), para no inflar
+  el prompt/tokens de cada mensaje.
+- **Renombrar chats desde la lista**: `chats.js` ya tenía disponible
+  `renameChat()` en `state.js` pero sin UI. Se agregó un botón de lápiz por
+  fila (junto al de borrar) que abre una hoja con un campo de texto y
+  guarda con `renameChat()`.
+
+Tests: se agregaron 2 tests para `scenarioGreeting()` en
+`prompt.test.mjs` (90 tests en total ahora). El resto de los cambios de
+esta ronda son de UI/DOM (`home.js`, `chats.js`, `platform.js`), sin tests
+automáticos por ser dependientes del navegador — se verificaron a mano
+sirviendo `www/` con un server estático y datos de prueba inyectados en
+IndexedDB (ver `.claude/launch.json`, config `companion-web`).
+
 ## Qué NO se ha hecho todavía (pendiente real, no roto)
 
 - Exportación automática de log (el campo `Chat.lastExportAt` ya existe en
   el esquema, reservado para esto, pero no hay ningún disparador
   implementado todavía).
-- Probar el arreglo de exportación de arriba contra un APK real en un
-  teléfono.
+- Probar el fix de exportación (ahora a `Directory.DOCUMENTS`) contra un
+  APK real en un teléfono — no se pudo probar de punta a punta en esta
+  sesión, solo se verificó código, tests, y el layout en un navegador de
+  escritorio/emulado a tamaño de celular.
+- Ideas de QoL propuestas pero no implementadas: ver mensaje del asistente
+  en la conversación de esta fecha (regenerar/editar mensajes, ajustes de
+  IA por personaje, resumen automático de contexto largo, TTS/voz,
+  búsqueda dentro de un chat, tags/carpetas para personajes, bloqueo de la
+  app, recordatorio de backup automático usando `lastExportAt`).

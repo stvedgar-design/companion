@@ -3,7 +3,7 @@
 
 import { getChat, getChatMessages, saveChatMessages, getCharacter, saveCharacter, getSettings } from '../state.js';
 import { generateReply } from '../api/kobold.js';
-import { initialMessages } from '../api/prompt.js';
+import { initialMessages, scenarioGreeting } from '../api/prompt.js';
 import { openSettings } from './settings.js';
 import { formatMessage } from './format.js';
 import { makeAvatar } from '../cards/avatar.js';
@@ -111,7 +111,12 @@ export async function show({ chatId } = {}) {
 
   let loaded = await getChatMessages(chat.id);
   if (!loaded) {
-    loaded = initialMessages(character, settings);
+    // Si el chat tiene un escenario propio, el first_mes de la card (escrito
+    // para el escenario por defecto) casi nunca encaja: se reemplaza por una
+    // nota de escenario en vez de un saludo desalineado.
+    loaded = chat.scenario
+      ? scenarioGreeting(character, settings, chat.scenario)
+      : initialMessages(character, settings);
     try {
       await saveChatMessages(chat.id, loaded);
     } catch (err) {
@@ -641,7 +646,8 @@ async function onExportChat() {
     const charSlug = slugify(character.name) || 'chat';
     const titleSlug = slugify(chat.title);
     const slug = titleSlug ? `${charSlug}-${titleSlug}` : charSlug;
-    await saveBlob(blob, `companion-chat-${slug}-${date}.json`);
+    const { savedToDevice } = await saveBlob(blob, `companion-chat-${slug}-${date}.json`);
+    if (savedToDevice) app.toast('Chat guardado en Documentos del teléfono.');
   } catch (err) {
     app.toast('No se pudo exportar el chat.');
   }

@@ -2,10 +2,13 @@
 // Lista de chats de un personaje (adenda "varios chats por personaje").
 // Mismo patrón init/show/hide que las demás vistas.
 
-import { getCharacter, listChats, createChat, deleteChat } from '../state.js';
+import { getCharacter, listChats, createChat, deleteChat, renameChat } from '../state.js';
 
 const ICON_BACK = '<svg viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>';
 const ICON_TRASH = '<svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>';
+const ICON_EDIT = '<svg viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>';
+
+const SCENARIO_MAX = 500;
 
 let app = null;
 let els = {};
@@ -125,6 +128,16 @@ function renderRow(chat) {
   main.appendChild(title);
   main.appendChild(sub);
 
+  const rename = document.createElement('button');
+  rename.className = 'ib';
+  rename.type = 'button';
+  rename.setAttribute('aria-label', 'Renombrar chat');
+  rename.innerHTML = ICON_EDIT;
+  rename.addEventListener('click', (e) => {
+    e.stopPropagation();
+    onRename(chat);
+  });
+
   const del = document.createElement('button');
   del.className = 'ib';
   del.type = 'button';
@@ -137,6 +150,7 @@ function renderRow(chat) {
 
   row.appendChild(avatar);
   row.appendChild(main);
+  row.appendChild(rename);
   row.appendChild(del);
 
   const open = () => app.navigate('chat', { chatId: chat.id });
@@ -149,6 +163,48 @@ function renderRow(chat) {
   });
 
   els.list.appendChild(row);
+}
+
+function onRename(chat) {
+  const wrap = document.createElement('div');
+
+  const title = document.createElement('h3');
+  title.className = 'sheet__title';
+  title.textContent = 'Renombrar chat';
+  wrap.appendChild(title);
+
+  const field = document.createElement('div');
+  field.className = 'field';
+  field.innerHTML = `
+    <label class="field__label" for="rename-chat-title">Título</label>
+    <input class="inp" id="rename-chat-title" type="text" autocomplete="off" maxlength="60">
+  `;
+  wrap.appendChild(field);
+
+  const saveBtn = document.createElement('button');
+  saveBtn.type = 'button';
+  saveBtn.className = 'btn';
+  saveBtn.textContent = 'Guardar';
+  wrap.appendChild(saveBtn);
+
+  const input = field.querySelector('#rename-chat-title');
+  input.value = chat.title || '';
+
+  saveBtn.addEventListener('click', async () => {
+    saveBtn.disabled = true;
+    try {
+      await renameChat(chat.id, input.value.trim());
+      app.closeSheet();
+      chats = await listChats(character.id);
+      renderList();
+    } catch (err) {
+      app.toast('No se pudo renombrar el chat.');
+      saveBtn.disabled = false;
+    }
+  });
+
+  app.openSheet(wrap);
+  input.focus();
 }
 
 async function onDelete(chat) {
@@ -184,10 +240,20 @@ async function onAddClick() {
   scenarioField.className = 'field';
   scenarioField.innerHTML = `
     <label class="field__label" for="newchat-scenario">Escenario (opcional)</label>
-    <textarea class="inp" id="newchat-scenario" rows="4"></textarea>
-    <div class="field__hint">Se suma al escenario del personaje, no lo reemplaza. Puedes dejarlo vacío para un chat normal.</div>
+    <textarea class="inp" id="newchat-scenario" rows="4" maxlength="${SCENARIO_MAX}"
+      placeholder="Ej: Meet at a rainy train station at midnight. Escríbelo en inglés: el modelo entiende mejor ese idioma."></textarea>
+    <div class="field__hint">
+      Se suma al escenario del personaje, no lo reemplaza. Puedes dejarlo vacío para un chat normal.
+      Mejor en inglés (el modelo responde mejor) y corto, para no gastar de más el contexto.
+      <span id="newchat-scenario-count">0/${SCENARIO_MAX}</span>
+    </div>
   `;
   wrap.appendChild(scenarioField);
+
+  const scenarioCount = scenarioField.querySelector('#newchat-scenario-count');
+  scenarioField.querySelector('#newchat-scenario').addEventListener('input', (e) => {
+    scenarioCount.textContent = `${e.target.value.length}/${SCENARIO_MAX}`;
+  });
 
   const createBtn = document.createElement('button');
   createBtn.type = 'button';
