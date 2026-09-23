@@ -30,7 +30,7 @@ export function init(root, appApi) {
       <div class="field home-search" id="home-search-wrap" hidden>
         <input class="inp" id="home-search" type="text" placeholder="Buscar personaje" autocomplete="off">
       </div>
-      <div class="home-list" id="home-list"></div>
+      <div class="home-grid" id="home-list"></div>
     </div>
     <div class="footbar">
       <button class="btn" id="home-add" type="button">Cargar character card</button>
@@ -119,13 +119,15 @@ function renderList() {
 }
 
 function renderRow(character) {
-  const row = document.createElement('div');
-  row.className = 'list-row';
-  row.setAttribute('role', 'button');
-  row.tabIndex = 0;
+  const card = document.createElement('div');
+  card.className = 'home-card';
+
+  const open = () => app.navigate('chats', { characterId: character.id });
 
   const avatar = document.createElement('div');
-  avatar.className = 'av av--md';
+  avatar.className = 'home-card__avatar';
+  avatar.setAttribute('role', 'button');
+  avatar.tabIndex = 0;
   if (character.avatar) {
     const img = document.createElement('img');
     img.src = character.avatar;
@@ -133,26 +135,45 @@ function renderRow(character) {
     avatar.appendChild(img);
   } else {
     const initial = document.createElement('span');
+    initial.className = 'home-card__initial';
     initial.textContent = (character.name || '?').trim().charAt(0).toUpperCase();
     avatar.appendChild(initial);
   }
 
-  const main = document.createElement('div');
-  main.className = 'list-row__main';
+  const scrim = document.createElement('div');
+  scrim.className = 'home-card__scrim';
 
   const name = document.createElement('div');
-  name.className = 'list-row__title';
+  name.className = 'home-card__name';
   name.textContent = character.name;
 
   const sub = document.createElement('div');
-  sub.className = 'list-row__sub';
+  sub.className = 'home-card__sub';
   sub.textContent = lastByCharacter[character.id] || 'Sin mensajes';
 
-  main.appendChild(name);
-  main.appendChild(sub);
+  scrim.appendChild(name);
+  scrim.appendChild(sub);
+  avatar.appendChild(scrim);
+
+  avatar.addEventListener('click', open);
+  avatar.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      open();
+    }
+  });
+
+  const row = document.createElement('div');
+  row.className = 'home-card__row';
+
+  const continueBtn = document.createElement('button');
+  continueBtn.className = 'btn btn--sm home-card__continue';
+  continueBtn.type = 'button';
+  continueBtn.textContent = 'Continuar';
+  continueBtn.addEventListener('click', open);
 
   const del = document.createElement('button');
-  del.className = 'ib';
+  del.className = 'ib home-card__del';
   del.type = 'button';
   del.setAttribute('aria-label', 'Borrar');
   del.innerHTML = ICON_TRASH;
@@ -161,20 +182,13 @@ function renderRow(character) {
     onDelete(character);
   });
 
-  row.appendChild(avatar);
-  row.appendChild(main);
+  row.appendChild(continueBtn);
   row.appendChild(del);
 
-  const open = () => app.navigate('chats', { characterId: character.id });
-  row.addEventListener('click', open);
-  row.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      open();
-    }
-  });
+  card.appendChild(avatar);
+  card.appendChild(row);
 
-  els.list.appendChild(row);
+  els.list.appendChild(card);
 }
 
 async function onDelete(character) {

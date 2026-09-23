@@ -6,6 +6,13 @@ contrato original de los 6 módulos base, pero **quedó parcialmente superado**
 por la adenda multi-chat descrita más abajo — en caso de duda, este archivo
 y el código mandan sobre `CONTRACTS.md`.
 
+> **Si sos una instancia nueva de Claude Code retomando este proyecto**,
+> empezá por `docs/CONTRACT-HANDOFF.md` — es el briefing completo de
+> continuidad (rol, cómo trabajar con el usuario, estado real del
+> repositorio git y por qué importa, roadmap). Si tu tarea puntual es el
+> sistema de memoria/lorebook automático, el encargo detallado está en
+> `docs/CONTRACT-LOREBOOK.md`.
+
 ## Línea de tiempo resumida
 
 1. **Ensamblado inicial** de los 6 módulos (diseño, shell/plataforma, datos,
@@ -134,13 +141,19 @@ tenía la primera versión, sin ninguno de los arreglos de este archivo).
 El usuario probó la APK con el fix de exportación y reportó varias cosas
 más, todas ya corregidas:
 
-- **Hub de personajes rediseñado**: era una grilla de 3 columnas con
-  recuadros grandes (`home-grid`/`home-card` en `home.css`); el usuario la
-  veía "enorme" y además no tenía sentido comparado con la lista vertical
-  de chats por personaje. Se reemplazó por una lista vertical, reusando
-  `.list-row`/`.av.av--md` de `base.css` (mismo patrón que `chats.js`).
-  `home.css` ya no tiene CSS propio de tarjetas, solo `.home-list` para el
-  padding del contenedor.
+- **Hub de personajes rediseñado (dos iteraciones)**: la grilla original de
+  3 columnas con recuadros grandes se veía "enorme". Primero se probó una
+  lista vertical tipo `.list-row` (mismo patrón que `chats.js`) — mejor en
+  tamaño, pero el usuario la vio con demasiado texto en pantalla y pidió
+  algo más visual, tipo el hub de Nomi AI (tarjetas grandes con foto,
+  nombre y preview superpuestos, botón "Continuar"). Versión final: grilla
+  de **2 columnas** (`.home-grid`/`.home-card` en `home.css`), cada tarjeta
+  con la imagen del personaje en `aspect-ratio: 3/4`, un degradado
+  (`.home-card__scrim`) con nombre + preview del último mensaje superpuesto
+  sobre la imagen (legible encima de cualquier foto), y debajo un botón
+  "Continuar" (`.btn--sm`) + ícono de borrar. Sin avatar cargado, se
+  muestra la inicial centrada sobre el fondo `--grad-avatar` en vez de una
+  imagen.
 - **Exportar ahora guarda directo en el teléfono**: `saveBlobNative()`
   escribía en `Directory.CACHE` (carpeta privada de la app, invisible fuera
   de compartir); ahora escribe en `Directory.DOCUMENTS` (carpeta pública,
@@ -215,22 +228,56 @@ sin tests automáticos; se verificaron a mano (el bloqueo completo:
 activar, recargar, PIN incorrecto, PIN correcto — probado en el navegador
 con datos de prueba en IndexedDB).
 
+## Hub de personajes: segunda iteración visual (2026-09-23)
+
+El usuario mostró como referencia el hub de personajes de **Nomi AI**
+(tarjetas grandes con foto, nombre y preview superpuestos con degradado, y
+un botón "Continuar"). La lista vertical tipo `.list-row` de la iteración
+anterior de este mismo día quedó descartada por "mucho texto en pantalla".
+Rediseño final: grilla de **2 columnas** (antes había sido 3, y antes de
+eso una lista) — ver `www/css/home.css` (`.home-grid`/`.home-card*`) y
+`www/js/ui/home.js`. Cada tarjeta: imagen en `aspect-ratio: 3/4` con
+`.home-card__scrim` (degradado oscuro de abajo hacia arriba) conteniendo
+nombre + preview del último mensaje, legible sobre cualquier foto; debajo
+de la imagen, botón "Continuar" (`.btn--sm`) + ícono de borrar. Sin avatar
+cargado, se muestra la inicial centrada sobre `--grad-avatar`. **No volver
+a una lista de texto ni a 3+ columnas sin que el usuario lo pida
+explícitamente** — ya se probaron y rechazó ambas.
+
+## Contratos de continuidad (2026-09-23)
+
+Esta conversación de Claude Code se estaba quedando sin contexto. Se
+escribieron dos documentos nuevos en `docs/` para que el proyecto se
+pueda retomar sin perder el hilo:
+
+- **`docs/CONTRACT-HANDOFF.md`**: briefing completo para cualquier
+  instancia nueva de Claude Code que continúe el proyecto — rol, cómo
+  trabajar con este usuario en particular, estado real (y accidentado) del
+  repositorio git y cómo no repetir el problema, resumen del estado
+  actual, pendientes, y roadmap a mediano plazo.
+- **`docs/CONTRACT-LOREBOOK.md`**: encargo detallado y autocontenido para
+  construir el subsistema de memoria/lorebook automático (ver más abajo,
+  "Qué NO se ha hecho todavía") — trigger cada N mensajes, esquema de
+  datos, extracción vía el propio KoboldCpp del usuario, inyección
+  acotada en el prompt.
+
 ## Qué NO se ha hecho todavía (pendiente real, no roto)
 
+- **Subsistema de memoria/lorebook automático**: no empezado. Encargo
+  completo en `docs/CONTRACT-LOREBOOK.md` — disparo cada 30–50 mensajes
+  (constante configurable), lorebook por chat (no por personaje, para no
+  mezclar escenarios distintos de un mismo personaje), separado de
+  `character.card.character_book` (ese es lore importado de la card
+  original, de solo lectura para este sistema). El usuario tiene un
+  proyecto aparte, todavía sin construir, que va a consumir estos logs —
+  por eso se evitó deliberadamente el resumen automático de todo el
+  historial sin un estándar claro (ver el contrato para el razonamiento
+  completo).
 - Probar en un APK real (no solo navegador): el fix de exportación a
   `Directory.DOCUMENTS`, el respaldo automático a
   `Documents/Companion-backups/`, y el bloqueo con PIN.
-- **Resumen automático de contexto largo**: deliberadamente NO
-  implementado todavía. El usuario tiene un proyecto aparte (todavía sin
-  construir) que va a generar algo tipo worldbook/lorebook alimentado por
-  los logs de esta app, así que resumir el historial sin un estándar claro
-  de "qué se resume y cómo" podría degradar ese proyecto después. Antes de
-  tocar esto hay que definir ese estándar junto con el otro proyecto. Dato
-  relevante: `Card.character_book` ya existe en el tipo de datos desde el
-  contrato original, reservado para lorebook — hoy no se usa en ningún
-  lado del código.
 - Ajustes de IA (temperatura/longitud) por personaje o por chat en vez de
   solo globales: el usuario está más interesado en continuidad narrativa
-  (ligado al punto del worldbook) que en esto por ahora.
+  (ligado al punto del lorebook) que en esto por ahora.
 - Búsqueda dentro de un chat largo: idea validada como "buena", sin
   implementar todavía.
