@@ -1,0 +1,255 @@
+// www/js/api/prompt.js — Módulo 04 "Motor".
+// Puro: no importa nada, no toca el DOM ni hace peticiones de red.
+// Arma el texto/los mensajes que se envían al servidor a partir de una
+// Card y del historial de la conversación.
+
+/**
+ * @typedef {Object} Card
+ * @property {string} name
+ * @property {string} description
+ * @property {string} personality
+ * @property {string} scenario
+ * @property {string} first_mes
+ * @property {string} mes_example
+ * @property {string} system_prompt
+ * @property {string} post_history_instructions
+ * @property {string[]} alternate_greetings
+ * @property {object|null} character_book
+ */
+
+/**
+ * @typedef {Object} Character
+ * @property {string} id
+ * @property {string} name
+ * @property {string} avatar
+ * @property {Card} card
+ * @property {'none'|'mini'|'large'} avatarMode
+ * @property {number} created
+ * @property {number} updated
+ * @property {string} last
+ */
+
+/**
+ * @typedef {Object} Message
+ * @property {'user'|'char'} role
+ * @property {string} text
+ * @property {number} ts
+ */
+
+/**
+ * @typedef {Object} Settings
+ * @property {string} url
+ * @property {string} user
+ * @property {number} maxLen
+ * @property {number} temp
+ * @property {'plain'|'chat'} mode
+ * @property {number} ctx
+ */
+
+// Estimación prudente de caracteres por token para calcular el presupuesto
+// del historial. Mejor recortar de más que desbordar el contexto.
+const CHARS_PER_TOKEN = 3.3;
+
+// Presupuesto mínimo de caracteres para el historial, aunque la cuenta dé
+// un número menor (evita recortes absurdos con contextos muy pequeños).
+const MIN_HISTORY_BUDGET = 500;
+
+// Caracteres de margen que se descuentan por cada línea del historial
+// (aproxima el costo de la etiqueta "Nombre: " y separadores).
+const LINE_OVERHEAD = 12;
+
+/**
+ * Reemplaza las macros {{char}}/<BOT> por el nombre del personaje y
+ * {{user}}/<USER> por el nombre del usuario. Insensible a mayúsculas.
+ * @param {string} text
+ * @param {string} charName
+ * @param {string} userName
+ * @returns {string}
+ */
+export function subMacros(text, charName, userName) {
+  return String(text || '')
+    .replace(/\{\{char\}\}|<BOT>/gi, charName)
+    .replace(/\{\{user\}\}|<USER>/gi, userName);
+}
+
+/**
+ * Devuelve el o los mensajes iniciales de un chat nuevo, según el saludo
+ * elegido. Devuelve [] si ese saludo está vacío.
+ * @param {Character} character
+ * @param {Settings} settings
+ * @param {number} [greetingIndex]
+ * @returns {Message[]}
+ */
+export function initialMessages(character, settings, greetingIndex = 0) {
+  const card = character.card;
+  const userName = (settings && settings.user) || 'User';
+  const greeting =
+    greetingIndex === 0
+      ? card.first_mes
+      : (card.alternate_greetings || [])[greetingIndex - 1];
+
+  if (!greeting) return [];
+
+  return [
+    {
+      role: 'char',
+      text: subMacros(greeting, card.name, userName),
+      ts: Date.now()
+    }
+  ];
+}
+
+// Bloque de cabecera común a ambos formatos de prompt: system_prompt de la
+// card (si existe), una instrucción breve de rol, y los campos de la card
+// con las macros ya resueltas. `chatScenario` es el escenario escrito a
+// mano para ESTE chat en particular (adenda multi-chat): se suma al
+// escenario de la card, nunca lo reemplaza.
+function headBlock(card, settings, chatScenario) {
+  const N = card.name;
+  const U = (settings && settings.user) || 'User';
+  const sub = (s) => subMacros(s, N, U);
+  const parts = [];
+
+  if (card.system_prompt) parts.push(sub(card.system_prompt));
+
+  parts.push(
+    `Roleplay chat between ${N} and ${U}. Stay in character as ${N}. ` +
+      `Write only ${N}'s next reply, using *asterisks* for actions and plain text for speech.`
+  );
+
+  if (card.description) parts.push(`${N}'s description:\n${sub(card.description)}`);
+  if (card.personality) parts.push(`${N}'s personality: ${sub(card.personality)}`);
+
+  const scenarioLines = [];
+  if (card.scenario) scenarioLines.push(sub(card.scenario));
+  if (chatScenario) scenarioLines.push(sub(chatScenario));
+  if (scenarioLines.length) parts.push(`Scenario: ${scenarioLines.join('\n')}`);
+
+  if (card.mes_example) {
+    parts.push(`Example dialogue:\n${sub(card.mes_example).replace(/<START>/gi, '').trim()}`);
+  }
+
+  return parts.join('\n\n');
+}
+
+// Conserva los items más recientes dentro de un presupuesto de caracteres.
+// Nunca devuelve menos de 1 item si items no está vacío.
+function pickHistory(items, budget, lengthOf) {
+  let used = 0;
+  const keep = [];
+  for (let i = items.length - 1; i >= 0; i--) {
+    const cost = lengthOf(items[i]) + LINE_OVERHEAD;
+    if (used + cost > budget && keep.length) break;
+    used += cost;
+    keep.unshift(items[i]);
+  }
+  return keep;
+}
+
+/**
+ * Arma un prompt de texto simple (equivalente al modo chat de Kobold Lite),
+ * compatible con cualquier modelo.
+ * @param {Card} card
+ * @param {Message[]} messages
+ * @param {Settings} settings
+ * @param {string} [chatScenario] Escenario propio del chat (adenda multi-chat).
+ * @returns {{ prompt: string, stop: string[] }}
+ */
+export function buildPlainPrompt(card, messages, settings, chatScenario = '') {
+  const N = card.name;
+  const U = (settings && settings.user) || 'User';
+  const ctx = (settings && settings.ctx) || 4096;
+  const maxLen = (settings && settings.maxLen) || 220;
+
+  const head = headBlock(card, settings, chatScenario) + '\n\n[Start of chat]';
+  const post = card.post_history_instructions
+    ? `\n[${subMacros(card.post_history_instructions, N, U)}]`
+    : '';
+  const cue = `\n${N}:`;
+
+  const budget = Math.max(
+    MIN_HISTORY_BUDGET,
+    (ctx - maxLen - 64) * CHARS_PER_TOKEN - head.length - post.length - cue.length
+  );
+
+  const lines = messages.map((m) => `${m.role === 'user' ? U : N}: ${m.text}`);
+  const kept = pickHistory(lines, budget, (line) => line.length);
+
+  const prompt = head + '\n' + kept.join('\n') + post + cue;
+  const stop = [`\n${U}:`, `${U}:`, `\n${N}:`];
+
+  return { prompt, stop };
+}
+
+/**
+ * Arma los mensajes para /v1/chat/completions, dejando que el servidor
+ * aplique la plantilla del modelo cargado.
+ * @param {Card} card
+ * @param {Message[]} messages
+ * @param {Settings} settings
+ * @param {string} [chatScenario] Escenario propio del chat (adenda multi-chat).
+ * @returns {{ messages: {role:'system'|'user'|'assistant', content:string}[], stop: string[] }}
+ */
+export function buildChatMessages(card, messages, settings, chatScenario = '') {
+  const N = card.name;
+  const U = (settings && settings.user) || 'User';
+  const ctx = (settings && settings.ctx) || 4096;
+  const maxLen = (settings && settings.maxLen) || 220;
+
+  let head = headBlock(card, settings, chatScenario);
+  if (card.post_history_instructions) {
+    head += '\n\n' + subMacros(card.post_history_instructions, N, U);
+  }
+
+  const budget = Math.max(MIN_HISTORY_BUDGET, (ctx - maxLen - 64) * CHARS_PER_TOKEN - head.length);
+  const kept = pickHistory(messages, budget, (m) => m.text.length);
+
+  const out = [{ role: 'system', content: head }];
+  // Muchas plantillas exigen que el primer turno sea 'user'.
+  if (!kept.length || kept[0].role !== 'user') {
+    out.push({ role: 'user', content: '[Start of roleplay]' });
+  }
+  kept.forEach((m) => out.push({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text }));
+
+  const stop = [`\n${U}:`];
+
+  return { messages: out, stop };
+}
+
+function escapeRegExp(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Quita un prefijo inicial "{char}:" (si el modelo lo repitió) y espacios
+ * sobrantes.
+ * @param {string} text
+ * @param {string} charName
+ * @returns {string}
+ */
+export function cleanReply(text, charName) {
+  return String(text)
+    .replace(new RegExp('^\\s*' + escapeRegExp(charName) + ':\\s*'), '')
+    .trim();
+}
+
+/**
+ * Cuando una respuesta se cortó por límite de longitud, elimina la frase
+ * incompleta del final sin dejar un asterisco de acción abierto huérfano.
+ * No toca respuestas que ya terminan en puntuación. No recorta más de 240
+ * caracteres.
+ * @param {string} text
+ * @returns {string}
+ */
+export function trimPartial(text) {
+  if (/[.!?…*"~)\]]\s*$/.test(text)) return text;
+
+  const m = text.match(/^([\s\S]*[.!?…*"~)\]])[^.!?…*"~)\]]*$/);
+  if (!m || text.length - m[1].length > 240) return text;
+
+  let r = m[1];
+  // Si quedó un número impar de asteriscos, el último abre una acción que
+  // nunca se cerró: se descarta junto con el espacio que lo precede.
+  if ((r.match(/\*/g) || []).length % 2) r = r.replace(/\s*\*$/, '');
+  return r.trim();
+}

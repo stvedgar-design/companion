@@ -1,0 +1,56 @@
+/*
+ * tokens.css — Companion
+ * Variables de diseño únicas para toda la app. Ningún módulo debe
+ * redefinir estos nombres; solo puede leerlos.
+ */
+
+:root{
+  /* Color */
+  --color-bg: #181924;
+  --color-surface: #20222f;
+  --color-surface-2: #2d2f40;
+  --color-line: #383b52;
+  --color-text: #f3f3f8;
+  --color-muted: #9b9eb8;
+  --color-accent: #8b1fe0;
+  --color-accent-2: #a24cf2;
+  --color-accent-soft: rgba(139, 31, 224, 0.16);
+  --color-danger: #f0566a;
+  --color-ok: #6ee7a8;
+  --color-overlay: rgba(6, 6, 12, 0.6);
+
+  --grad-user: linear-gradient(135deg, #7a12d6, #9b3ff0);
+  --grad-avatar: linear-gradient(135deg, #5b1fa8, #c04bd6);
+
+  /* Tipografía */
+  --font: 'Outfit', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --fs-xs: 12px;
+  --fs-sm: 13px;
+  --fs-md: 15px;
+  --fs-lg: 17px;
+  --fs-xl: 20px;
+  --fs-2xl: 26px;
+  --fs-3xl: 34px;
+
+  /* Radios */
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 26px;
+  --radius-pill: 999px;
+
+  /* Espaciado */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  /* Movimiento */
+  --dur-fast: 0.12s;
+  --dur: 0.18s;
+
+  /* Áreas seguras (recalculadas por platform.js en tiempo real si aplica) */
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+}

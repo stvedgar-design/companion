@@ -1,0 +1,18 @@
+{
+  "name": "companion",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Companion — chat con character cards contra un servidor KoboldCpp propio.",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs"
+  },
+  "dependencies": {
+    "@capacitor/core": "^6.1.2",
+    "@capacitor/android": "^6.1.2",
+    "@capacitor/filesystem": "^6.0.1",
+    "@capacitor/share": "^6.0.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.1.2"
+  }
+}

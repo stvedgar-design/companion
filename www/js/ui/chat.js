@@ -1,0 +1,720 @@
+// www/js/ui/chat.js
+// Pantalla de chat: burbujas, streaming, avatar en 3 modos, composer, menú.
+
+import { getChat, getChatMessages, saveChatMessages, getCharacter, saveCharacter, getSettings } from '../state.js';
+import { generateReply } from '../api/kobold.js';
+import { initialMessages } from '../api/prompt.js';
+import { openSettings } from './settings.js';
+import { formatMessage } from './format.js';
+import { makeAvatar } from '../cards/avatar.js';
+import { pickFiles, saveBlob } from '../platform.js';
+
+const ICON_BACK = '<svg viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>';
+const ICON_MENU = '<svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/></svg>';
+const ICON_SEND = '<svg viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg>';
+const ICON_STOP = '<svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2.5"/></svg>';
+const ICON_DOWN = '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12l7 7 7-7"/></svg>';
+
+const AVATAR_MODES = ['none', 'mini', 'large'];
+const NEAR_BOTTOM_PX = 140;
+const KEYBOARD_VH_RATIO = 0.75;
+
+let root = null;
+let app = null;
+let els = {};
+
+let character = null;
+let chat = null;
+let messages = [];
+let settings = null;
+
+let busy = false;
+let abortCtl = null;
+
+let atBottom = true;
+let keyboardOpen = false;
+let maxVh = 0;
+let blurTimeoutId = null;
+
+const draftByChat = new Map();
+
+export function init(rootEl, appApi) {
+  root = rootEl;
+  app = appApi;
+
+  root.innerHTML = `
+    <div class="topbar">
+      <button class="ib" type="button" id="chat-back" aria-label="Volver">${ICON_BACK}</button>
+      <button class="chat-head" type="button" id="chat-head">
+        <div class="av av--sm chat-head__av" id="chat-head-av" hidden></div>
+        <b class="topbar__title chat-head__name" id="chat-head-name"></b>
+      </button>
+      <button class="ib" type="button" id="chat-menu" aria-label="Más">${ICON_MENU}</button>
+    </div>
+    <div class="chat-avatarpanel" id="chat-avatarpanel" hidden>
+      <div class="av chat-avatarpanel__img" id="chat-avatarpanel-img"></div>
+    </div>
+    <div class="chat-messageswrap">
+      <div class="scroll chat-messages" id="chat-messages"></div>
+      <button class="chat-scrolldown" type="button" id="chat-scrolldown" aria-label="Ir al último mensaje" hidden>${ICON_DOWN}</button>
+    </div>
+    <div class="chat-composer" id="chat-composer">
+      <textarea class="inp chat-composer__input" id="chat-input" rows="1" placeholder="Escribe un mensaje" autocomplete="off" autocapitalize="sentences"></textarea>
+      <button class="chat-send" type="button" id="chat-send" aria-label="Enviar">${ICON_SEND}</button>
+    </div>
+  `;
+
+  els = {
+    back: root.querySelector('#chat-back'),
+    head: root.querySelector('#chat-head'),
+    headAv: root.querySelector('#chat-head-av'),
+    headName: root.querySelector('#chat-head-name'),
+    menu: root.querySelector('#chat-menu'),
+    avatarPanel: root.querySelector('#chat-avatarpanel'),
+    avatarPanelImg: root.querySelector('#chat-avatarpanel-img'),
+    messages: root.querySelector('#chat-messages'),
+    scrollDown: root.querySelector('#chat-scrolldown'),
+    composer: root.querySelector('#chat-composer'),
+    input: root.querySelector('#chat-input'),
+    send: root.querySelector('#chat-send'),
+  };
+
+  els.back.addEventListener('click', onBack);
+  els.head.addEventListener('click', onCycleAvatarMode);
+  els.menu.addEventListener('click', onMenu);
+  els.input.addEventListener('input', onInputChange);
+  els.input.addEventListener('keydown', onInputKeydown);
+  els.input.addEventListener('focus', onInputFocus);
+  els.input.addEventListener('blur', onInputBlur);
+  els.send.addEventListener('click', onSendClick);
+  els.messages.addEventListener('click', onMessagesClick);
+  els.messages.addEventListener('scroll', onMessagesScroll);
+  els.scrollDown.addEventListener('click', () => scrollToBottom(true));
+}
+
+export async function show({ chatId } = {}) {
+  chat = await getChat(chatId);
+  if (!chat) {
+    app.toast('No se encontró ese chat.');
+    app.back();
+    return;
+  }
+
+  character = await getCharacter(chat.characterId);
+  if (!character) {
+    app.toast('No se encontró ese personaje.');
+    app.back();
+    return;
+  }
+
+  settings = await getSettings();
+
+  let loaded = await getChatMessages(chat.id);
+  if (!loaded) {
+    loaded = initialMessages(character, settings);
+    try {
+      await saveChatMessages(chat.id, loaded);
+    } catch (err) {
+      app.toast('No se pudo crear la conversación.');
+    }
+  }
+  messages = loaded;
+
+  busy = false;
+  abortCtl = null;
+  keyboardOpen = false;
+  maxVh = 0;
+
+  els.headName.textContent = character.name;
+  els.input.value = draftByChat.get(chat.id) || '';
+  autosizeInput();
+  syncSendButton();
+  applyAvatarMode();
+  renderMessages();
+
+  attachViewportListeners();
+  checkKeyboardFromVh();
+}
+
+export function hide() {
+  if (busy) cancelGeneration();
+  if (chat) {
+    // El texto parcial recibido (si lo había) ya quedó en `messages`.
+    persistChat();
+  }
+  clearTimeout(blurTimeoutId);
+  detachViewportListeners();
+  clearSelection();
+  if (app) app.closeSheet();
+}
+
+/* ---------- avatar en 3 modos ---------- */
+
+function applyAvatarMode() {
+  if (!character) return;
+  const mode = character.avatarMode || 'mini';
+
+  els.headAv.hidden = mode !== 'mini';
+  if (mode === 'mini') setAvatarEl(els.headAv, character);
+
+  const showLarge = mode === 'large';
+  els.avatarPanel.hidden = !showLarge;
+  if (showLarge) setAvatarEl(els.avatarPanelImg, character);
+  els.avatarPanel.classList.toggle('chat-avatarpanel--collapsed', showLarge && keyboardOpen);
+}
+
+async function onCycleAvatarMode() {
+  if (!character) return;
+  const idx = AVATAR_MODES.indexOf(character.avatarMode || 'mini');
+  const next = AVATAR_MODES[(idx + 1) % AVATAR_MODES.length];
+  character.avatarMode = next;
+  applyAvatarMode();
+  try {
+    character = await saveCharacter(character);
+  } catch (err) {
+    app.toast('No se pudo guardar la preferencia de avatar.');
+  }
+}
+
+function setAvatarEl(el, ch) {
+  el.replaceChildren();
+  if (ch && ch.avatar) {
+    const img = document.createElement('img');
+    img.src = ch.avatar;
+    img.alt = '';
+    el.appendChild(img);
+  } else {
+    const span = document.createElement('span');
+    span.textContent = ((ch && ch.name) || '?').trim().charAt(0).toUpperCase();
+    el.appendChild(span);
+  }
+}
+
+/* ---------- teclado / --vh ---------- */
+
+function attachViewportListeners() {
+  window.addEventListener('resize', checkKeyboardFromVh);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', checkKeyboardFromVh);
+  }
+}
+
+function detachViewportListeners() {
+  window.removeEventListener('resize', checkKeyboardFromVh);
+  if (window.visualViewport) {
+    window.visualViewport.removeEventListener('resize', checkKeyboardFromVh);
+  }
+}
+
+function checkKeyboardFromVh() {
+  const raw = getComputedStyle(document.documentElement).getPropertyValue('--vh');
+  const px = parseFloat(raw);
+  if (Number.isFinite(px) && px > 0) {
+    if (px > maxVh) maxVh = px;
+    const dropped = maxVh > 0 && px < maxVh * KEYBOARD_VH_RATIO;
+    keyboardOpen = dropped || document.activeElement === els.input;
+  } else {
+    keyboardOpen = document.activeElement === els.input;
+  }
+  applyAvatarMode();
+  scrollToBottom(false);
+}
+
+/* ---------- lista de mensajes ---------- */
+
+function renderMessages() {
+  els.messages.replaceChildren();
+  messages.forEach((m, i) => {
+    els.messages.appendChild(buildMessageRow(m, i));
+  });
+  if (!busy && messages.length && messages[messages.length - 1].role === 'user') {
+    els.messages.appendChild(buildRetryButton());
+  }
+  scrollToBottom(true);
+}
+
+function buildMessageRow(m, i) {
+  const isLast = i === messages.length - 1;
+  const row = document.createElement('div');
+  row.className = 'chat-row ' + (m.role === 'user' ? 'chat-row--user' : 'chat-row--char');
+  row.dataset.index = String(i);
+
+  const bubble = document.createElement('div');
+  bubble.className = 'chat-bubble';
+  if (m.role === 'char' && !m.text && busy && isLast) {
+    bubble.appendChild(buildDots());
+  } else {
+    bubble.innerHTML = formatMessage(m.text);
+  }
+  row.appendChild(bubble);
+
+  const actions = document.createElement('div');
+  actions.className = 'chat-row__actions';
+  if (!busy) {
+    actions.appendChild(buildActionButton('Editar', () => openEditSheet(i)));
+    actions.appendChild(buildActionButton('Borrar', () => deleteMessage(i)));
+    actions.appendChild(buildActionButton('Copiar', () => copyMessage(i)));
+    if (isLast && m.role === 'char') {
+      actions.appendChild(buildActionButton('Regenerar', () => regenerate()));
+    }
+  }
+  row.appendChild(actions);
+
+  return row;
+}
+
+function buildActionButton(label, onClick) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'chat-actionbtn';
+  btn.textContent = label;
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    onClick();
+  });
+  return btn;
+}
+
+function buildDots() {
+  const wrap = document.createElement('span');
+  wrap.className = 'chat-dots';
+  wrap.setAttribute('aria-hidden', 'true');
+  for (let i = 0; i < 3; i++) wrap.appendChild(document.createElement('i'));
+  return wrap;
+}
+
+function buildRetryButton() {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'chat-retry';
+  btn.textContent = 'Reintentar respuesta';
+  btn.addEventListener('click', () => generate());
+  return btn;
+}
+
+function onMessagesClick(e) {
+  if (busy) return;
+  if (e.target.closest('.chat-row__actions')) return;
+  const row = e.target.closest('.chat-row');
+  if (!row) {
+    clearSelection();
+    return;
+  }
+  const wasSelected = row.classList.contains('chat-row--selected');
+  clearSelection();
+  if (!wasSelected) row.classList.add('chat-row--selected');
+}
+
+function clearSelection() {
+  els.messages.querySelectorAll('.chat-row--selected').forEach((r) => r.classList.remove('chat-row--selected'));
+}
+
+/* ---------- acciones sobre un mensaje ---------- */
+
+function openEditSheet(i) {
+  const msg = messages[i];
+  if (!msg) return;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'chat-editsheet';
+
+  const title = document.createElement('h3');
+  title.className = 'sheet__title';
+  title.textContent = 'Editar mensaje';
+
+  const textarea = document.createElement('textarea');
+  textarea.className = 'inp';
+  textarea.value = msg.text;
+
+  const saveBtn = document.createElement('button');
+  saveBtn.type = 'button';
+  saveBtn.className = 'btn';
+  saveBtn.textContent = 'Guardar';
+  saveBtn.addEventListener('click', async () => {
+    const value = textarea.value.trim();
+    if (!value) {
+      messages.splice(i, 1);
+    } else {
+      messages[i] = { ...msg, text: value };
+    }
+    await persistChat();
+    app.closeSheet();
+    renderMessages();
+  });
+
+  wrap.append(title, textarea, saveBtn);
+  app.openSheet(wrap);
+}
+
+async function deleteMessage(i) {
+  messages.splice(i, 1);
+  await persistChat();
+  renderMessages();
+}
+
+async function copyMessage(i) {
+  const msg = messages[i];
+  if (!msg) return;
+  try {
+    await navigator.clipboard.writeText(msg.text);
+    app.toast('Mensaje copiado.');
+  } catch (err) {
+    app.toast('No se pudo copiar el mensaje.');
+  }
+}
+
+/* ---------- desplazamiento ---------- */
+
+function isNearBottom() {
+  const el = els.messages;
+  return el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
+}
+
+function scrollToBottom(force) {
+  if (force || atBottom) {
+    els.messages.scrollTop = els.messages.scrollHeight;
+    atBottom = true;
+  }
+  updateScrollDownVisibility();
+}
+
+function updateScrollDownVisibility() {
+  els.scrollDown.hidden = isNearBottom();
+}
+
+function onMessagesScroll() {
+  atBottom = isNearBottom();
+  updateScrollDownVisibility();
+}
+
+/* ---------- composer ---------- */
+
+function onInputChange() {
+  autosizeInput();
+  syncSendButton();
+  if (chat) draftByChat.set(chat.id, els.input.value);
+}
+
+function autosizeInput() {
+  els.input.style.height = 'auto';
+  els.input.style.height = Math.min(els.input.scrollHeight, 140) + 'px';
+}
+
+function syncSendButton() {
+  const hasText = els.input.value.trim().length > 0;
+  els.send.classList.toggle('chat-send--ready', !busy && hasText);
+  els.send.classList.toggle('chat-send--stop', busy);
+  els.send.innerHTML = busy ? ICON_STOP : ICON_SEND;
+  els.send.setAttribute('aria-label', busy ? 'Detener' : 'Enviar');
+}
+
+function onInputKeydown(e) {
+  if (e.key !== 'Enter' || e.shiftKey) return;
+  const isTouch = typeof matchMedia === 'function' && matchMedia('(pointer:coarse)').matches;
+  if (isTouch) return; // en táctil, Enter inserta salto de línea
+  e.preventDefault();
+  onSendClick();
+}
+
+function onInputFocus() {
+  clearTimeout(blurTimeoutId);
+  keyboardOpen = true;
+  applyAvatarMode();
+}
+
+function onInputBlur() {
+  clearTimeout(blurTimeoutId);
+  blurTimeoutId = setTimeout(() => {
+    checkKeyboardFromVh();
+  }, 60);
+}
+
+async function onSendClick() {
+  if (busy) {
+    cancelGeneration();
+    return;
+  }
+  const text = els.input.value.trim();
+  if (!text || !character || !chat) return;
+
+  els.input.value = '';
+  draftByChat.delete(chat.id);
+  autosizeInput();
+  syncSendButton();
+
+  messages.push({ role: 'user', text, ts: Date.now() });
+  renderMessages();
+  await persistChat();
+  await generate();
+}
+
+/* ---------- generación ---------- */
+
+async function generate() {
+  if (busy || !character) return;
+  busy = true;
+  syncSendButton();
+
+  const history = messages.slice();
+  const reply = { role: 'char', text: '', ts: Date.now() };
+  messages.push(reply);
+  renderMessages();
+
+  abortCtl = new AbortController();
+
+  try {
+    const result = await generateReply({
+      character,
+      chat,
+      messages: history,
+      settings,
+      signal: abortCtl.signal,
+      onToken: (chunk) => {
+        reply.text += chunk;
+        updateStreamingBubble();
+      },
+    });
+    reply.text = (result && result.text) || '';
+  } catch (err) {
+    app.toast((err && err.message) || 'No se pudo generar la respuesta.');
+  } finally {
+    if (!reply.text) {
+      const idx = messages.indexOf(reply);
+      if (idx >= 0) messages.splice(idx, 1);
+    }
+    busy = false;
+    abortCtl = null;
+    syncSendButton();
+    await persistChat();
+    renderMessages();
+  }
+}
+
+function updateStreamingBubble() {
+  const rows = els.messages.querySelectorAll('.chat-row');
+  const lastRow = rows[rows.length - 1];
+  const msg = messages[messages.length - 1];
+  if (!lastRow || !msg) return;
+  const bubble = lastRow.querySelector('.chat-bubble');
+  if (!bubble) return;
+  if (msg.text) {
+    bubble.innerHTML = formatMessage(msg.text);
+  } else {
+    bubble.replaceChildren(buildDots());
+  }
+  scrollToBottom(false);
+}
+
+function cancelGeneration() {
+  if (abortCtl) abortCtl.abort();
+}
+
+function regenerate() {
+  if (busy) return;
+  if (messages.length && messages[messages.length - 1].role === 'char') {
+    messages.pop();
+  }
+  generate();
+}
+
+async function persistChat() {
+  if (!chat) return;
+  try {
+    await saveChatMessages(chat.id, messages);
+  } catch (err) {
+    app.toast('No se pudo guardar la conversación.');
+  }
+}
+
+/* ---------- barra superior ---------- */
+
+function onBack() {
+  if (busy) cancelGeneration();
+  app.closeSheet();
+  clearSelection();
+  app.back();
+}
+
+function onMenu() {
+  const wrap = document.createElement('div');
+
+  const settingsBtn = document.createElement('button');
+  settingsBtn.type = 'button';
+  settingsBtn.className = 'menu-item';
+  settingsBtn.textContent = 'Ajustes';
+  settingsBtn.addEventListener('click', () => {
+    openSettings(app);
+  });
+  wrap.appendChild(settingsBtn);
+
+  const backToChatsBtn = document.createElement('button');
+  backToChatsBtn.type = 'button';
+  backToChatsBtn.className = 'menu-item';
+  backToChatsBtn.textContent = 'Volver a los chats de este personaje';
+  backToChatsBtn.addEventListener('click', () => {
+    if (busy) cancelGeneration();
+    app.navigate('chats', { characterId: chat.characterId });
+  });
+  wrap.appendChild(backToChatsBtn);
+
+  if (character && character.card.alternate_greetings && character.card.alternate_greetings.length && isOnlyGreeting()) {
+    const greetBtn = document.createElement('button');
+    greetBtn.type = 'button';
+    greetBtn.className = 'menu-item';
+    greetBtn.textContent = 'Cambiar saludo';
+    greetBtn.addEventListener('click', () => {
+      openGreetingSheet();
+    });
+    wrap.appendChild(greetBtn);
+  }
+
+  const avatarBtn = document.createElement('button');
+  avatarBtn.type = 'button';
+  avatarBtn.className = 'menu-item';
+  avatarBtn.textContent = 'Cambiar avatar';
+  avatarBtn.addEventListener('click', () => {
+    app.closeSheet();
+    onChangeAvatar();
+  });
+  wrap.appendChild(avatarBtn);
+
+  const exportBtn = document.createElement('button');
+  exportBtn.type = 'button';
+  exportBtn.className = 'menu-item';
+  exportBtn.textContent = 'Exportar este chat';
+  exportBtn.addEventListener('click', () => {
+    app.closeSheet();
+    onExportChat();
+  });
+  wrap.appendChild(exportBtn);
+
+  const importBtn = document.createElement('button');
+  importBtn.type = 'button';
+  importBtn.className = 'menu-item';
+  importBtn.textContent = 'Importar chat';
+  importBtn.addEventListener('click', () => {
+    app.closeSheet();
+    onImportChat();
+  });
+  wrap.appendChild(importBtn);
+
+  app.openSheet(wrap);
+}
+
+async function onChangeAvatar() {
+  if (!character) return;
+  const files = await pickFiles();
+  if (!files.length) return;
+
+  app.toast('Generando avatar…');
+  const dataUrl = await makeAvatar(files[0]);
+  if (!dataUrl) {
+    app.toast('No se pudo usar esa imagen como avatar.');
+    return;
+  }
+
+  character.avatar = dataUrl;
+  try {
+    character = await saveCharacter(character);
+    applyAvatarMode();
+    app.toast('Avatar actualizado.');
+  } catch (err) {
+    app.toast('No se pudo guardar el avatar.');
+  }
+}
+
+async function onExportChat() {
+  if (!character || !chat) return;
+  try {
+    const payload = {
+      app: 'companion',
+      kind: 'chat-log',
+      version: 2,
+      exported: new Date().toISOString(),
+      character: { id: character.id, name: character.name },
+      chat: { id: chat.id, title: chat.title, scenario: chat.scenario },
+      messages,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const date = new Date().toISOString().slice(0, 10);
+    const slugify = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    const charSlug = slugify(character.name) || 'chat';
+    const titleSlug = slugify(chat.title);
+    const slug = titleSlug ? `${charSlug}-${titleSlug}` : charSlug;
+    await saveBlob(blob, `companion-chat-${slug}-${date}.json`);
+  } catch (err) {
+    app.toast('No se pudo exportar el chat.');
+  }
+}
+
+async function onImportChat() {
+  if (!character || !chat) return;
+  const files = await pickFiles();
+  if (!files.length) return;
+
+  let data;
+  try {
+    const text = await files[0].text();
+    data = JSON.parse(text.replace(/^\uFEFF/, ''));
+  } catch {
+    app.toast('El archivo no es un JSON válido.');
+    return;
+  }
+
+  if (!data || typeof data !== 'object' || !Array.isArray(data.messages)) {
+    app.toast('Ese archivo no es un log de chat válido de Companion.');
+    return;
+  }
+
+  const cleaned = data.messages
+    .filter((m) => m && (m.role === 'user' || m.role === 'char') && typeof m.text === 'string')
+    .map((m) => ({ role: m.role, text: m.text, ts: typeof m.ts === 'number' ? m.ts : Date.now() }));
+
+  if (!cleaned.length) {
+    app.toast('Ese archivo no tiene mensajes reconocibles.');
+    return;
+  }
+
+  const ok = await app.confirmDialog(
+    `¿Reemplazar el chat actual con este log importado (${cleaned.length} mensajes)? Se perderá el historial actual.`,
+    { confirmText: 'Importar', danger: true }
+  );
+  if (!ok) return;
+
+  if (busy) cancelGeneration();
+  messages = cleaned;
+  await persistChat();
+  renderMessages();
+  app.toast('Chat importado.');
+}
+
+function isOnlyGreeting() {
+  return messages.length === 1 && messages[0].role === 'char';
+}
+
+function openGreetingSheet() {
+  const wrap = document.createElement('div');
+  const title = document.createElement('h3');
+  title.className = 'sheet__title';
+  title.textContent = 'Elegir saludo';
+  wrap.appendChild(title);
+
+  const greetings = [character.card.first_mes, ...(character.card.alternate_greetings || [])];
+  greetings.forEach((text, i) => {
+    if (!text) return;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'menu-item';
+    const preview = text.replace(/\*/g, '').replace(/\s+/g, ' ').trim().slice(0, 80);
+    btn.textContent = preview || `Saludo ${i + 1}`;
+    btn.addEventListener('click', async () => {
+      app.closeSheet();
+      messages = initialMessages(character, settings, i);
+      await persistChat();
+      renderMessages();
+    });
+    wrap.appendChild(btn);
+  });
+
+  app.openSheet(wrap);
+}

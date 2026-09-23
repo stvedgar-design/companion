@@ -1,0 +1,302 @@
+// www/js/api/kobold.js — Módulo 04 "Motor".
+// Único lugar de la app con `fetch`. Habla con un servidor KoboldCpp del
+// usuario (URL propia, típicamente por Tailscale) para conectar y generar
+// respuestas en streaming. No guarda nada en localStorage/IndexedDB.
+
+import { buildPlainPrompt, buildChatMessages, cleanReply, trimPartial } from './prompt.js';
+
+const TOP_P = 0.92;
+const TOP_K = 0;
+const MIN_P = 0.05;
+const REP_PEN = 1.08;
+const REP_PEN_RANGE = 320;
+
+const CONNECT_NETWORK_MSG =
+  'No se pudo conectar. Revisa que Tailscale esté activo y que la URL lleve el puerto, por ejemplo http://100.x.x.x:5001';
+const STREAM_NETWORK_MSG = 'Se perdió la conexión con el servidor. ¿Sigue activo Tailscale?';
+const INVALID_URL_MSG = 'La URL no es válida. Ejemplo: http://100.x.x.x:5001';
+const MIXED_CONTENT_MSG =
+  'Esta página está en https y tu servidor en http; el navegador bloquea la conexión. Abre la app desde http.';
+const SERVER_MSG = 'El servidor devolvió una respuesta inesperada.';
+
+// Códigos que esta capa puede lanzar. Sirve para distinguir "ya es uno de
+// nuestros errores clasificados" de un fallo crudo de fetch/undici, que
+// también puede traer su propio `.code` (p. ej. ECONNREFUSED).
+const KNOWN_CODES = new Set(['INVALID_URL', 'NETWORK', 'MIXED_CONTENT', 'HTTP', 'SERVER']);
+
+function makeError(message, code) {
+  const err = new Error(message);
+  err.code = code;
+  return err;
+}
+
+function isMixedContent(base) {
+  return typeof location !== 'undefined' && location.protocol === 'https:' && /^http:/i.test(base);
+}
+
+/**
+ * Normaliza una URL: añade http:// si falta y devuelve solo el origen
+ * (sin ruta, hash ni barra final). Devuelve '' si es inválida.
+ * @param {string} raw
+ * @returns {string}
+ */
+export function normUrl(raw) {
+  let u = String(raw == null ? '' : raw).trim();
+  if (!u) return '';
+  if (!/^https?:\/\//i.test(u)) u = 'http://' + u;
+  try {
+    return new URL(u).origin;
+  } catch {
+    return '';
+  }
+}
+
+async function fetchWithTimeout(url, opts, ms) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try {
+    return await fetch(url, { ...opts, signal: ctrl.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Prueba la conexión con un servidor KoboldCpp. No guarda nada: quien
+ * llama decide qué hacer con el resultado.
+ * @param {string} rawUrl
+ * @returns {Promise<{ url: string, model: string, ctx: number }>}
+ */
+export async function connect(rawUrl) {
+  const base = normUrl(rawUrl);
+  if (!base) throw makeError(INVALID_URL_MSG, 'INVALID_URL');
+
+  let res;
+  try {
+    res = await fetchWithTimeout(base + '/api/v1/model', {}, 6000);
+  } catch {
+    if (isMixedContent(base)) throw makeError(MIXED_CONTENT_MSG, 'MIXED_CONTENT');
+    throw makeError(CONNECT_NETWORK_MSG, 'NETWORK');
+  }
+  if (!res.ok) {
+    throw makeError(`El servidor respondió ${res.status}. ¿Es la URL de KoboldCpp?`, 'HTTP');
+  }
+
+  let data;
+  try {
+    data = await res.json();
+  } catch {
+    throw makeError(SERVER_MSG, 'SERVER');
+  }
+  const model = String((data && data.result) || '').replace(/^koboldcpp\//, '');
+
+  let ctx = 4096;
+  try {
+    const ctxRes = await fetchWithTimeout(base + '/api/extra/true_max_context_length', {}, 4000);
+    if (ctxRes.ok) {
+      const ctxData = await ctxRes.json();
+      if (ctxData && typeof ctxData.value === 'number') ctx = ctxData.value;
+    }
+  } catch {
+    // Opcional: si falla, se mantiene el valor por defecto.
+  }
+
+  return { url: base, model, ctx };
+}
+
+// Lector de Server-Sent Events propio: tolera líneas partidas entre trozos
+// de red, líneas `event:` o vacías, y el marcador [DONE].
+async function readSSE(response, onEvent) {
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let idx;
+    while ((idx = buffer.indexOf('\n')) >= 0) {
+      const line = buffer.slice(0, idx).trim();
+      buffer = buffer.slice(idx + 1);
+      if (!line.startsWith('data:')) continue;
+      const data = line.slice(5).trim();
+      if (data === '[DONE]') return;
+      let obj;
+      try {
+        obj = JSON.parse(data);
+      } catch {
+        continue;
+      }
+      onEvent(obj);
+    }
+  }
+}
+
+function canStream(res) {
+  return !!res.body && typeof res.body.getReader === 'function';
+}
+
+// Respaldo sin streaming: usa el endpoint nativo de generación de una sola
+// vez, con el prompt en formato de texto simple (es el único formato que
+// acepta este endpoint). Entrega el texto completo a `emit` de un tirón.
+async function nonStreamingGenerate(base, card, messages, settings, chatScenario, signal, emit) {
+  const { prompt } = buildPlainPrompt(card, messages, settings, chatScenario);
+  const res = await fetch(base + '/api/v1/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    signal,
+    body: JSON.stringify({
+      prompt,
+      max_context_length: settings.ctx,
+      max_length: settings.maxLen,
+      temperature: settings.temp,
+      top_p: TOP_P,
+      top_k: TOP_K,
+      min_p: MIN_P,
+      rep_pen: REP_PEN,
+      rep_pen_range: REP_PEN_RANGE
+    })
+  });
+  if (!res.ok) {
+    throw makeError(`El servidor respondió ${res.status}. ¿Es la URL de KoboldCpp?`, 'HTTP');
+  }
+  let data;
+  try {
+    data = await res.json();
+  } catch {
+    throw makeError(SERVER_MSG, 'SERVER');
+  }
+  const text = data && data.results && data.results[0] && data.results[0].text;
+  if (typeof text !== 'string') throw makeError(SERVER_MSG, 'SERVER');
+  emit(text);
+}
+
+function makeGenKey() {
+  return 'CMP' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+/**
+ * Genera la siguiente respuesta del personaje, en streaming cuando es
+ * posible. Nunca lanza por aborto: en ese caso resuelve con lo recibido
+ * hasta ese momento.
+ * @param {{
+ *   character: import('./prompt.js').Character,
+ *   chat?: import('../state.js').Chat,
+ *   messages: import('./prompt.js').Message[],
+ *   settings: import('./prompt.js').Settings,
+ *   signal?: AbortSignal,
+ *   onToken?: (chunk: string) => void
+ * }} opts
+ * @returns {Promise<{ text: string, truncated: boolean, aborted: boolean }>}
+ */
+export async function generateReply({ character, chat, messages, settings, signal, onToken }) {
+  const base = normUrl(settings && settings.url);
+  if (!base) throw makeError(INVALID_URL_MSG, 'INVALID_URL');
+
+  const card = character.card;
+  const chatScenario = (chat && chat.scenario) || '';
+  const genkey = makeGenKey();
+  const mode = settings.mode === 'chat' ? 'chat' : 'plain';
+  const maxLen = settings.maxLen || 220;
+
+  let fullText = '';
+  let tokenCount = 0;
+  let usedFallback = false;
+  const emit = (chunk) => {
+    if (!chunk) return;
+    fullText += chunk;
+    tokenCount++;
+    if (onToken) onToken(chunk);
+  };
+
+  const notifyAbort = () => {
+    fetch(base + '/api/extra/abort', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ genkey })
+    }).catch(() => {});
+  };
+
+  try {
+    let res;
+    if (mode === 'chat') {
+      const { messages: chatMessages, stop } = buildChatMessages(card, messages, settings, chatScenario);
+      res = await fetch(base + '/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal,
+        body: JSON.stringify({
+          messages: chatMessages,
+          max_tokens: maxLen,
+          temperature: settings.temp,
+          top_p: TOP_P,
+          stream: true,
+          stop
+        })
+      });
+    } else {
+      const { prompt, stop } = buildPlainPrompt(card, messages, settings, chatScenario);
+      res = await fetch(base + '/api/extra/generate/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal,
+        body: JSON.stringify({
+          prompt,
+          max_context_length: settings.ctx,
+          max_length: maxLen,
+          temperature: settings.temp,
+          top_p: TOP_P,
+          top_k: TOP_K,
+          min_p: MIN_P,
+          rep_pen: REP_PEN,
+          rep_pen_range: REP_PEN_RANGE,
+          stop_sequence: stop,
+          genkey,
+          quiet: true
+        })
+      });
+    }
+
+    if (res.status === 404) {
+      usedFallback = true;
+      await nonStreamingGenerate(base, card, messages, settings, chatScenario, signal, emit);
+    } else if (!res.ok) {
+      throw makeError(`El servidor respondió ${res.status}. ¿Es la URL de KoboldCpp?`, 'HTTP');
+    } else if (!canStream(res)) {
+      usedFallback = true;
+      await nonStreamingGenerate(base, card, messages, settings, chatScenario, signal, emit);
+    } else if (mode === 'chat') {
+      await readSSE(res, (obj) => {
+        const chunk = obj && obj.choices && obj.choices[0] && obj.choices[0].delta && obj.choices[0].delta.content;
+        if (chunk) emit(chunk);
+      });
+    } else {
+      await readSSE(res, (obj) => {
+        if (obj && obj.token) emit(obj.token);
+      });
+    }
+  } catch (err) {
+    const wasAborted = (signal && signal.aborted) || (err && err.name === 'AbortError');
+    if (wasAborted) {
+      notifyAbort();
+      return { text: cleanReply(fullText, card.name), truncated: false, aborted: true };
+    }
+    if (err && KNOWN_CODES.has(err.code)) throw err;
+    // Fallo de red genérico: fetch rechazado, o el stream se cortó a mitad
+    // de camino. Si ya había texto recibido, no se pierde.
+    if (fullText) {
+      return { text: trimPartial(cleanReply(fullText, card.name)), truncated: true, aborted: false };
+    }
+    throw makeError(STREAM_NETWORK_MSG, 'NETWORK');
+  }
+
+  let text = cleanReply(fullText, card.name);
+  let truncated = false;
+  // El respaldo sin streaming entrega el texto de una vez: no hay conteo
+  // de eventos con el que detectar un corte por longitud.
+  if (!usedFallback && tokenCount >= maxLen - 2) {
+    text = trimPartial(text);
+    truncated = true;
+  }
+  return { text, truncated, aborted: false };
+}

@@ -1,0 +1,9 @@
+{
+  "appId": "com.companion.app",
+  "appName": "Companion",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "http",
+    "cleartext": true
+  }
+}
