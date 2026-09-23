@@ -242,6 +242,30 @@ export function buildChatMessages(card, messages, settings, chatScenario = '') {
   return { messages: out, stop };
 }
 
+/**
+ * Estima qué fracción del contexto del modelo ocupa la conversación en este
+ * momento, para mostrar un indicador en la UI (menú del chat). Usa la misma
+ * heurística de caracteres/token que arma los prompts reales — es una
+ * aproximación, no una cuenta exacta de tokens (eso solo lo sabe el
+ * servidor).
+ * @param {Card} card
+ * @param {Message[]} messages
+ * @param {Settings} settings
+ * @param {string} [chatScenario]
+ * @returns {{ approxTokens: number, budgetTokens: number, ratio: number }}
+ *   `ratio` es approxTokens/budgetTokens, sin recortar a 1 (puede superar 1
+ *   si ya no entra todo el historial y algunos mensajes se recortarían).
+ */
+export function estimateContextUsage(card, messages, settings, chatScenario = '') {
+  const ctx = (settings && settings.ctx) || 4096;
+  const maxLen = (settings && settings.maxLen) || 220;
+  const head = headBlock(card, settings, chatScenario);
+  const historyChars = messages.reduce((sum, m) => sum + String(m.text || '').length + LINE_OVERHEAD, 0);
+  const approxTokens = Math.ceil((head.length + historyChars) / CHARS_PER_TOKEN);
+  const budgetTokens = Math.max(1, ctx - maxLen);
+  return { approxTokens, budgetTokens, ratio: approxTokens / budgetTokens };
+}
+
 function escapeRegExp(s) {
   return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

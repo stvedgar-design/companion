@@ -4,6 +4,7 @@
 import { getSettings, saveSettings, exportBackup, importBackup } from '../state.js';
 import { connect } from '../api/kobold.js';
 import { pickFiles, saveBlob } from '../platform.js';
+import { createPinHash, verifyPin } from '../lock.js';
 
 const SLIDER_DEBOUNCE_MS = 400;
 
@@ -41,10 +42,15 @@ export function openSettings(app) {
     <div class="field">
       <label class="field__label" for="settings-mode">Formato del prompt</label>
       <select class="inp" id="settings-mode">
-        <option value="plain">Texto simple (recomendado)</option>
-        <option value="chat">Plantilla del modelo</option>
+        <option value="chat">Plantilla del modelo (recomendado)</option>
+        <option value="plain">Texto simple</option>
       </select>
-      <div class="field__hint">Texto simple funciona con cualquier modelo. Cambia a plantilla solo si tu modelo responde raro.</div>
+      <div class="field__hint">Plantilla del modelo suele dar mejores respuestas de roleplay. Si tu modelo responde raro con esa opción, probá con "Texto simple", que funciona igual con cualquier modelo pero sin su plantilla de chat.</div>
+    </div>
+
+    <div class="field">
+      <label class="field__label">Bloqueo con PIN</label>
+      <div id="settings-pin-body"></div>
     </div>
 
     <div class="field">
@@ -67,6 +73,7 @@ export function openSettings(app) {
     temp: q('#settings-temp'),
     tempV: q('#settings-temp-v'),
     mode: q('#settings-mode'),
+    pinBody: q('#settings-pin-body'),
     exportBtn: q('#settings-export'),
     importBtn: q('#settings-import'),
   };
@@ -82,7 +89,68 @@ export function openSettings(app) {
     els.temp.value = settings.temp;
     els.tempV.textContent = settings.temp;
     els.mode.value = settings.mode;
+    renderPinBody(settings);
   });
+
+  function renderPinBody(settings) {
+    if (settings.pinHash) {
+      els.pinBody.innerHTML = `
+        <div class="status status--ok">Bloqueo activado: te va a pedir el PIN cada vez que abras la app.</div>
+        <div class="settings-row">
+          <input class="inp" id="pin-current" type="password" inputmode="numeric" autocomplete="off" placeholder="PIN actual, para desactivar">
+          <button class="btn btn--sm btn--danger" id="pin-deactivate" type="button">Desactivar</button>
+        </div>
+      `;
+      const current = q('#pin-current');
+      const deactivateBtn = q('#pin-deactivate');
+      deactivateBtn.addEventListener('click', async () => {
+        const ok = await verifyPin(current.value, settings.pinSalt, settings.pinHash);
+        if (!ok) {
+          app.toast('PIN incorrecto.');
+          return;
+        }
+        settings = await saveSettings({ pinSalt: '', pinHash: '' });
+        renderPinBody(settings);
+        app.toast('Bloqueo desactivado.');
+      });
+    } else {
+      els.pinBody.innerHTML = `
+        <div class="settings-row">
+          <input class="inp" id="pin-new" type="password" inputmode="numeric" autocomplete="off" placeholder="PIN nuevo (4 o más dígitos)">
+        </div>
+        <div class="settings-row">
+          <input class="inp" id="pin-confirm" type="password" inputmode="numeric" autocomplete="off" placeholder="Repetir PIN">
+          <button class="btn btn--ghost btn--sm" id="pin-activate" type="button">Activar</button>
+        </div>
+        <div class="field__hint">Opcional. Si lo activás, no hay forma de recuperarlo si lo olvidás: tendrías que borrar los datos de la app (y perder los personajes/chats) para volver a entrar.</div>
+      `;
+      const pinNew = q('#pin-new');
+      const pinConfirm = q('#pin-confirm');
+      const activateBtn = q('#pin-activate');
+      activateBtn.addEventListener('click', async () => {
+        const pin = pinNew.value;
+        if (pin.length < 4) {
+          app.toast('El PIN tiene que tener al menos 4 dígitos.');
+          return;
+        }
+        if (pin !== pinConfirm.value) {
+          app.toast('Los dos PIN no coinciden.');
+          return;
+        }
+        activateBtn.disabled = true;
+        try {
+          const { salt, hash } = await createPinHash(pin);
+          settings = await saveSettings({ pinSalt: salt, pinHash: hash });
+          renderPinBody(settings);
+          app.toast('Bloqueo activado.');
+        } catch (err) {
+          app.toast('No se pudo activar el bloqueo.');
+        } finally {
+          activateBtn.disabled = false;
+        }
+      });
+    }
+  }
 
   els.user.addEventListener('input', () => {
     saveSettings({ user: els.user.value.trim() });

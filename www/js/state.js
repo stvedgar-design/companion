@@ -54,6 +54,8 @@
  * @property {number} temp
  * @property {'plain'|'chat'} mode
  * @property {number} ctx
+ * @property {string} pinSalt   // '' si el bloqueo con PIN está desactivado
+ * @property {string} pinHash   // '' si el bloqueo con PIN está desactivado (SHA-256 salteado, ver lock.js)
  */
 
 const DEFAULT_SETTINGS = Object.freeze({
@@ -61,8 +63,13 @@ const DEFAULT_SETTINGS = Object.freeze({
   user: '',
   maxLen: 220,
   temp: 0.85,
-  mode: 'plain',
+  // 'chat' (plantilla del modelo) da mejores resultados de roleplay que
+  // 'plain' con la mayoría de los modelos actuales; 'plain' queda como
+  // opción manual para el que le funcione mejor con su modelo puntual.
+  mode: 'chat',
   ctx: 4096,
+  pinSalt: '',
+  pinHash: '',
 });
 
 const SETTINGS_KEY = 'main';
@@ -93,6 +100,8 @@ function sanitizeSettings(raw) {
     temp: clampNumber(merged.temp, 0.3, 1.4, DEFAULT_SETTINGS.temp),
     mode: (merged.mode === 'plain' || merged.mode === 'chat') ? merged.mode : DEFAULT_SETTINGS.mode,
     ctx: Math.round(clampNumber(merged.ctx, 512, 200000, DEFAULT_SETTINGS.ctx)),
+    pinSalt: typeof merged.pinSalt === 'string' ? merged.pinSalt : DEFAULT_SETTINGS.pinSalt,
+    pinHash: typeof merged.pinHash === 'string' ? merged.pinHash : DEFAULT_SETTINGS.pinHash,
   };
 }
 
@@ -242,6 +251,17 @@ export function createState(backend) {
     return updated;
   }
 
+  // Marca cuándo se hizo el último respaldo automático de este chat (ver
+  // `lastExportAt` en el typedef `Chat`). No es un "export" manual del
+  // usuario; lo usa el respaldo silencioso periódico en segundo plano.
+  async function markChatExported(chatId) {
+    const chat = await getChat(chatId);
+    if (!chat) throw new Error('El chat no existe.');
+    const updated = { ...chat, lastExportAt: Date.now() };
+    await backend.put('chatMeta', chatId, updated);
+    return updated;
+  }
+
   async function deleteChat(chatId) {
     await backend.atomic([
       { type: 'remove', store: 'chatMeta', key: chatId },
@@ -374,6 +394,7 @@ export function createState(backend) {
     saveChatMessages,
     createChat,
     renameChat,
+    markChatExported,
     deleteChat,
     migrateLegacyChats,
     exportBackup,
@@ -493,6 +514,7 @@ export const getChatMessages = (...args) => getDefaultInstance().getChatMessages
 export const saveChatMessages = (...args) => getDefaultInstance().saveChatMessages(...args);
 export const createChat = (...args) => getDefaultInstance().createChat(...args);
 export const renameChat = (...args) => getDefaultInstance().renameChat(...args);
+export const markChatExported = (...args) => getDefaultInstance().markChatExported(...args);
 export const deleteChat = (...args) => getDefaultInstance().deleteChat(...args);
 export const migrateLegacyChats = (...args) => getDefaultInstance().migrateLegacyChats(...args);
 export const exportBackup = (...args) => getDefaultInstance().exportBackup(...args);

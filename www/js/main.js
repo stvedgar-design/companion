@@ -6,6 +6,7 @@
 
 import * as shell from './ui/shell.js';
 import * as state from './state.js';
+import * as lockView from './ui/lock.js';
 import * as setupView from './ui/setup.js';
 import * as homeView from './ui/home.js';
 import * as chatsView from './ui/chats.js';
@@ -165,6 +166,7 @@ window.addEventListener('unhandledrejection', (event) => {
 async function boot() {
   shell.initShell();
 
+  lockView.init(document.getElementById('view-lock'));
   setupView.init(document.getElementById('view-setup'), app);
   homeView.init(document.getElementById('view-home'), app);
   chatsView.init(document.getElementById('view-chats'), app);
@@ -179,6 +181,12 @@ async function boot() {
   }
 
   const settings = await state.getSettings();
+
+  if (settings.pinHash) {
+    shell.showView('lock');
+    await lockView.show({ salt: settings.pinSalt, hash: settings.pinHash });
+  }
+
   const initial = settings && settings.url ? 'home' : 'setup';
 
   currentView = initial;

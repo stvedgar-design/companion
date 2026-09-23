@@ -173,17 +173,64 @@ automáticos por ser dependientes del navegador — se verificaron a mano
 sirviendo `www/` con un server estático y datos de prueba inyectados en
 IndexedDB (ver `.claude/launch.json`, config `companion-web`).
 
+## Segunda ronda de QoL (2026-09-23)
+
+- **Respaldo automático silencioso** (cierra el pendiente histórico de
+  `Chat.lastExportAt`): `platform.js` tiene `autoBackupBlob()`, que escribe
+  en el APK (nunca en el navegador) a `Documents/Companion-backups/` sin
+  abrir ningún diálogo y sin lanzar nunca (mejor esfuerzo). `chat.js`
+  (`maybeAutoBackup()`, enganchado en `persistChat()`) lo dispara cuando
+  pasaron ≥10 min desde `chat.lastExportAt` y hay algo más que el saludo
+  inicial; `state.js` suma `markChatExported(chatId)` para actualizar esa
+  marca. Es un respaldo "en la sombra" (sobrescribe un archivo por chat),
+  no reemplaza la exportación manual con nombre de archivo propio.
+- **Indicador de contexto + contador de mensajes**: nueva función pura
+  `estimateContextUsage(card, messages, settings, chatScenario)` en
+  `prompt.js` (misma heurística caracteres/token que ya usaban los
+  builders de prompt). Se muestra en el menú (⋮) del chat: "N mensajes (X
+  tuyos, Y del personaje)" + "Contexto usado: ~Z%". Es aproximado, no una
+  cuenta real de tokens (eso solo lo sabe el servidor).
+- **Bloqueo con PIN (opcional)**: nuevo módulo puro `www/js/lock.js`
+  (`createPinHash`/`verifyPin`, SHA-256 salteado vía Web Crypto, sin
+  dependencias) + pantalla `www/js/ui/lock.js` (reutiliza las clases
+  `.setup*` de home.css, sin CSS propio). Se activa/desactiva desde
+  Ajustes → "Bloqueo con PIN"; guarda `pinSalt`/`pinHash` en `Settings`
+  (vacíos = desactivado). `main.js` la muestra al arrancar, antes de
+  decidir la vista inicial, si hay un PIN configurado — no hay forma de
+  recuperarlo si se olvida (hay que borrar los datos de la app). Requirió
+  sumar `'lock'` a `VIEW_NAMES` en `shell.js` y una nueva sección
+  `#view-lock` en `index.html`.
+- **Default del formato de prompt cambiado**: `DEFAULT_SETTINGS.mode` pasó
+  de `'plain'` a `'chat'` (plantilla del modelo) en `state.js`, porque al
+  usuario "texto simple" le daba peor resultado de roleplay. "Texto
+  simple" sigue disponible como opción manual en Ajustes, con el hint
+  actualizado explicando cuándo usar cada uno. Instalaciones existentes
+  que ya tenían un `mode` guardado no cambian (solo afecta instalaciones
+  nuevas o un valor inválido).
+
+Tests nuevos: `tests/lock.test.mjs` (hash de PIN) y 2 tests de
+`estimateContextUsage` en `prompt.test.mjs` — 95 tests en total. El
+respaldo automático y el bloqueo con PIN son UI/DOM/Capacitor-dependientes,
+sin tests automáticos; se verificaron a mano (el bloqueo completo:
+activar, recargar, PIN incorrecto, PIN correcto — probado en el navegador
+con datos de prueba en IndexedDB).
+
 ## Qué NO se ha hecho todavía (pendiente real, no roto)
 
-- Exportación automática de log (el campo `Chat.lastExportAt` ya existe en
-  el esquema, reservado para esto, pero no hay ningún disparador
-  implementado todavía).
-- Probar el fix de exportación (ahora a `Directory.DOCUMENTS`) contra un
-  APK real en un teléfono — no se pudo probar de punta a punta en esta
-  sesión, solo se verificó código, tests, y el layout en un navegador de
-  escritorio/emulado a tamaño de celular.
-- Ideas de QoL propuestas pero no implementadas: ver mensaje del asistente
-  en la conversación de esta fecha (regenerar/editar mensajes, ajustes de
-  IA por personaje, resumen automático de contexto largo, TTS/voz,
-  búsqueda dentro de un chat, tags/carpetas para personajes, bloqueo de la
-  app, recordatorio de backup automático usando `lastExportAt`).
+- Probar en un APK real (no solo navegador): el fix de exportación a
+  `Directory.DOCUMENTS`, el respaldo automático a
+  `Documents/Companion-backups/`, y el bloqueo con PIN.
+- **Resumen automático de contexto largo**: deliberadamente NO
+  implementado todavía. El usuario tiene un proyecto aparte (todavía sin
+  construir) que va a generar algo tipo worldbook/lorebook alimentado por
+  los logs de esta app, así que resumir el historial sin un estándar claro
+  de "qué se resume y cómo" podría degradar ese proyecto después. Antes de
+  tocar esto hay que definir ese estándar junto con el otro proyecto. Dato
+  relevante: `Card.character_book` ya existe en el tipo de datos desde el
+  contrato original, reservado para lorebook — hoy no se usa en ningún
+  lado del código.
+- Ajustes de IA (temperatura/longitud) por personaje o por chat en vez de
+  solo globales: el usuario está más interesado en continuidad narrativa
+  (ligado al punto del worldbook) que en esto por ahora.
+- Búsqueda dentro de un chat largo: idea validada como "buena", sin
+  implementar todavía.

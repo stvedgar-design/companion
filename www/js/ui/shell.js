@@ -9,7 +9,7 @@
 //   'shell:sheetopen'  -> la hoja pasó de cerrada a abierta
 //   'shell:sheetclose' -> la hoja pasó de abierta a cerrada
 
-const VIEW_NAMES = ['setup', 'home', 'chats', 'chat'];
+const VIEW_NAMES = ['lock', 'setup', 'home', 'chats', 'chat'];
 
 function el(id) {
   return document.getElementById(id);

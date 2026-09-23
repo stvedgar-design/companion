@@ -6,6 +6,7 @@ import {
   scenarioGreeting,
   buildPlainPrompt,
   buildChatMessages,
+  estimateContextUsage,
   cleanReply,
   trimPartial
 } from '../www/js/api/prompt.js';
@@ -222,6 +223,36 @@ test('buildChatMessages recorta el historial y conserva lo más reciente', () =>
   const { messages: out } = buildChatMessages(card, messages, settings);
   const last = out[out.length - 1];
   assert.ok(last.content.includes('Turno 199'));
+});
+
+// ---------- estimateContextUsage ----------
+
+test('estimateContextUsage crece con más mensajes y respeta el presupuesto de ctx/maxLen', () => {
+  const card = makeCard({ name: 'Luna', description: 'Una descripción breve.' });
+  const settings = makeSettings({ ctx: 4096, maxLen: 220 });
+
+  const pocos = [{ role: 'user', text: 'Hola', ts: 1 }];
+  const muchos = Array.from({ length: 50 }, (_, i) => ({
+    role: i % 2 === 0 ? 'user' : 'char',
+    text: 'Un mensaje bastante largo para sumar caracteres al historial. '.repeat(3),
+    ts: i,
+  }));
+
+  const usoPocos = estimateContextUsage(card, pocos, settings);
+  const usoMuchos = estimateContextUsage(card, muchos, settings);
+
+  assert.equal(usoPocos.budgetTokens, 4096 - 220);
+  assert.ok(usoPocos.approxTokens > 0);
+  assert.ok(usoMuchos.approxTokens > usoPocos.approxTokens);
+  assert.ok(usoMuchos.ratio > usoPocos.ratio);
+});
+
+test('estimateContextUsage suma el escenario del chat al estimar', () => {
+  const card = makeCard();
+  const settings = makeSettings();
+  const sinEscenario = estimateContextUsage(card, [], settings);
+  const conEscenario = estimateContextUsage(card, [], settings, 'Un escenario largo. '.repeat(10));
+  assert.ok(conEscenario.approxTokens > sinEscenario.approxTokens);
 });
 
 // ---------- cleanReply ----------

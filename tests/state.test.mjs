@@ -54,7 +54,8 @@ test('getSettings devuelve valores por defecto cuando no hay nada guardado', asy
   const state = createState(createMemoryBackend());
   const settings = await state.getSettings();
   assert.deepEqual(settings, {
-    url: '', user: '', maxLen: 220, temp: 0.85, mode: 'plain', ctx: 4096,
+    url: '', user: '', maxLen: 220, temp: 0.85, mode: 'chat', ctx: 4096,
+    pinSalt: '', pinHash: '',
   });
 });
 
@@ -70,7 +71,7 @@ test('saveSettings valida rangos y descarta valores fuera de contrato', async ()
   assert.equal(saved.url, 'http://100.75.55.22:5001');
   assert.equal(saved.maxLen, 500); // recortado al máximo
   assert.equal(saved.temp, 0.3); // recortado al mínimo
-  assert.equal(saved.mode, 'plain'); // valor inválido -> por defecto
+  assert.equal(saved.mode, 'chat'); // valor inválido -> por defecto
   assert.equal(saved.ctx, 8192);
 
   const reloaded = await state.getSettings();

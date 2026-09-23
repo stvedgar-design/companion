@@ -140,6 +140,35 @@ async function saveBlobNative(blob, filename, capacitor) {
   }
 }
 
+/**
+ * Respaldo automático silencioso: escribe un archivo en el almacenamiento
+ * del teléfono sin abrir ningún diálogo ni el panel de compartir. Solo
+ * corre en el APK nativo (en el navegador no hace nada) y nunca lanza —
+ * es una red de seguridad de "mejor esfuerzo" en segundo plano, no una
+ * acción que el usuario pidió; si falla, se reintenta solo más adelante.
+ * @param {Blob} blob
+ * @param {string} filename
+ * @returns {Promise<boolean>} true si se pudo escribir.
+ */
+export async function autoBackupBlob(blob, filename) {
+  const capacitor = window.Capacitor;
+  if (!capacitor || !capacitor.isNativePlatform || !capacitor.isNativePlatform()) return false;
+  const { Filesystem } = capacitor.Plugins || {};
+  if (!Filesystem) return false;
+  try {
+    const base64 = await blobToBase64(blob);
+    await Filesystem.writeFile({
+      path: `Companion-backups/${filename}`,
+      data: base64,
+      directory: 'DOCUMENTS',
+      recursive: true,
+    });
+    return true;
+  } catch (err) {
+    return false;
+  }
+}
+
 function blobToBase64(blob) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();

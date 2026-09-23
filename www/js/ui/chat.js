@@ -1,13 +1,13 @@
 // www/js/ui/chat.js
 // Pantalla de chat: burbujas, streaming, avatar en 3 modos, composer, menú.
 
-import { getChat, getChatMessages, saveChatMessages, getCharacter, saveCharacter, getSettings } from '../state.js';
+import { getChat, getChatMessages, saveChatMessages, getCharacter, saveCharacter, getSettings, markChatExported } from '../state.js';
 import { generateReply } from '../api/kobold.js';
-import { initialMessages, scenarioGreeting } from '../api/prompt.js';
+import { initialMessages, scenarioGreeting, estimateContextUsage } from '../api/prompt.js';
 import { openSettings } from './settings.js';
 import { formatMessage } from './format.js';
 import { makeAvatar } from '../cards/avatar.js';
-import { pickFiles, saveBlob } from '../platform.js';
+import { pickFiles, saveBlob, autoBackupBlob } from '../platform.js';
 
 const ICON_BACK = '<svg viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>';
 const ICON_MENU = '<svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/></svg>';
@@ -528,7 +528,9 @@ async function persistChat() {
     await saveChatMessages(chat.id, messages);
   } catch (err) {
     app.toast('No se pudo guardar la conversación.');
+    return;
   }
+  maybeAutoBackup();
 }
 
 /* ---------- barra superior ---------- */
@@ -540,8 +542,39 @@ function onBack() {
   app.back();
 }
 
+// Cuenta de mensajes por rol + estimación de cuánto contexto del modelo
+// ocupa la conversación en este momento (aproximado: ver `estimateContextUsage`
+// en prompt.js). Solo informativo, se muestra al abrir el menú del chat.
+function buildUsageInfo() {
+  const field = document.createElement('div');
+  field.className = 'field';
+
+  const label = document.createElement('div');
+  label.className = 'field__label';
+  const userCount = messages.filter((m) => m.role === 'user').length;
+  const charCount = messages.filter((m) => m.role === 'char').length;
+  label.textContent = `${messages.length} mensajes (${userCount} tuyos, ${charCount} del personaje)`;
+  field.appendChild(label);
+
+  const hint = document.createElement('div');
+  hint.className = 'field__hint';
+  if (character && settings) {
+    const { approxTokens, budgetTokens, ratio } = estimateContextUsage(
+      character.card, messages, settings, chat ? chat.scenario : ''
+    );
+    const pct = Math.round(Math.min(ratio, 1) * 100);
+    hint.textContent = ratio >= 1
+      ? `Contexto lleno (≈${approxTokens} de ${budgetTokens} tokens aprox.): los mensajes más viejos ya se están recortando.`
+      : `Contexto usado: ~${pct}% (≈${approxTokens} de ${budgetTokens} tokens aprox.)`;
+  }
+  field.appendChild(hint);
+
+  return field;
+}
+
 function onMenu() {
   const wrap = document.createElement('div');
+  wrap.appendChild(buildUsageInfo());
 
   const settingsBtn = document.createElement('button');
   settingsBtn.type = 'button';
@@ -628,28 +661,57 @@ async function onChangeAvatar() {
   }
 }
 
+function slugify(s) {
+  return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+}
+
+function chatExportBlob() {
+  const payload = {
+    app: 'companion',
+    kind: 'chat-log',
+    version: 2,
+    exported: new Date().toISOString(),
+    character: { id: character.id, name: character.name },
+    chat: { id: chat.id, title: chat.title, scenario: chat.scenario },
+    messages,
+  };
+  return new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+}
+
+function chatSlug() {
+  const charSlug = slugify(character.name) || 'chat';
+  const titleSlug = slugify(chat.title);
+  return titleSlug ? `${charSlug}-${titleSlug}` : charSlug;
+}
+
 async function onExportChat() {
   if (!character || !chat) return;
   try {
-    const payload = {
-      app: 'companion',
-      kind: 'chat-log',
-      version: 2,
-      exported: new Date().toISOString(),
-      character: { id: character.id, name: character.name },
-      chat: { id: chat.id, title: chat.title, scenario: chat.scenario },
-      messages,
-    };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const date = new Date().toISOString().slice(0, 10);
-    const slugify = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-    const charSlug = slugify(character.name) || 'chat';
-    const titleSlug = slugify(chat.title);
-    const slug = titleSlug ? `${charSlug}-${titleSlug}` : charSlug;
-    const { savedToDevice } = await saveBlob(blob, `companion-chat-${slug}-${date}.json`);
+    const { savedToDevice } = await saveBlob(chatExportBlob(), `companion-chat-${chatSlug()}-${date}.json`);
     if (savedToDevice) app.toast('Chat guardado en Documentos del teléfono.');
   } catch (err) {
     app.toast('No se pudo exportar el chat.');
+  }
+}
+
+// Respaldo automático silencioso en segundo plano (ver `platform.js` /
+// `state.js`): al menos cada AUTO_BACKUP_INTERVAL_MS, si hay algo más que
+// el saludo inicial, se escribe una copia del chat en el teléfono sin
+// avisar ni interrumpir. `chat.lastExportAt` guarda cuándo fue la última
+// vez (arranca en 0, así que el primer respaldo pasa apenas hay un mensaje
+// real, sin esperar el intervalo completo).
+const AUTO_BACKUP_INTERVAL_MS = 10 * 60 * 1000;
+
+async function maybeAutoBackup() {
+  if (!character || !chat || messages.length < 2) return;
+  if (Date.now() - (chat.lastExportAt || 0) < AUTO_BACKUP_INTERVAL_MS) return;
+  const ok = await autoBackupBlob(chatExportBlob(), `${chatSlug()}.json`);
+  if (!ok) return;
+  try {
+    chat = await markChatExported(chat.id);
+  } catch (err) {
+    // No crítico: se vuelve a intentar en el próximo mensaje.
   }
 }
 
