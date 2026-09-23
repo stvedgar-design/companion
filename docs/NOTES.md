@@ -537,6 +537,125 @@ sesión — quedan para cuando el usuario las priorice:
   persistente) ayudaría a diagnosticar problemas reales sin exponer nada al
   usuario en el flujo normal.
 
+## Skins (Nomi/Glass) y fondo de chat personalizado (2026-09-23)
+
+El usuario pidió arrancar la lista de mejoras de la sección anterior,
+empezando por la que más ilusión le hacía: un segundo skin visual "Glass"
+(vidrio esmerilado, inspirado en apps tipo Grok Companion/Ani) y un fondo
+de chat personalizable con imagen propia. Implementado junto con las dos
+mejoras "rápidas" de esa misma lista (gate de tests en el CI, versión
+visible en Ajustes). Las dos restantes (pantalla de respaldos, editar
+lorebook a mano) quedaron pendientes a propósito — ver el motivo al final
+de esta sección.
+
+- **`state.js`**: `Settings` suma `theme` (`'nomi'|'glass'`, por defecto
+  `'nomi'`), `chatBackground` (data URL JPEG, `''` por defecto),
+  `chatBackgroundBrightness` (20–180%, 100 por defecto),
+  `chatBackgroundFade` (boolean) y `chatBackgroundFit` (`'fill'|'stretch'`).
+  Es una configuración **global**, no por personaje ni por chat — decisión
+  de alcance (ver más abajo).
+- **Nuevo `www/js/images.js`**: utilidades de imagen compartidas (mismo
+  estilo que `cards/avatar.js`, toca canvas/Image): `resizeImageToDataUrl()`
+  reduce el fondo elegido a un JPEG liviano (máx. 1280px de lado, calidad
+  0.82) antes de guardarlo — guardarlo a resolución completa en
+  `Settings` (un solo registro en IndexedDB, leído/escrito seguido) sería
+  un desperdicio de espacio en hardware limitado. `averageColorFromDataUrl()`
+  calcula el color promedio de una imagen muestreando a 16×16 px, barato,
+  para el tinte del skin "glass".
+- **Nuevo `www/css/theme-glass.css`**: único archivo que toca clases de
+  otros módulos (`.topbar`, `.sheet__card`, `.chat-bubble`, etc.) a
+  propósito — ese es su trabajo, cambiar la piel visual sin tocar HTML ni
+  lógica de ninguna pantalla. Todo vive bajo `[data-theme="glass"]`
+  (atributo en `<html>`, ver `ui/shell.js` `applyTheme()`), así que en el
+  skin por defecto (`nomi`) este archivo no hace nada. Convierte
+  `--color-surface`/`--color-surface-2`/`--color-line` en versiones
+  translúcidas y agrega `backdrop-filter: blur()` a las superficies
+  (topbar, hojas, burbujas, composer, botones fantasma, chips, inputs);
+  el color de acento (botones de acción, burbuja del usuario) se mantiene
+  vívido a propósito, no se vuelve translúcido.
+- **Tinte "glass" responsivo al fondo** (pedido explícito del usuario):
+  `--glass-tint-rgb` es una variable CSS (`"R G B"`, sin comas, para poder
+  usarla con `rgb(var(...) / alpha)`) que por defecto calca `--color-bg`.
+  Cuando el usuario elige un fondo de chat, `ui/appearance.js` calcula su
+  color promedio (`averageColorFromDataUrl`) y lo aplica con
+  `shell.setGlassTint()` como estilo inline en `<html>` (gana por
+  especificidad al valor por defecto de la hoja de estilos). Se recalcula
+  también al arrancar la app (`main.js`) si ya había un fondo guardado.
+  Verificado a mano: con un fondo de prueba azul/verde, todas las
+  superficies del skin Glass (incluida la propia hoja de Apariencia) se
+  tiñeron de ese mismo tono.
+- **Fondo de chat**: nuevo elemento `.chat-bg` (y `.chat-bg__fade` para el
+  fundido a negro opcional) dentro de `.chat-messageswrap`, detrás de
+  `.chat-messages` (que pasó a `position:relative; z-index:1`). Deliberado:
+  el fondo queda **detrás de los mensajes, no detrás de la barra superior
+  ni del composer** — extender el fondo a pantalla completa hubiera
+  requerido tocar `.topbar`/`.chat-composer` desde `chat.css`, violando la
+  regla del proyecto de "cada módulo de CSS no redefine clases de otro
+  módulo" (esas dos clases son de `base.css`). Es una limitación de alcance
+  consciente, no un olvido — si el usuario quiere el efecto de pantalla
+  completa (más parecido a la imagen de referencia que mostró, tipo Grok
+  Companion), es una extensión chica pero requiere decidir cómo respetar
+  o flexibilizar esa regla primero.
+- **Controles de fondo** (`ui/appearance.js`, hoja nueva "Apariencia",
+  accesible desde Ajustes y desde el menú ⋮ del chat): elegir imagen
+  (reusa `pickFiles()` de `platform.js`), quitar imagen, brillo (slider,
+  `filter: brightness()`), fundido a negro (toggle, gradiente CSS fijo),
+  ajuste "llenar" (`background-size: cover`, recorta) vs "estirar"
+  (`100% 100%`, deforma) — nombres literales que pidió el usuario. Tiene su
+  propia vista previa en miniatura dentro de la hoja.
+- **Bug real encontrado y corregido durante la verificación en el
+  navegador**: los controles que se ocultan con el atributo `hidden`
+  (`#appearance-remove`, `#appearance-bg-controls`) no se escondían,
+  porque las clases `.btn`/`.field` (`base.css`) fijan su propio `display`,
+  que empata en especificidad con la regla `[hidden]` de la hoja de
+  estilos del navegador y gana por venir después en la cascada. Mismo
+  problema que ya existía (y ya estaba resuelto) para `.chat-avatarpanel`/
+  `.chat-scrolldown` en `chat.css`: cada clase que se oculta con `hidden`
+  y también fija su propio `display` necesita su propio override
+  `.clase[hidden]{ display:none; }`. Se agregaron esos overrides
+  (`.appearance-removebtn[hidden]`, `.appearance-bgcontrols[hidden]`,
+  `.appearance-preview__empty[hidden]`) a `home.css`. Vale la pena
+  recordarlo si se agregan más controles con `hidden` en el futuro.
+- **Otro detalle encontrado en la verificación**: la muestra visual del
+  skin "Nomi" en la hoja de Apariencia usaba `var(--color-surface-2)`, que
+  el propio skin "Glass" redefine globalmente — con Glass activo, la
+  muestra de "Nomi" se veía transparente en vez de mostrar cómo es
+  realmente ese skin. Se cambió a un color fijo (`#2d2f40`, el valor real
+  de esa variable en `tokens.css`) para que la muestra sea estable sin
+  importar qué skin esté activo.
+- **Refresco en vivo sin salir del chat**: la hoja de Apariencia se abre
+  encima del chat (no lo reemplaza), así que sin más, un cambio de fondo no
+  se vería hasta salir y volver a entrar. Se agregó un evento de DOM propio
+  (`'companion:appearancechange'`, mismo patrón que ya usa `shell.js` con
+  `'shell:sheetopen'`/`'shell:sheetclose'` para desacoplar módulos) que
+  `chat.js` escucha para refrescar su fondo al instante. El cambio de skin
+  no necesitó esto: es un atributo en `<html>`, así que CSS puro ya lo
+  refleja en cualquier pantalla ya renderizada.
+- **`.github/workflows/build-apk.yml`**: nuevo paso `npm test` antes de
+  compilar Android — evita que un cambio roto termine convertido en un APK
+  descargable.
+- **Versión visible**: nuevo `www/js/version.js` (`APP_VERSION`, hoy
+  `'1.1.0'`, sin build/bundler no hay forma de inyectarla automáticamente
+  desde `package.json` — se actualizan los dos a mano juntos), mostrada al
+  pie de la hoja de Ajustes.
+- Tests nuevos en `state.test.mjs` para los campos de apariencia
+  (`theme`, `chatBackground*`) — 139 tests en total. Los archivos nuevos
+  que tocan DOM/canvas (`images.js`, `ui/appearance.js`) no tienen tests
+  automáticos, mismo criterio que `platform.js`/`cards/avatar.js`: se
+  verificaron a mano en el navegador integrado (375×812), incluido subir
+  una imagen de prueba, cambiar de skin, y confirmar el tinte "glass"
+  reaccionando al color de esa imagen.
+
+**Por qué quedaron afuera la pantalla de respaldos y la edición manual del
+lorebook** (ambas de la misma lista, el usuario pidió arrancar "con
+todas"): son features grandes y aisladas por su cuenta, no una extensión
+del trabajo de skins/fondo. La pantalla de respaldos en particular depende
+por completo de `Filesystem.readdir` de Capacitor — un plugin nativo que
+no existe en el navegador, así que no hay forma de verificarla en este
+entorno de desarrollo sin un APK real; construirla "a ciegas" sin poder
+probarla choca con el estándar de calidad que pidió el usuario. Quedan
+para la próxima ronda.
+
 ## Qué NO se ha hecho todavía (pendiente real, no roto)
 
 - Probar en un APK real (no solo navegador): el fix de exportación a
@@ -547,3 +666,6 @@ sesión — quedan para cuando el usuario las priorice:
   (ligado al punto del lorebook) que en esto por ahora.
 - Búsqueda dentro de un chat largo: idea validada como "buena", sin
   implementar todavía.
+- Editar/borrar entradas de lorebook a mano.
+- Pantalla para ver los respaldos automáticos existentes
+  (`Documents/Companion-backups/`), solo se puede probar en un APK real.

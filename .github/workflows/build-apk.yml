@@ -25,6 +25,9 @@ jobs:
       - name: Instalar dependencias
         run: npm install
 
+      - name: Ejecutar tests
+        run: npm test
+
       - name: Añadir la plataforma Android
         run: npx cap add android
 

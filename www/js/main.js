@@ -6,6 +6,7 @@
 
 import * as shell from './ui/shell.js';
 import * as state from './state.js';
+import { averageColorFromDataUrl } from './images.js';
 import * as lockView from './ui/lock.js';
 import * as setupView from './ui/setup.js';
 import * as homeView from './ui/home.js';
@@ -181,6 +182,13 @@ async function boot() {
   }
 
   const settings = await state.getSettings();
+
+  shell.applyTheme(settings.theme);
+  if (settings.chatBackground) {
+    // No bloquea el arranque: el tinte del skin "glass" (ver theme-glass.css)
+    // se aplica en cuanto está listo, sin esperar a un fondo por defecto.
+    averageColorFromDataUrl(settings.chatBackground).then((rgb) => shell.setGlassTint(rgb));
+  }
 
   if (settings.pinHash) {
     shell.showView('lock');

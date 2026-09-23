@@ -13,6 +13,7 @@ import {
   LOREBOOK_EXTRACT_TEMP,
 } from '../api/lorebook.js';
 import { openSettings } from './settings.js';
+import { openAppearance } from './appearance.js';
 import { formatMessage } from './format.js';
 import { makeAvatar } from '../cards/avatar.js';
 import { pickFiles, saveBlob, autoBackupBlob } from '../platform.js';
@@ -63,6 +64,9 @@ export function init(rootEl, appApi) {
       <div class="av chat-avatarpanel__img" id="chat-avatarpanel-img"></div>
     </div>
     <div class="chat-messageswrap">
+      <div class="chat-bg" id="chat-bg" hidden>
+        <div class="chat-bg__fade" id="chat-bg-fade" hidden></div>
+      </div>
       <div class="scroll chat-messages" id="chat-messages"></div>
       <button class="chat-scrolldown" type="button" id="chat-scrolldown" aria-label="Ir al último mensaje" hidden>${ICON_DOWN}</button>
     </div>
@@ -80,6 +84,8 @@ export function init(rootEl, appApi) {
     menu: root.querySelector('#chat-menu'),
     avatarPanel: root.querySelector('#chat-avatarpanel'),
     avatarPanelImg: root.querySelector('#chat-avatarpanel-img'),
+    bg: root.querySelector('#chat-bg'),
+    bgFade: root.querySelector('#chat-bg-fade'),
     messages: root.querySelector('#chat-messages'),
     scrollDown: root.querySelector('#chat-scrolldown'),
     composer: root.querySelector('#chat-composer'),
@@ -98,6 +104,29 @@ export function init(rootEl, appApi) {
   els.messages.addEventListener('click', onMessagesClick);
   els.messages.addEventListener('scroll', onMessagesScroll);
   els.scrollDown.addEventListener('click', () => scrollToBottom(true));
+
+  // La hoja de apariencia (ui/appearance.js) se abre encima de esta vista,
+  // no la reemplaza — sin este evento, un cambio de fondo no se vería hasta
+  // salir y volver a entrar al chat.
+  document.addEventListener('companion:appearancechange', (e) => {
+    settings = e.detail;
+    applyChatBackground();
+  });
+}
+
+function applyChatBackground() {
+  const bg = settings && settings.chatBackground;
+  if (!bg) {
+    els.bg.hidden = true;
+    els.bg.style.backgroundImage = '';
+    return;
+  }
+  els.bg.hidden = false;
+  els.bg.style.backgroundImage = `url("${bg}")`;
+  els.bg.style.backgroundSize = settings.chatBackgroundFit === 'stretch' ? '100% 100%' : 'cover';
+  const brightness = Number.isFinite(settings.chatBackgroundBrightness) ? settings.chatBackgroundBrightness : 100;
+  els.bg.style.filter = `brightness(${brightness}%)`;
+  els.bgFade.hidden = !settings.chatBackgroundFade;
 }
 
 export async function show({ chatId } = {}) {
@@ -143,6 +172,7 @@ export async function show({ chatId } = {}) {
   autosizeInput();
   syncSendButton();
   applyAvatarMode();
+  applyChatBackground();
   renderMessages();
 
   attachViewportListeners();
@@ -687,6 +717,15 @@ function onMenu() {
     openSettings(app);
   });
   wrap.appendChild(settingsBtn);
+
+  const appearanceBtn = document.createElement('button');
+  appearanceBtn.type = 'button';
+  appearanceBtn.className = 'menu-item';
+  appearanceBtn.textContent = 'Apariencia';
+  appearanceBtn.addEventListener('click', () => {
+    openAppearance(app);
+  });
+  wrap.appendChild(appearanceBtn);
 
   const backToChatsBtn = document.createElement('button');
   backToChatsBtn.type = 'button';

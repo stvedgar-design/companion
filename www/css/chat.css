@@ -62,6 +62,24 @@
 }
 .chat-avatarpanel__img img { object-fit: cover; }
 
+/* --- fondo de chat personalizado (opcional, ver ui/appearance.js) --- */
+.chat-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  pointer-events: none;
+}
+.chat-bg[hidden] { display: none; }
+.chat-bg__fade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0) 45%, rgba(0, 0, 0, .88) 100%);
+}
+.chat-bg__fade[hidden] { display: none; }
+
 /* --- lista de mensajes --- */
 .chat-messageswrap {
   position: relative;
@@ -71,6 +89,8 @@
   flex-direction: column;
 }
 .chat-messages {
+  position: relative;
+  z-index: 1;
   padding: var(--space-2) var(--space-4) var(--space-4);
   display: flex;
   flex-direction: column;
@@ -168,6 +188,7 @@
   left: 50%;
   bottom: var(--space-3);
   transform: translateX(-50%);
+  z-index: 2;
   width: 44px;
   height: 44px;
   border-radius: 50%;

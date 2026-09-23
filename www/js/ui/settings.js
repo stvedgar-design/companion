@@ -5,6 +5,8 @@ import { getSettings, saveSettings, exportBackup, importBackup } from '../state.
 import { connect } from '../api/kobold.js';
 import { pickFiles, saveBlob } from '../platform.js';
 import { createPinHash, verifyPin } from '../lock.js';
+import { openAppearance } from './appearance.js';
+import { APP_VERSION } from '../version.js';
 
 const SLIDER_DEBOUNCE_MS = 400;
 
@@ -54,12 +56,21 @@ export function openSettings(app) {
     </div>
 
     <div class="field">
+      <label class="field__label">Apariencia</label>
+      <div class="settings-row">
+        <button class="btn btn--ghost btn--sm" id="settings-appearance" type="button">Skin y fondo del chat</button>
+      </div>
+    </div>
+
+    <div class="field">
       <label class="field__label">Copia de seguridad</label>
       <div class="settings-row">
         <button class="btn btn--ghost btn--sm" id="settings-export" type="button">Exportar copia</button>
         <button class="btn btn--ghost btn--sm" id="settings-import" type="button">Importar copia</button>
       </div>
     </div>
+
+    <div class="settings-version">Companion v${APP_VERSION}</div>
   `;
 
   const q = (sel) => node.querySelector(sel);
@@ -74,6 +85,7 @@ export function openSettings(app) {
     tempV: q('#settings-temp-v'),
     mode: q('#settings-mode'),
     pinBody: q('#settings-pin-body'),
+    appearanceBtn: q('#settings-appearance'),
     exportBtn: q('#settings-export'),
     importBtn: q('#settings-import'),
   };
@@ -172,6 +184,10 @@ export function openSettings(app) {
 
   els.mode.addEventListener('change', () => {
     saveSettings({ mode: els.mode.value });
+  });
+
+  els.appearanceBtn.addEventListener('click', () => {
+    openAppearance(app);
   });
 
   els.test.addEventListener('click', async () => {

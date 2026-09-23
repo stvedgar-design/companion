@@ -55,6 +55,25 @@ export function showView(name) {
   }
 }
 
+// Skin visual activo (ver www/css/theme-glass.css). Puro atributo en <html>:
+// todo lo demás es CSS, así que cambiar de skin se refleja al instante en
+// cualquier pantalla ya renderizada, sin que cada vista tenga que saber que
+// existe.
+export function applyTheme(theme) {
+  document.documentElement.dataset.theme = theme === 'glass' ? 'glass' : 'nomi';
+}
+
+// Tinte de las superficies del skin "glass", derivado del color promedio del
+// fondo de chat elegido (ver images.js / ui/appearance.js). `rgb` es
+// {r,g,b} o null para volver al tinte por defecto de theme-glass.css.
+export function setGlassTint(rgb) {
+  if (rgb) {
+    document.documentElement.style.setProperty('--glass-tint-rgb', `${rgb.r} ${rgb.g} ${rgb.b}`);
+  } else {
+    document.documentElement.style.removeProperty('--glass-tint-rgb');
+  }
+}
+
 export function toast(text, ms = 3800) {
   const node = el('toast');
   if (!node) return;

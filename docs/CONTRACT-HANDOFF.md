@@ -172,16 +172,32 @@ cronológica. Resumen de alto nivel para orientarte rápido:
   entradas a mano (hoy es solo lectura) y la "memoria curada" del punto 1
   del roadmap más abajo.
 
-137 tests automáticos a la fecha de esta edición (`node --test tests/*.test.mjs`).
+- **Skins (Nomi/Glass) y fondo de chat personalizado**: implementado —
+  `Ajustes → Apariencia` (también accesible desde el menú ⋮ del chat).
+  Ver "Skins (Nomi/Glass) y fondo de chat personalizado" en `docs/NOTES.md`
+  para el detalle completo. De la misma ronda de mejoras: gate de tests en
+  el CI (`npm test` antes de compilar el APK) y versión visible al pie de
+  Ajustes. Quedaron pendientes, a propósito (ver la nota de alcance en
+  `docs/NOTES.md`): editar lorebook a mano y la pantalla de respaldos.
+
+139 tests automáticos a la fecha de esta edición (`node --test tests/*.test.mjs`).
 
 ## 6. Pendientes conocidos (no son bugs, son trabajo no empezado)
 
 - Editar/borrar a mano entradas del lorebook automático (hoy es de solo
   lectura — ver `docs/NOTES.md`, sección del lorebook).
+- Pantalla para ver los respaldos automáticos existentes
+  (`Documents/Companion-backups/`) — depende de `Filesystem.readdir` de
+  Capacitor, no se puede verificar fuera de un APK real.
+- Firma de depuración estable en el CI (para que actualizar el APK no
+  exija desinstalar la versión anterior) — causa raíz y arreglo propuesto
+  documentados en `docs/NOTES.md`, sección "Portabilidad y calidad a
+  futuro".
 - Probar en un APK real (no solo navegador): el fix de exportación a
-  `Directory.DOCUMENTS`, el respaldo automático, el bloqueo con PIN, y
-  ahora también el disparo automático del lorebook (no se probó contra un
-  servidor KoboldCpp real en esta sesión).
+  `Directory.DOCUMENTS`, el respaldo automático, el bloqueo con PIN, el
+  disparo automático del lorebook, y ahora también los skins/fondo de chat
+  (backdrop-filter y demás deberían andar en el WebView de Android, pero
+  no se probó ahí en esta sesión).
 - Buscador dentro de un chat largo (idea validada por el usuario como
   buena, sin implementar).
 - Ajustes de IA (temperatura/longitud) por personaje o por chat en vez de
@@ -239,10 +255,12 @@ haya pedido en esa conversación puntual**.
    depuración que se regenera en cada build de GitHub Actions — con el
    arreglo ya identificado, no implementado), la política de "developer
    verification" de Google para sideloading (a vigilar, cambia con el
-   tiempo), y una lista de mejoras de calidad/profesionalismo sugeridas
-   (gate de tests en el CI, mostrar versión en la UI, pantalla de
-   respaldos, temas/skins alternativos aprovechando que `tokens.css`
-   centraliza los colores, diagnóstico exportable).
+   tiempo), y una lista de mejoras de calidad/profesionalismo sugeridas —
+   de esa lista, ya implementadas: gate de tests en el CI, versión visible
+   en Ajustes, y los skins/tema alternativo (ver "Skins (Nomi/Glass) y
+   fondo de chat personalizado" más arriba en esta sección). Siguen
+   pendientes: la firma de depuración estable, la pantalla de respaldos, y
+   el diagnóstico exportable.
 
 ## 8. Reglas técnicas que siguen vigentes
 

@@ -69,6 +69,11 @@
  * @property {number} ctx
  * @property {string} pinSalt   // '' si el bloqueo con PIN está desactivado
  * @property {string} pinHash   // '' si el bloqueo con PIN está desactivado (SHA-256 salteado, ver lock.js)
+ * @property {'nomi'|'glass'} theme            // skin visual, ver www/css/theme-glass.css
+ * @property {string} chatBackground           // data URL JPEG del fondo del chat, '' si no hay
+ * @property {number} chatBackgroundBrightness // 20 a 180 (%), 100 = sin cambios
+ * @property {boolean} chatBackgroundFade      // fundido a negro en la mitad inferior de la imagen
+ * @property {'fill'|'stretch'} chatBackgroundFit // 'fill' = cubre y recorta; 'stretch' = deforma sin recortar
  */
 
 const DEFAULT_SETTINGS = Object.freeze({
@@ -83,6 +88,11 @@ const DEFAULT_SETTINGS = Object.freeze({
   ctx: 4096,
   pinSalt: '',
   pinHash: '',
+  theme: 'nomi',
+  chatBackground: '',
+  chatBackgroundBrightness: 100,
+  chatBackgroundFade: false,
+  chatBackgroundFit: 'fill',
 });
 
 const SETTINGS_KEY = 'main';
@@ -115,6 +125,13 @@ function sanitizeSettings(raw) {
     ctx: Math.round(clampNumber(merged.ctx, 512, 200000, DEFAULT_SETTINGS.ctx)),
     pinSalt: typeof merged.pinSalt === 'string' ? merged.pinSalt : DEFAULT_SETTINGS.pinSalt,
     pinHash: typeof merged.pinHash === 'string' ? merged.pinHash : DEFAULT_SETTINGS.pinHash,
+    theme: merged.theme === 'glass' ? 'glass' : DEFAULT_SETTINGS.theme,
+    chatBackground: typeof merged.chatBackground === 'string' ? merged.chatBackground : DEFAULT_SETTINGS.chatBackground,
+    chatBackgroundBrightness: Math.round(
+      clampNumber(merged.chatBackgroundBrightness, 20, 180, DEFAULT_SETTINGS.chatBackgroundBrightness)
+    ),
+    chatBackgroundFade: !!merged.chatBackgroundFade,
+    chatBackgroundFit: merged.chatBackgroundFit === 'stretch' ? 'stretch' : DEFAULT_SETTINGS.chatBackgroundFit,
   };
 }
 

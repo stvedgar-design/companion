@@ -151,3 +151,102 @@
 .settings-row .inp {
   flex: 1;
 }
+
+.settings-version {
+  text-align: center;
+  color: var(--color-muted);
+  font-size: var(--fs-xs);
+  margin-top: var(--space-2);
+}
+
+/* ---------- appearance (hoja de apariencia: skin y fondo del chat) ----------
+   Mismo patrón que "settings" de arriba: sin CSS propio, vive acá. */
+
+.appearance {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.appearance-skins {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.appearance-skin {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1.5px solid var(--color-line);
+  border-radius: var(--radius-md);
+  color: var(--color-muted);
+  transition: border-color var(--dur-fast) ease, color var(--dur-fast) ease;
+}
+.appearance-skin--active {
+  border-color: var(--color-accent-2);
+  color: var(--color-text);
+}
+.appearance-skin:focus-visible {
+  outline: 2px solid var(--color-accent-2);
+  outline-offset: 2px;
+}
+
+.appearance-skin__swatch {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  border-radius: var(--radius-sm);
+}
+.appearance-skin__swatch--nomi {
+  /* Color fijo (no var(--color-surface-2)): esta muestra tiene que verse
+     igual sin importar qué skin esté activo ahora mismo, porque el skin
+     "glass" redefine esa misma variable globalmente. */
+  background: #2d2f40;
+  border: 1px solid #383b52;
+}
+.appearance-skin__swatch--glass {
+  background: linear-gradient(135deg, rgba(139, 31, 224, .38), rgba(162, 76, 242, .22));
+  border: 1px solid rgba(255, 255, 255, .25);
+}
+
+.appearance-preview {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background-color: var(--color-surface);
+  background-position: center;
+  background-repeat: no-repeat;
+  border: 1.5px solid var(--color-line);
+  margin-bottom: var(--space-2);
+}
+.appearance-preview__empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-muted);
+  font-size: var(--fs-sm);
+}
+.appearance-preview__empty[hidden] { display: none; }
+.appearance-preview__fade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0) 45%, rgba(0, 0, 0, .88) 100%);
+}
+.appearance-preview__fade[hidden] { display: none; }
+
+/* .btn y .field (base.css) fijan su propio `display`, que empata en
+   especificidad con el `[hidden]` de la hoja de estilos del navegador y
+   gana por venir después en la cascada — por eso, igual que .chat-avatarpanel[hidden]
+   en chat.css, estos dos necesitan su propio override explícito. */
+.appearance-removebtn[hidden] { display: none; }
+.appearance-bgcontrols[hidden] { display: none; }
+
+.appearance-toggles { margin-top: var(--space-2); }
+.appearance-toggles .btn--sm { flex: 1; }

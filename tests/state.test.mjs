@@ -56,7 +56,35 @@ test('getSettings devuelve valores por defecto cuando no hay nada guardado', asy
   assert.deepEqual(settings, {
     url: '', user: '', maxLen: 220, temp: 0.85, mode: 'chat', ctx: 4096,
     pinSalt: '', pinHash: '',
+    theme: 'nomi', chatBackground: '', chatBackgroundBrightness: 100,
+    chatBackgroundFade: false, chatBackgroundFit: 'fill',
   });
+});
+
+test('saveSettings valida apariencia: skin, fondo de chat y sus controles', async () => {
+  const state = createState(createMemoryBackend());
+  const saved = await state.saveSettings({
+    theme: 'glass',
+    chatBackground: 'data:image/jpeg;base64,AAAA',
+    chatBackgroundBrightness: 999,
+    chatBackgroundFade: true,
+    chatBackgroundFit: 'stretch',
+  });
+  assert.equal(saved.theme, 'glass');
+  assert.equal(saved.chatBackground, 'data:image/jpeg;base64,AAAA');
+  assert.equal(saved.chatBackgroundBrightness, 180); // recortado al máximo
+  assert.equal(saved.chatBackgroundFade, true);
+  assert.equal(saved.chatBackgroundFit, 'stretch');
+
+  const reloaded = await state.getSettings();
+  assert.deepEqual(reloaded, saved);
+});
+
+test('saveSettings descarta un theme o fit inválido y vuelve al valor por defecto', async () => {
+  const state = createState(createMemoryBackend());
+  const saved = await state.saveSettings({ theme: 'inventado', chatBackgroundFit: 'inventado' });
+  assert.equal(saved.theme, 'nomi');
+  assert.equal(saved.chatBackgroundFit, 'fill');
 });
 
 test('saveSettings valida rangos y descarta valores fuera de contrato', async () => {
