@@ -184,8 +184,9 @@ async function boot() {
   const settings = await state.getSettings();
 
   shell.applyTheme(settings.theme);
+  shell.applyThemeMode(settings.themeMode);
   if (settings.chatBackground) {
-    // No bloquea el arranque: el tinte del skin "glass" (ver theme-glass.css)
+    // No bloquea el arranque: el tinte del skin "glass" (ver themes.css)
     // se aplica en cuanto está listo, sin esperar a un fondo por defecto.
     averageColorFromDataUrl(settings.chatBackground).then((rgb) => shell.setGlassTint(rgb));
   }

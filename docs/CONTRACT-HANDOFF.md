@@ -172,15 +172,25 @@ cronológica. Resumen de alto nivel para orientarte rápido:
   entradas a mano (hoy es solo lectura) y la "memoria curada" del punto 1
   del roadmap más abajo.
 
-- **Skins (Nomi/Glass) y fondo de chat personalizado**: implementado —
-  `Ajustes → Apariencia` (también accesible desde el menú ⋮ del chat).
-  Ver "Skins (Nomi/Glass) y fondo de chat personalizado" en `docs/NOTES.md`
-  para el detalle completo. De la misma ronda de mejoras: gate de tests en
-  el CI (`npm test` antes de compilar el APK) y versión visible al pie de
-  Ajustes. Quedaron pendientes, a propósito (ver la nota de alcance en
-  `docs/NOTES.md`): editar lorebook a mano y la pantalla de respaldos.
+- **Skins (Nomi/Glass/iMessage) y fondo de chat personalizado**: implementado
+  — `Ajustes → Apariencia` (también accesible desde el menú ⋮ del chat).
+  De la misma ronda de mejoras: gate de tests en el CI (`npm test` antes de
+  compilar el APK) y versión visible al pie de Ajustes. Quedaron
+  pendientes, a propósito: editar lorebook a mano y la pantalla de
+  respaldos.
+- **Sistema de skins rearquitecturado + skin iMessage + claro/oscuro**:
+  tras un bug real (el hub de personajes no reflejaba el skin Glass activo),
+  se reescribió cómo funcionan los skins — ahora `base.css`/`chat.css`/
+  `home.css` solo leen tokens, nunca saben qué skin está activo, y cada
+  combinación skin+modo es un bloque completo en `www/css/themes.css`
+  (reemplazó a `theme-glass.css`, que se borró). Tres skins (Nomi/Glass/
+  iMessage) × dos modos (oscuro/claro) = 6 combinaciones. Ver
+  "Rearquitectura del sistema de skins" en `docs/NOTES.md` para el detalle
+  completo — es lectura obligatoria antes de tocar cualquier CSS de la app,
+  incluido el motivo por el que ya no hay que ir seleccionando a mano qué
+  componentes "tocar" para un skin nuevo.
 
-139 tests automáticos a la fecha de esta edición (`node --test tests/*.test.mjs`).
+140 tests automáticos a la fecha de esta edición (`node --test tests/*.test.mjs`).
 
 ## 6. Pendientes conocidos (no son bugs, son trabajo no empezado)
 

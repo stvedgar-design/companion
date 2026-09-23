@@ -42,6 +42,8 @@
   margin: var(--space-3) var(--space-4);
   border: none;
   cursor: pointer;
+  backdrop-filter: blur(var(--surface-blur, 0px));
+  -webkit-backdrop-filter: blur(var(--surface-blur, 0px));
 }
 
 .home-search {
@@ -200,16 +202,35 @@
   aspect-ratio: 16 / 10;
   border-radius: var(--radius-sm);
 }
+/* Colores fijos, no var(--color-*): cada muestra tiene que verse igual sin
+   importar qué skin/modo esté activo ahora mismo en el resto de la app —
+   por eso son un snapshot aparte (superficie + burbuja de cada combinación),
+   no una lectura en vivo de los tokens reales (ver themes.css). El modo
+   (--light) es un modificador aparte que ui/appearance.js agrega/saca según
+   el toggle de claro/oscuro. */
 .appearance-skin__swatch--nomi {
-  /* Color fijo (no var(--color-surface-2)): esta muestra tiene que verse
-     igual sin importar qué skin esté activo ahora mismo, porque el skin
-     "glass" redefine esa misma variable globalmente. */
-  background: #2d2f40;
+  background: linear-gradient(135deg, #2d2f40 55%, #7a12d6 55%);
   border: 1px solid #383b52;
 }
+.appearance-skin__swatch--nomi.appearance-skin__swatch--light {
+  background: linear-gradient(135deg, #ede7f7 55%, #7a12d6 55%);
+  border: 1px solid #ddd3ef;
+}
 .appearance-skin__swatch--glass {
-  background: linear-gradient(135deg, rgba(139, 31, 224, .38), rgba(162, 76, 242, .22));
+  background: linear-gradient(135deg, rgba(45, 47, 64, .65) 55%, rgba(122, 18, 214, .85) 55%), #181924;
   border: 1px solid rgba(255, 255, 255, .25);
+}
+.appearance-skin__swatch--glass.appearance-skin__swatch--light {
+  background: linear-gradient(135deg, rgba(255, 255, 255, .5) 55%, rgba(122, 18, 214, .85) 55%), #f5f2fa;
+  border: 1px solid rgba(20, 10, 40, .18);
+}
+.appearance-skin__swatch--imessage {
+  background: linear-gradient(135deg, #1c1c1e 55%, #0a84ff 55%);
+  border: 1px solid #38383a;
+}
+.appearance-skin__swatch--imessage.appearance-skin__swatch--light {
+  background: linear-gradient(135deg, #ffffff 55%, #007aff 55%);
+  border: 1px solid #d1d1d6;
 }
 
 .appearance-preview {
@@ -223,6 +244,8 @@
   background-repeat: no-repeat;
   border: 1.5px solid var(--color-line);
   margin-bottom: var(--space-2);
+  backdrop-filter: blur(var(--surface-blur, 0px));
+  -webkit-backdrop-filter: blur(var(--surface-blur, 0px));
 }
 .appearance-preview__empty {
   position: absolute;

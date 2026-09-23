@@ -55,17 +55,38 @@ export function showView(name) {
   }
 }
 
-// Skin visual activo (ver www/css/theme-glass.css). Puro atributo en <html>:
+const THEMES = ['nomi', 'glass', 'imessage'];
+
+// Skin visual activo (ver www/css/themes.css). Puro atributo en <html>:
 // todo lo demás es CSS, así que cambiar de skin se refleja al instante en
 // cualquier pantalla ya renderizada, sin que cada vista tenga que saber que
-// existe.
+// existe. `themes.css` define cada combinación skin+modo con
+// [data-theme="x"][data-mode="y"], así que los dos atributos son
+// independientes — cambiar uno no toca el otro.
 export function applyTheme(theme) {
-  document.documentElement.dataset.theme = theme === 'glass' ? 'glass' : 'nomi';
+  document.documentElement.dataset.theme = THEMES.includes(theme) ? theme : 'nomi';
+  syncThemeColorMeta();
+}
+
+// Claro/oscuro, aplica sobre cualquier skin (ver themes.css).
+export function applyThemeMode(mode) {
+  document.documentElement.dataset.mode = mode === 'light' ? 'light' : 'dark';
+  syncThemeColorMeta();
+}
+
+// El color de la barra de estado de Android (meta theme-color) tiene que
+// seguir a --color-bg del tema activo, si no queda desentonando cuando se
+// cambia a un skin/modo distinto del oscuro morado original.
+function syncThemeColorMeta() {
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (!meta) return;
+  const bg = getComputedStyle(document.documentElement).getPropertyValue('--color-bg').trim();
+  if (bg) meta.setAttribute('content', bg);
 }
 
 // Tinte de las superficies del skin "glass", derivado del color promedio del
 // fondo de chat elegido (ver images.js / ui/appearance.js). `rgb` es
-// {r,g,b} o null para volver al tinte por defecto de theme-glass.css.
+// {r,g,b} o null para volver al tinte por defecto de ese modo (themes.css).
 export function setGlassTint(rgb) {
   if (rgb) {
     document.documentElement.style.setProperty('--glass-tint-rgb', `${rgb.r} ${rgb.g} ${rgb.b}`);

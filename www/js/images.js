@@ -79,7 +79,7 @@ const SAMPLE_SIZE = 16;
 /**
  * Calcula el color RGB promedio de una imagen, muestreando a baja
  * resolución para que sea barato. Usado para que el tinte del skin "glass"
- * (ver www/css/theme-glass.css) reaccione al fondo de chat elegido.
+ * (ver www/css/themes.css) reaccione al fondo de chat elegido.
  * @param {string} dataUrl
  * @returns {Promise<{r:number, g:number, b:number}|null>} null si falla.
  */

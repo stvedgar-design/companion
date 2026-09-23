@@ -69,7 +69,8 @@
  * @property {number} ctx
  * @property {string} pinSalt   // '' si el bloqueo con PIN está desactivado
  * @property {string} pinHash   // '' si el bloqueo con PIN está desactivado (SHA-256 salteado, ver lock.js)
- * @property {'nomi'|'glass'} theme            // skin visual, ver www/css/theme-glass.css
+ * @property {'nomi'|'glass'|'imessage'} theme // skin visual, ver www/css/themes.css
+ * @property {'dark'|'light'} themeMode        // claro/oscuro, aplica a cualquier skin
  * @property {string} chatBackground           // data URL JPEG del fondo del chat, '' si no hay
  * @property {number} chatBackgroundBrightness // 20 a 180 (%), 100 = sin cambios
  * @property {boolean} chatBackgroundFade      // fundido a negro en la mitad inferior de la imagen
@@ -89,6 +90,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   pinSalt: '',
   pinHash: '',
   theme: 'nomi',
+  themeMode: 'dark',
   chatBackground: '',
   chatBackgroundBrightness: 100,
   chatBackgroundFade: false,
@@ -125,7 +127,8 @@ function sanitizeSettings(raw) {
     ctx: Math.round(clampNumber(merged.ctx, 512, 200000, DEFAULT_SETTINGS.ctx)),
     pinSalt: typeof merged.pinSalt === 'string' ? merged.pinSalt : DEFAULT_SETTINGS.pinSalt,
     pinHash: typeof merged.pinHash === 'string' ? merged.pinHash : DEFAULT_SETTINGS.pinHash,
-    theme: merged.theme === 'glass' ? 'glass' : DEFAULT_SETTINGS.theme,
+    theme: ['nomi', 'glass', 'imessage'].includes(merged.theme) ? merged.theme : DEFAULT_SETTINGS.theme,
+    themeMode: merged.themeMode === 'light' ? 'light' : DEFAULT_SETTINGS.themeMode,
     chatBackground: typeof merged.chatBackground === 'string' ? merged.chatBackground : DEFAULT_SETTINGS.chatBackground,
     chatBackgroundBrightness: Math.round(
       clampNumber(merged.chatBackgroundBrightness, 20, 180, DEFAULT_SETTINGS.chatBackgroundBrightness)

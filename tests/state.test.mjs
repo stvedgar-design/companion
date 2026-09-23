@@ -56,21 +56,23 @@ test('getSettings devuelve valores por defecto cuando no hay nada guardado', asy
   assert.deepEqual(settings, {
     url: '', user: '', maxLen: 220, temp: 0.85, mode: 'chat', ctx: 4096,
     pinSalt: '', pinHash: '',
-    theme: 'nomi', chatBackground: '', chatBackgroundBrightness: 100,
+    theme: 'nomi', themeMode: 'dark', chatBackground: '', chatBackgroundBrightness: 100,
     chatBackgroundFade: false, chatBackgroundFit: 'fill',
   });
 });
 
-test('saveSettings valida apariencia: skin, fondo de chat y sus controles', async () => {
+test('saveSettings valida apariencia: skin, modo, fondo de chat y sus controles', async () => {
   const state = createState(createMemoryBackend());
   const saved = await state.saveSettings({
-    theme: 'glass',
+    theme: 'imessage',
+    themeMode: 'light',
     chatBackground: 'data:image/jpeg;base64,AAAA',
     chatBackgroundBrightness: 999,
     chatBackgroundFade: true,
     chatBackgroundFit: 'stretch',
   });
-  assert.equal(saved.theme, 'glass');
+  assert.equal(saved.theme, 'imessage');
+  assert.equal(saved.themeMode, 'light');
   assert.equal(saved.chatBackground, 'data:image/jpeg;base64,AAAA');
   assert.equal(saved.chatBackgroundBrightness, 180); // recortado al máximo
   assert.equal(saved.chatBackgroundFade, true);
@@ -80,10 +82,23 @@ test('saveSettings valida apariencia: skin, fondo de chat y sus controles', asyn
   assert.deepEqual(reloaded, saved);
 });
 
-test('saveSettings descarta un theme o fit inválido y vuelve al valor por defecto', async () => {
+test('saveSettings acepta los tres skins válidos', async () => {
   const state = createState(createMemoryBackend());
-  const saved = await state.saveSettings({ theme: 'inventado', chatBackgroundFit: 'inventado' });
+  for (const theme of ['nomi', 'glass', 'imessage']) {
+    const saved = await state.saveSettings({ theme });
+    assert.equal(saved.theme, theme);
+  }
+});
+
+test('saveSettings descarta un theme, themeMode o fit inválido y vuelve al valor por defecto', async () => {
+  const state = createState(createMemoryBackend());
+  const saved = await state.saveSettings({
+    theme: 'inventado',
+    themeMode: 'inventado',
+    chatBackgroundFit: 'inventado',
+  });
   assert.equal(saved.theme, 'nomi');
+  assert.equal(saved.themeMode, 'dark');
   assert.equal(saved.chatBackgroundFit, 'fill');
 });
 

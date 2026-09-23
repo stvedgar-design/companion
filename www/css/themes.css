@@ -1,0 +1,177 @@
+/*
+ * themes.css — Companion
+ * Cada combinación de skin (Nomi/Glass/iMessage) y modo (oscuro/claro) es un
+ * bloque [data-theme="x"][data-mode="y"] que SOLO redefine tokens de
+ * tokens.css — nunca clases de componentes. Los atributos los pone
+ * ui/shell.js (applyTheme/applyThemeMode) en <html>.
+ *
+ * Por qué esto reemplazó a theme-glass.css: antes, cada skin nuevo exigía
+ * ir a buscar manualmente qué clases de chat.css/base.css/home.css tocar
+ * (y era fácil olvidarse alguna — así apareció el bug real de "el hub de
+ * personajes seguía viéndose Nomi con Glass activo": el fondo con resplandor
+ * del skin Glass estaba en <body>, pero <body> queda tapado por completo por
+ * el fondo opaco de .app, así que nunca se veía). Ahora los componentes
+ * (base.css/chat.css/home.css) solo leen tokens — nunca se les vuelve a
+ * tocar por un skin nuevo — y un skin nuevo es "solo" agregar un bloque acá.
+ * Dos tokens hacen de bisagra con los componentes, sin que ellos sepan que
+ * existe ningún skin en particular:
+ *   --app-bg      fondo de .app (ver base.css) — por defecto cae en
+ *                 --color-bg; Glass lo redefine con su resplandor.
+ *   --surface-blur  blur de vidrio (ver backdrop-filter en base.css/chat.css/
+ *                 home.css) — 0px salvo en los skins "de vidrio".
+ *
+ * Nomi Dark es el look original de la app (sin cambios, pixel a pixel) — el
+ * resto de los bloques son nuevos.
+ */
+
+/* ---------- Nomi (skin original) ---------- */
+
+[data-theme="nomi"][data-mode="dark"] {
+  --color-bg: #181924;
+  --color-surface: #20222f;
+  --color-surface-2: #2d2f40;
+  --color-line: #383b52;
+  --color-text: #f3f3f8;
+  --color-muted: #9b9eb8;
+  --color-accent: #8b1fe0;
+  --color-accent-2: #a24cf2;
+  --color-accent-soft: rgba(139, 31, 224, 0.16);
+  --color-danger: #f0566a;
+  --color-ok: #6ee7a8;
+  --color-overlay: rgba(6, 6, 12, 0.6);
+  --color-muted-on-accent: rgba(255, 255, 255, 0.72);
+  --grad-user: linear-gradient(135deg, #7a12d6, #9b3ff0);
+  --grad-avatar: linear-gradient(135deg, #5b1fa8, #c04bd6);
+  --font: 'Literata', Georgia, 'Times New Roman', serif;
+  --surface-blur: 0px;
+}
+
+[data-theme="nomi"][data-mode="light"] {
+  --color-bg: #f5f2fa;
+  --color-surface: #ffffff;
+  --color-surface-2: #ede7f7;
+  --color-line: #ddd3ef;
+  --color-text: #201f2b;
+  --color-muted: #726f87;
+  --color-accent: #8b1fe0;
+  --color-accent-2: #a24cf2;
+  --color-accent-soft: rgba(139, 31, 224, 0.1);
+  --color-danger: #d6335a;
+  --color-ok: #1f9d63;
+  --color-overlay: rgba(20, 10, 35, 0.35);
+  --color-muted-on-accent: rgba(255, 255, 255, 0.85);
+  --grad-user: linear-gradient(135deg, #7a12d6, #9b3ff0);
+  --grad-avatar: linear-gradient(135deg, #5b1fa8, #c04bd6);
+  --font: 'Literata', Georgia, 'Times New Roman', serif;
+  --surface-blur: 0px;
+}
+
+/* ---------- Glass (vidrio esmerilado) ---------- */
+
+:root {
+  /* Tinte base de las superficies de vidrio, como "R G B" (sin comas) para
+     poder usarlo con rgb(var(...) / alpha). ui/appearance.js lo sobreescribe
+     con el color promedio del fondo de chat elegido (ver images.js); sin
+     fondo personalizado, cada modo cae en su propio valor por defecto de
+     abajo. */
+  --glass-blur: 20px;
+}
+
+[data-theme="glass"][data-mode="dark"] {
+  --glass-tint-rgb: 24 25 36;
+  --color-bg: #181924;
+  --color-surface: rgb(var(--glass-tint-rgb) / 0.46);
+  --color-surface-2: rgb(var(--glass-tint-rgb) / 0.6);
+  --color-line: rgb(255 255 255 / 0.14);
+  --color-text: #f3f3f8;
+  --color-muted: #9b9eb8;
+  --color-accent: #8b1fe0;
+  --color-accent-2: #a24cf2;
+  --color-accent-soft: rgba(139, 31, 224, 0.18);
+  --color-danger: #f0566a;
+  --color-ok: #6ee7a8;
+  --color-overlay: rgba(6, 6, 12, 0.45);
+  --color-muted-on-accent: rgba(255, 255, 255, 0.72);
+  --grad-user: linear-gradient(135deg, rgba(122, 18, 214, 0.8), rgba(155, 63, 240, 0.8));
+  --grad-avatar: linear-gradient(135deg, #5b1fa8, #c04bd6);
+  --font: 'Literata', Georgia, 'Times New Roman', serif;
+  --surface-blur: var(--glass-blur);
+  --app-bg:
+    radial-gradient(circle at 12% -10%, rgba(139, 31, 224, 0.28), transparent 55%),
+    radial-gradient(circle at 90% 110%, rgba(162, 76, 242, 0.2), transparent 55%),
+    #181924;
+}
+
+[data-theme="glass"][data-mode="light"] {
+  --glass-tint-rgb: 245 242 250;
+  --color-bg: #f5f2fa;
+  --color-surface: rgb(var(--glass-tint-rgb) / 0.5);
+  --color-surface-2: rgb(var(--glass-tint-rgb) / 0.68);
+  --color-line: rgb(20 10 40 / 0.12);
+  --color-text: #201f2b;
+  --color-muted: #6b6880;
+  --color-accent: #8b1fe0;
+  --color-accent-2: #a24cf2;
+  --color-accent-soft: rgba(139, 31, 224, 0.12);
+  --color-danger: #d6335a;
+  --color-ok: #1f9d63;
+  --color-overlay: rgba(20, 10, 35, 0.3);
+  --color-muted-on-accent: rgba(255, 255, 255, 0.85);
+  --grad-user: linear-gradient(135deg, rgba(122, 18, 214, 0.85), rgba(155, 63, 240, 0.85));
+  --grad-avatar: linear-gradient(135deg, #5b1fa8, #c04bd6);
+  --font: 'Literata', Georgia, 'Times New Roman', serif;
+  --surface-blur: var(--glass-blur);
+  --app-bg:
+    radial-gradient(circle at 12% -10%, rgba(139, 31, 224, 0.14), transparent 55%),
+    radial-gradient(circle at 90% 110%, rgba(162, 76, 242, 0.12), transparent 55%),
+    #f5f2fa;
+}
+
+/* ---------- iMessage ---------- */
+/* Paleta calcada de los colores reales de iOS (label/secondaryLabel/
+   systemBlue/systemGray6, etc., en sus variantes claro y oscuro) — no usa
+   blur (--surface-blur queda en 0px): las burbujas y colores ya alcanzan
+   para que se reconozca, y así queda claramente distinto de Glass en vez de
+   "Glass pero celeste". Usa la fuente del sistema, no Literata — es lo más
+   fiel a cómo se ve Mensajes de verdad, y de paso no depende de que cargue
+   una fuente de Google Fonts. */
+
+[data-theme="imessage"][data-mode="dark"] {
+  --color-bg: #000000;
+  --color-surface: #1c1c1e;
+  --color-surface-2: #26252a;
+  --color-line: #38383a;
+  --color-text: #ffffff;
+  --color-muted: #8e8e93;
+  --color-accent: #0a84ff;
+  --color-accent-2: #409cff;
+  --color-accent-soft: rgba(10, 132, 255, 0.16);
+  --color-danger: #ff453a;
+  --color-ok: #32d74b;
+  --color-overlay: rgba(0, 0, 0, 0.6);
+  --color-muted-on-accent: rgba(255, 255, 255, 0.72);
+  --grad-user: #0a84ff;
+  --grad-avatar: linear-gradient(135deg, #48484a, #636366);
+  --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
+  --surface-blur: 0px;
+}
+
+[data-theme="imessage"][data-mode="light"] {
+  --color-bg: #f2f2f7;
+  --color-surface: #ffffff;
+  --color-surface-2: #e9e9eb;
+  --color-line: #d1d1d6;
+  --color-text: #000000;
+  --color-muted: #8e8e93;
+  --color-accent: #007aff;
+  --color-accent-2: #339dff;
+  --color-accent-soft: rgba(0, 122, 255, 0.12);
+  --color-danger: #ff3b30;
+  --color-ok: #34c759;
+  --color-overlay: rgba(0, 0, 0, 0.35);
+  --color-muted-on-accent: rgba(255, 255, 255, 0.8);
+  --grad-user: #007aff;
+  --grad-avatar: linear-gradient(135deg, #c7c7cc, #aeaeb2);
+  --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
+  --surface-blur: 0px;
+}

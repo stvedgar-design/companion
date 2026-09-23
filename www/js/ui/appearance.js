@@ -1,11 +1,18 @@
 // www/js/ui/appearance.js
-// Hoja de apariencia: elegir el skin visual (Nomi/Glass) y el fondo
-// personalizado del chat (imagen, brillo, fundido a negro, ajuste).
+// Hoja de apariencia: elegir el skin visual (Nomi/Glass/iMessage), claro u
+// oscuro, y el fondo personalizado del chat (imagen, brillo, fundido a
+// negro, ajuste).
 
 import { getSettings, saveSettings } from '../state.js';
 import { pickFiles } from '../platform.js';
 import { resizeImageToDataUrl, averageColorFromDataUrl } from '../images.js';
-import { applyTheme, setGlassTint } from './shell.js';
+import { applyTheme, applyThemeMode, setGlassTint } from './shell.js';
+
+const SKINS = [
+  { value: 'nomi', label: 'Nomi' },
+  { value: 'glass', label: 'Glass' },
+  { value: 'imessage', label: 'iMessage' },
+];
 
 const BG_MAX_DIM = 1280;
 const BG_QUALITY = 0.82;
@@ -25,16 +32,22 @@ export function openAppearance(app) {
     <h3 class="sheet__title">Apariencia</h3>
 
     <div class="field">
+      <div class="field__label">Modo</div>
+      <div class="appearance-skins">
+        <button class="appearance-skin" type="button" data-mode-value="dark">Oscuro</button>
+        <button class="appearance-skin" type="button" data-mode-value="light">Claro</button>
+      </div>
+    </div>
+
+    <div class="field">
       <div class="field__label">Skin</div>
       <div class="appearance-skins">
-        <button class="appearance-skin" type="button" data-value="nomi">
-          <span class="appearance-skin__swatch appearance-skin__swatch--nomi" aria-hidden="true"></span>
-          Nomi
-        </button>
-        <button class="appearance-skin" type="button" data-value="glass">
-          <span class="appearance-skin__swatch appearance-skin__swatch--glass" aria-hidden="true"></span>
-          Glass
-        </button>
+        ${SKINS.map((s) => `
+          <button class="appearance-skin" type="button" data-value="${s.value}">
+            <span class="appearance-skin__swatch appearance-skin__swatch--${s.value}" aria-hidden="true"></span>
+            ${s.label}
+          </button>
+        `).join('')}
       </div>
     </div>
 
@@ -63,7 +76,8 @@ export function openAppearance(app) {
 
   const q = (sel) => node.querySelector(sel);
   const els = {
-    skinBtns: Array.from(node.querySelectorAll('.appearance-skin')),
+    modeBtns: Array.from(node.querySelectorAll('[data-mode-value]')),
+    skinBtns: Array.from(node.querySelectorAll('[data-value]')),
     preview: q('#appearance-preview'),
     previewEmpty: q('#appearance-preview-empty'),
     previewFade: q('#appearance-preview-fade'),
@@ -78,6 +92,18 @@ export function openAppearance(app) {
 
   let current = null;
   let brightnessTimer = null;
+
+  function renderMode(themeMode) {
+    els.modeBtns.forEach((btn) => {
+      btn.classList.toggle('appearance-skin--active', btn.dataset.modeValue === themeMode);
+    });
+    // Las muestras de skin representan un skin EN el modo elegido — no el
+    // que esté activo ahora mismo en el resto de la app (ver home.css).
+    els.skinBtns.forEach((btn) => {
+      const swatch = btn.querySelector('.appearance-skin__swatch');
+      if (swatch) swatch.classList.toggle('appearance-skin__swatch--light', themeMode === 'light');
+    });
+  }
 
   function renderSkin(theme) {
     els.skinBtns.forEach((btn) => {
@@ -102,13 +128,23 @@ export function openAppearance(app) {
 
   getSettings().then((settings) => {
     current = settings;
+    renderMode(settings.themeMode);
     renderSkin(settings.theme);
     renderBackground(settings);
   });
 
+  els.modeBtns.forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const themeMode = btn.dataset.modeValue === 'light' ? 'light' : 'dark';
+      current = await saveSettings({ themeMode });
+      renderMode(themeMode);
+      applyThemeMode(themeMode);
+    });
+  });
+
   els.skinBtns.forEach((btn) => {
     btn.addEventListener('click', async () => {
-      const theme = btn.dataset.value === 'glass' ? 'glass' : 'nomi';
+      const theme = SKINS.some((s) => s.value === btn.dataset.value) ? btn.dataset.value : 'nomi';
       current = await saveSettings({ theme });
       renderSkin(theme);
       applyTheme(theme);

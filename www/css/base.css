@@ -60,7 +60,11 @@ img{ max-width: 100%; display: block; }
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: var(--color-bg);
+  /* --app-bg (definido por temas con fondo propio, p. ej. el resplandor del
+     skin Glass, ver themes.css) es opcional: sin definir, cae en el color
+     plano de siempre. Sin este fallback, un tema que solo tocara
+     --color-bg (como Nomi/iMessage) se vería bien igual. */
+  background: var(--app-bg, var(--color-bg));
 }
 
 .view{
@@ -80,6 +84,10 @@ img{ max-width: 100%; display: block; }
   align-items: center;
   gap: var(--space-2);
   padding: calc(var(--sat) + var(--space-2)) var(--space-2) var(--space-2) var(--space-4);
+  /* --surface-blur es 0px salvo en temas "de vidrio" (ver themes.css): sin
+     tema con blur, esto no cambia nada visualmente. */
+  backdrop-filter: blur(var(--surface-blur, 0px));
+  -webkit-backdrop-filter: blur(var(--surface-blur, 0px));
 }
 .topbar__title{
   flex: 1;
@@ -132,7 +140,11 @@ img{ max-width: 100%; display: block; }
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-.ib:active{ background: var(--color-surface); }
+.ib:active{
+  background: var(--color-surface);
+  backdrop-filter: blur(var(--surface-blur, 0px));
+  -webkit-backdrop-filter: blur(var(--surface-blur, 0px));
+}
 .ib:focus-visible{ outline: 2px solid var(--color-accent-2); outline-offset: 2px; }
 .ib:disabled{ opacity: .4; pointer-events: none; }
 
@@ -158,6 +170,8 @@ img{ max-width: 100%; display: block; }
   background: var(--color-surface);
   border: 1.5px solid var(--color-line);
   color: var(--color-text);
+  backdrop-filter: blur(var(--surface-blur, 0px));
+  -webkit-backdrop-filter: blur(var(--surface-blur, 0px));
 }
 .btn--ghost:active{ background: var(--color-surface-2); }
 
@@ -182,6 +196,8 @@ img{ max-width: 100%; display: block; }
   font-size: 16px; /* nunca menos: evita el zoom automatico en Android */
   outline: none;
   transition: border-color var(--dur-fast) ease;
+  backdrop-filter: blur(var(--surface-blur, 0px));
+  -webkit-backdrop-filter: blur(var(--surface-blur, 0px));
 }
 .inp::placeholder{ color: var(--color-muted); }
 .inp:focus-visible{ border-color: var(--color-accent-2); }
@@ -241,6 +257,8 @@ input[type=range]:focus-visible{
   background: var(--color-surface-2);
   color: var(--color-muted);
   border: 1px solid var(--color-line);
+  backdrop-filter: blur(var(--surface-blur, 0px));
+  -webkit-backdrop-filter: blur(var(--surface-blur, 0px));
 }
 .chip--ok{
   color: var(--color-ok);
@@ -294,7 +312,11 @@ input[type=range]:focus-visible{
   border-radius: var(--radius-md);
   transition: background var(--dur-fast) ease;
 }
-.list-row:active{ background: var(--color-surface); }
+.list-row:active{
+  background: var(--color-surface);
+  backdrop-filter: blur(var(--surface-blur, 0px));
+  -webkit-backdrop-filter: blur(var(--surface-blur, 0px));
+}
 .list-row:focus-visible{ outline: 2px solid var(--color-accent-2); outline-offset: 2px; }
 .list-row__main{ flex: 1; min-width: 0; }
 .list-row__title{
@@ -359,6 +381,8 @@ input[type=range]:focus-visible{
   transform: translateY(24px);
   opacity: 0;
   transition: transform var(--dur) ease-out, opacity var(--dur) ease-out;
+  backdrop-filter: blur(var(--surface-blur, 0px));
+  -webkit-backdrop-filter: blur(var(--surface-blur, 0px));
 }
 .sheet.is-open .sheet__card{
   transform: translateY(0);
@@ -381,7 +405,11 @@ input[type=range]:focus-visible{
   min-height: 44px;
 }
 .menu-item:last-child{ border-bottom: 0; }
-.menu-item:active{ background: var(--color-surface-2); }
+.menu-item:active{
+  background: var(--color-surface-2);
+  backdrop-filter: blur(var(--surface-blur, 0px));
+  -webkit-backdrop-filter: blur(var(--surface-blur, 0px));
+}
 .menu-item:focus-visible{ outline: 2px solid var(--color-accent-2); outline-offset: 2px; }
 .menu-item--danger{ color: var(--color-danger); }
 
@@ -403,6 +431,8 @@ input[type=range]:focus-visible{
   opacity: 0;
   visibility: hidden;
   transition: opacity var(--dur) ease, transform var(--dur) ease;
+  backdrop-filter: blur(var(--surface-blur, 0px));
+  -webkit-backdrop-filter: blur(var(--surface-blur, 0px));
 }
 .toast.is-visible{
   opacity: 1;

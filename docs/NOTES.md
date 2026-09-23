@@ -699,6 +699,112 @@ en JS) — verificado a mano en el navegador integrado: la fuente se ve en
 toda la app (burbujas, botones, hojas), y el texto en asteriscos del
 usuario ya no depende de un valor fijo.
 
+## Rearquitectura del sistema de skins: temas completos, iMessage, claro/oscuro (2026-09-23)
+
+El usuario reportó un bug real: al activar el skin Glass, el hub de
+personajes (pantalla de inicio) seguía viéndose como Nomi. Pidió que
+cambiar de skin fuera "un cambio de lenguaje visual coherente, no solo el
+chat", sumó un pedido de un tercer skin estilo iMessage, y un toggle de
+claro/oscuro para los tres. Esto no se resolvió parchando selectores sueltos
+(que es como se había hecho Glass originalmente) — se reescribió cómo
+funcionan los skins de raíz, porque el enfoque anterior era exactamente la
+causa del bug.
+
+### Causa raíz del bug reportado
+
+`theme-glass.css` (el archivo original de Glass) ponía el resplandor
+morado ambiente en `<body>` — pero `.app` (un `div` `position:fixed` que
+cubre toda la pantalla, con su propio `background: var(--color-bg)` opaco)
+se pinta encima y lo tapa por completo. El resplandor **nunca se vio en
+ningún lado**, ni en el chat ni en el hub — en el chat no se notaba porque
+ahí la diferencia visual la daban sobre todo el fondo de chat personalizado
+y el blur de las burbujas, que sí funcionaban; en el hub, sin esos
+elementos, no quedaba ninguna diferencia con Nomi. Bug real, no percepción.
+
+### Por qué se rehizo el sistema entero en vez de agregar iMessage al lado
+
+El patrón de `theme-glass.css` era: por cada skin nuevo, ir a buscar a mano
+qué selectores de `base.css`/`chat.css`/`home.css` tocar. Es exactamente el
+tipo de cosa donde es fácil olvidarse un elemento — ya pasó una vez (el
+hub). Agregar un tercer skin (y multiplicarlo por claro/oscuro = 6
+combinaciones) con ese mismo patrón iba a garantizar más casos así. Se
+reemplazó por una arquitectura donde **los componentes (`base.css`,
+`chat.css`, `home.css`) no saben que existen skins**: solo leen tokens de
+`tokens.css`, siempre, en todos lados. Un skin nuevo es agregar un bloque
+de tokens a `themes.css` (nuevo archivo, reemplaza a `theme-glass.css`,
+que se borró) — nunca tocar los componentes.
+
+Dos tokens-bisagra permiten que hasta los efectos "especiales" de Glass
+(resplandor de fondo, blur) sigan siendo "solo CSS", sin que los
+componentes sepan nada de Glass en particular:
+- `--app-bg`: fondo de `.app` (con fallback a `--color-bg`) — Glass lo
+  redefine con el resplandor (ahora sí puesto en `.app`, arreglando el bug);
+  Nomi/iMessage no lo tocan.
+- `--surface-blur`: usado como `backdrop-filter: blur(var(--surface-blur, 0px))`
+  agregado directamente a los componentes reales que ya tenían una
+  superficie propia (`.topbar`, `.sheet__card`, `.chat-composer`,
+  `.chat-bubble`, `.chat-actionbtn`, `.chat-retry`, `.chat-scrolldown`,
+  `.chat-send`, `.home-chip`, `.list-row:active`, `.btn--ghost`, `.chip`,
+  `.inp`, `.toast`, `.menu-item:active`, `.ib:active`,
+  `.appearance-preview`) — 0px salvo que un skin lo redefina, así que en
+  Nomi/iMessage esas líneas no cambian nada (verificado: Nomi Dark quedó
+  pixel a pixel igual a como estaba).
+
+`themes.css` define 6 bloques `[data-theme="x"][data-mode="y"]`
+(nomi/glass/imessage × dark/light), cada uno completo (todos los
+`--color-*`, `--grad-user`, `--grad-avatar`, `--font`, `--surface-blur`, y
+`--app-bg`/`--glass-tint-rgb` donde aplica) — no son diffs parciales unos de
+otros. `www/js/ui/shell.js` pone `data-theme` y `data-mode` en `<html>` por
+separado (`applyTheme()`/`applyThemeMode()`, cada uno independiente del
+otro) y sincroniza `<meta name="theme-color">` con `--color-bg` del tema
+activo (para que la barra de estado de Android combine, no solo el
+contenido de la página).
+
+### iMessage: paleta calcada de iOS real, sin blur
+
+Colores tomados de los reales de iOS (`systemBlue`/`systemGray6`/
+`label`/`secondaryLabel`, en sus variantes clara y oscura) — no los
+inventé. Dos decisiones de alcance:
+- **Sin blur** (`--surface-blur: 0px`): aunque iOS real sí difumina barras,
+  se dejó así a propósito para que iMessage se distinga claramente de Glass
+  en vez de leerse como "Glass pero celeste" — los colores y la forma de
+  las burbujas ya alcanzan para reconocerlo.
+- **Fuente del sistema** (`-apple-system, BlinkMacSystemFont, ...`), no
+  Literata: es lo más fiel a como se ve Mensajes de verdad, y de paso no
+  agrega una segunda fuente de Google Fonts a cargar.
+
+`--grad-user` para iMessage es un color plano (`#0a84ff`/`#007aff`), no un
+degradado — el nombre del token quedó igual (`--grad-user`, viejo de
+cuando solo existía el degradado de Nomi) pero `background: var(--grad-user)`
+acepta cualquier valor de fondo válido, gradiente o no, así que no hizo
+falta cambiar el nombre ni el código que lo usa.
+
+### Apariencia: modo claro/oscuro + 3 skins
+
+`ui/appearance.js` ahora tiene una fila "Modo" (Oscuro/Claro, aplica a
+cualquier skin) arriba de la fila "Skin" (Nomi/Glass/iMessage). Las
+muestras de cada skin son snapshots con colores fijos en `home.css` — a
+propósito no leen `var(--color-*)`, porque tienen que representar CADA
+skin tal cual se ve, no el que esté activo ahora mismo en el resto de la
+app (mismo motivo por el que la muestra de Nomi ya se había arreglado así
+la sesión anterior). Cambian de variante clara/oscura según el toggle de
+Modo, no según el tema activo real.
+
+### Verificado a mano (navegador integrado, 375×812)
+
+Las 6 combinaciones (3 skins × 2 modos), incluyendo: que Nomi Dark no
+cambió nada visualmente respecto de antes; que el hub de personajes ahora
+sí refleja Glass (resplandor visible, chip/buscador con blur); que iMessage
+oscuro y claro se ven fieles a las capturas de referencia que mostró el
+usuario (fondo negro/blanco, burbuja gris/blanca entrante, burbuja azul
+saliente, tipografía del sistema); que `--color-muted-on-accent` (el texto
+en *asteriscos* del usuario, arreglado la sesión anterior) se sigue leyendo
+bien en los tres skins; y que `<meta name="theme-color">` cambia con el
+tema. Sin tests automáticos nuevos (es CSS + un par de funciones de DOM en
+`shell.js`, mismo criterio que el resto de temas/apariencia) — sí se
+sumaron tests en `state.test.mjs` para los nuevos campos de `Settings`
+(`theme` con tres valores válidos, `themeMode`).
+
 ## Qué NO se ha hecho todavía (pendiente real, no roto)
 
 - Probar en un APK real (no solo navegador): el fix de exportación a
