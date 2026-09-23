@@ -656,6 +656,49 @@ entorno de desarrollo sin un APK real; construirla "a ciegas" sin poder
 probarla choca con el estándar de calidad que pidió el usuario. Quedan
 para la próxima ronda.
 
+## Tipografía Literata y color de *asteriscos* del usuario (2026-09-23)
+
+Dos pedidos chicos de texto, resueltos en `tokens.css`/`chat.css` (y
+replicados en `www/dev/design-preview.html`, la página de revisión de
+diseño del módulo 01):
+
+- **Cambio de fuente**: el usuario pidió algo con el espíritu de las
+  tipografías propias de Anthropic (Anthropic Serif/Galaxie Copernicus,
+  Tiempos Text de Klim Type Foundry) — "excelente lectura en pantalla,
+  formas robustas pero académicas y elegantes". Esas fuentes puntuales son
+  comerciales/licenciadas a Anthropic, así que no se pueden usar acá (y
+  además el proyecto solo permite Google Fonts como dependencia externa,
+  ver `docs/CONTRACTS.md` §2). Se eligió **Literata** en su lugar: una
+  serif de Google/TypeTogether diseñada específicamente para lectura larga
+  en pantalla (nació para Google Play Books), con formas robustas y un
+  registro académico/editorial — el mismo espíritu, sin problema de
+  licencia. Cambio de un solo lugar (`--font` en `tokens.css` + el link de
+  Google Fonts en `index.html`), toda la app cambia de fuente a la vez,
+  igual que ya pasa con los colores. Solo se piden los pesos que el CSS
+  usa de verdad (400/500/600 — el 300 que traía Outfit no se usaba en
+  ningún lado).
+- **Color de *asteriscos* del usuario**: era un hex fijo (`#ffd9a0`,
+  "durazno"), un parche de una sesión vieja para un bug real (el texto en
+  asteriscos del usuario se imprimía del mismo color que la burbuja,
+  invisible) — pero sin relación con el resto del sistema de variables, a
+  diferencia del lado del personaje (`--color-muted`, que si es un token).
+  Se reemplazó por un token nuevo, `--color-muted-on-accent` (blanco al
+  72% de opacidad), aplicado con el mismo patrón que ya usa el lado del
+  personaje: `.chat-row--user { --em-color: var(--color-muted-on-accent); }`.
+  Blanco-atenuado en vez de otro color fijo a propósito: así se adapta solo
+  a cualquier superficie de acento (hoy `--grad-user`, y ya se probó que se
+  sigue viendo bien con la versión traslúcida de ese degradado que usa el
+  skin Glass) en vez de quedar pisado como pasó con el durazno. Se
+  mantuvo la regla de respaldo directa (`.chat-row--user .chat-bubble em`)
+  que ya existía por si el navegador tiene problemas heredando la
+  variable — actualizada al mismo valor, sigue siendo un literal a
+  propósito (no un `var()`, para que sirva de respaldo real).
+
+No hay tests automáticos para ninguno de los dos (son CSS puro, sin lógica
+en JS) — verificado a mano en el navegador integrado: la fuente se ve en
+toda la app (burbujas, botones, hojas), y el texto en asteriscos del
+usuario ya no depende de un valor fijo.
+
 ## Qué NO se ha hecho todavía (pendiente real, no roto)
 
 - Probar en un APK real (no solo navegador): el fix de exportación a

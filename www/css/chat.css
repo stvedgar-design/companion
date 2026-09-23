@@ -121,9 +121,13 @@
   border-bottom-right-radius: var(--radius-sm);
 }
 .chat-row--char { --em-color: var(--color-muted); }
-.chat-row--user { --em-color: #ffd9a0; }
+.chat-row--user { --em-color: var(--color-muted-on-accent); }
 .chat-bubble em { color: var(--em-color); font-style: italic; }
-.chat-row--user .chat-bubble em { color: #ffd9a0; }
+/* Regla directa de respaldo además de la variable --em-color, por si el
+   navegador tiene algún problema heredando la variable CSS (mismo valor
+   resuelto que --color-muted-on-accent, no una var: es la red de
+   seguridad, no puede depender de lo mismo que respalda). */
+.chat-row--user .chat-bubble em { color: rgba(255, 255, 255, 0.72); }
 .chat-bubble strong { font-weight: 600; }
 
 /* --- acciones al tocar un mensaje --- */

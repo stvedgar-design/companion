@@ -22,9 +22,10 @@ cabe en 360px sin scroll horizontal.
 | `--color-danger` | errores, acciones destructivas |
 | `--color-ok` | estados correctos |
 | `--color-overlay` | capa oscura detrás de la hoja inferior |
+| `--color-muted-on-accent` | *asteriscos* sobre una superficie con acento (hoy: burbuja del usuario) |
 | `--grad-user` | degradado de la burbuja del usuario |
 | `--grad-avatar` | degradado del avatar por defecto |
-| `--font` | familia Outfit + fallback de sistema |
+| `--font` | familia Literata (serif) + fallback de sistema — cambiado desde Outfit el 2026-09-23, a pedido del usuario, buscando una lectura más elegante/académica en pantalla |
 | `--fs-xs..--fs-3xl` | escala tipográfica, 12 a 34px |
 | `--radius-sm/md/lg/pill` | 10 / 16 / 26 / 999px |
 | `--space-1..--space-6` | 4, 8, 12, 16, 24, 32px |

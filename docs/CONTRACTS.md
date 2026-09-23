@@ -12,7 +12,7 @@ Existe un **prototipo funcional en un solo archivo, `companion.html`**, que el u
 
 ## 2. Reglas técnicas para todos los módulos
 
-- JavaScript vanilla con módulos ES (`<script type="module">`). Sin npm, sin bundler, sin frameworks, sin librerías externas. Única dependencia externa permitida: Google Fonts (Outfit) enlazada desde `index.html`.
+- JavaScript vanilla con módulos ES (`<script type="module">`). Sin npm, sin bundler, sin frameworks, sin librerías externas. Única dependencia externa permitida: Google Fonts (Literata — cambiada desde Outfit el 2026-09-23, ver `docs/NOTES.md`) enlazada desde `index.html`.
 - Objetivo: WebView de Chromium reciente en Android, pantalla táctil de 360 a 430 px de ancho. Sin hover; usa `:active` y `:focus-visible`.
 - Identificadores de código en inglés. Comentarios y textos de interfaz en español neutro.
 - Sin variables globales. `localStorage`/IndexedDB solo dentro de `www/js/state.js`. `fetch` a servidores solo dentro de `www/js/api/kobold.js`. Prohibido `alert`, `confirm` y `prompt` nativos: usa `app.confirmDialog` y `app.toast`.
@@ -256,7 +256,7 @@ El módulo 02 mantiene actualizadas en `:root` las variables `--vh` (alto visibl
 --sat --sab          (safe-area superior e inferior)
 ```
 
-Valores de partida (del prototipo): fondo `#181924`, superficie `#20222f`, burbuja del personaje `#2d2f40` (`--color-surface-2`), línea `#383b52`, texto `#f3f3f8`, apagado `#9b9eb8`, acento `#8b1fe0` / `#a24cf2`, peligro `#f0566a`, ok `#6ee7a8`, burbuja del usuario `linear-gradient(135deg,#7a12d6,#9b3ff0)`, avatar por defecto `linear-gradient(135deg,#5b1fa8,#c04bd6)`, fuente Outfit.
+Valores de partida (del prototipo): fondo `#181924`, superficie `#20222f`, burbuja del personaje `#2d2f40` (`--color-surface-2`), línea `#383b52`, texto `#f3f3f8`, apagado `#9b9eb8`, acento `#8b1fe0` / `#a24cf2`, peligro `#f0566a`, ok `#6ee7a8`, burbuja del usuario `linear-gradient(135deg,#7a12d6,#9b3ff0)`, avatar por defecto `linear-gradient(135deg,#5b1fa8,#c04bd6)`, fuente Outfit (reemplazada por Literata, ver `docs/NOTES.md`).
 
 **Clases base de `base.css`** (las puede usar cualquier módulo):
 
