@@ -194,6 +194,14 @@ cronológica. Resumen de alto nivel para orientarte rápido:
 
 ## 6. Pendientes conocidos (no son bugs, son trabajo no empezado)
 
+- **Creador de personajes guiado** (propuesta, no autorizada todavía):
+  ver `docs/CONTRACT-CHARACTER-CREATOR.md` — encargo completo, autocontenido,
+  con el análisis de la card de referencia del usuario
+  (`docs/examples/mia-card-reference.json`) y la recomendación de diseño
+  (pills para estructura/estilo de escritura y personalidad, texto libre
+  guiado para nombre/descripción/saludo). **Confirmá con el usuario antes
+  de arrancar** — el documento es una propuesta que él pidió por escrito,
+  no un visto bueno para construir.
 - Editar/borrar a mano entradas del lorebook automático (hoy es de solo
   lectura — ver `docs/NOTES.md`, sección del lorebook).
 - Pantalla para ver los respaldos automáticos existentes
@@ -256,7 +264,12 @@ haya pedido en esa conversación puntual**.
    personajes, lista de chats) se queden cortas. Buscador dentro de un
    chat, y probablemente tags/favoritos en el hub, van a dejar de ser
    "buena idea" y pasar a ser necesarios.
-6. **Portabilidad de hardware/plataforma y salud del pipeline de build.**
+6. **Creador de personajes guiado, en vez de solo importar archivos.** Ver
+   `docs/CONTRACT-CHARACTER-CREATOR.md` — propuesta completa (no
+   autorizada), con el análisis de por qué la card de referencia del
+   usuario funciona tan bien y una recomendación de diseño híbrido
+   (pills para lo estructural, texto libre guiado para el contenido).
+7. **Portabilidad de hardware/plataforma y salud del pipeline de build.**
    Ver `docs/NOTES.md`, sección "Portabilidad y calidad a futuro
    (2026-09-23)" para el detalle completo: modularidad ya lograda para
    cambiar de servidor/modelo (todo el fetch vive en `kobold.js`), qué

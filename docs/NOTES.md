@@ -818,3 +818,43 @@ sumaron tests en `state.test.mjs` para los nuevos campos de `Settings`
 - Editar/borrar entradas de lorebook a mano.
 - Pantalla para ver los respaldos automáticos existentes
   (`Documents/Companion-backups/`), solo se puede probar en un APK real.
+- **Creador de personajes guiado** (propuesta escrita, no autorizada):
+  ver `docs/CONTRACT-CHARACTER-CREATOR.md`.
+
+## Propuesta: creador de personajes guiado (2026-09-23)
+
+El usuario adjuntó la character card de "Mia" (copiada en
+`docs/examples/mia-card-reference.json`), un personaje que armó con ayuda
+de una instancia anterior de Claude Code y que según él "funciona
+ridículamente bien" en chats largos (90+ mensajes) y cambios de escenario.
+Pidió, en este orden: que se estudiara a fondo esa card, que se documentara
+una propuesta de "creador de personajes" para el hub (no solo importar
+archivos, también crear desde la app, con foto y — quizás — fondo) **antes
+de escribir código**, y una opinión profesional sobre si conviene arrancar
+con un enfoque de opciones tipo pill/preset (para no gastar contexto de
+más con cards larguísimas) en vez de texto libre sin estructura.
+
+Se escribió `docs/CONTRACT-CHARACTER-CREATOR.md` con: el análisis campo por
+campo de por qué la card de Mia funciona (en corto: las reglas de estilo de
+escritura viven dentro de `description`, no en `system_prompt`/
+`post_history_instructions` que quedan vacíos; `personality` es una lista
+corta de tags, no un párrafo; `scenario` queda vacío a propósito porque ya
+existe por chat; `first_mes`/`mes_example` demuestran el formato en vez de
+solo describirlo) y una recomendación: un creador **híbrido** — pills para
+la capa estructural (estilo de escritura, rasgos de personalidad: un
+espacio de diseño chico, bien entendido, y responsable de la coherencia
+que el usuario quiere preservar) y texto libre guiado con límite de
+caracteres (mismo patrón que `SCENARIO_MAX` en `chats.js`) para la capa de
+contenido (nombre, descripción, saludo — inherentemente abierta, no
+"pill-eable" sin perder lo que hace único a cada personaje). El documento
+deja explícita una tensión no resuelta a propósito: el fondo de chat es
+hoy un ajuste global, no por personaje, así que ofrecerlo en el creador
+implicaría o pisar el ajuste global o extender el modelo de datos — se
+recomienda no sumarlo a la v1 hasta que el usuario decida cuál de las dos
+quiere.
+
+No se escribió ni una línea de código de la feature en sí — es
+explícitamente una propuesta para que el usuario la revise, no un encargo
+ya autorizado (a diferencia de `docs/CONTRACT-LOREBOOK.md`, que sí era un
+encargo directo). Cualquier instancia que retome este trabajo debe
+confirmar el alcance con el usuario antes de empezar a implementar.
