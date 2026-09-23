@@ -69,6 +69,15 @@ Los imports son ESM relativos y siempre con extensión `.js`. Los tests importan
  */
 
 /**
+ * @typedef {Object} LoreEntry  Lorebook automático (adenda, ver docs/NOTES.md "Lorebook por personaje" y www/js/api/lorebook.js).
+ * @property {string} id
+ * @property {string[]} keys        // palabras/frases que activan esta entrada
+ * @property {string} content       // el hecho en sí, en texto plano, conciso
+ * @property {number} updated       // ms desde epoch
+ * @property {'auto'|'manual'} source  // 'auto' = generado por el lorebook automático
+ */
+
+/**
  * @typedef {Object} Character
  * @property {string} id
  * @property {string} name          // copia de card.name
@@ -78,6 +87,7 @@ Los imports son ESM relativos y siempre con extensión `.js`. Los tests importan
  * @property {number} created       // ms desde epoch
  * @property {number} updated       // ms; lo actualiza saveChat
  * @property {string} last          // vista previa del último mensaje (máx. 90 caracteres, sin asteriscos)
+ * @property {LoreEntry[]} lorebook // adenda: memoria de largo plazo, compartida entre todos los chats de este personaje
  */
 
 /**
@@ -136,15 +146,20 @@ importCardFile(file: File): Promise<Character>              // parsea + avatar +
 subMacros(text: string, charName: string, userName: string): string        // {{char}} <BOT> {{user}} <USER>
 initialMessages(character: Character, settings: Settings, greetingIndex?: number): Message[]
    // greetingIndex 0 = card.first_mes (por defecto); i >= 1 = card.alternate_greetings[i-1]. Devuelve [] si no hay saludo.
-buildPlainPrompt(card: Card, messages: Message[], settings: Settings): { prompt: string, stop: string[] }
-buildChatMessages(card: Card, messages: Message[], settings: Settings): { messages: {role:'system'|'user'|'assistant', content:string}[], stop: string[] }
+buildPlainPrompt(card: Card, messages: Message[], settings: Settings, chatScenario?: string, loreBlock?: string): { prompt: string, stop: string[] }
+buildChatMessages(card: Card, messages: Message[], settings: Settings, chatScenario?: string, loreBlock?: string): { messages: {role:'system'|'user'|'assistant', content:string}[], stop: string[] }
+   // `chatScenario` (adenda multi-chat) y `loreBlock` (adenda lorebook, ver docs/NOTES.md
+   // "Lorebook por personaje" y api/lorebook.js) son desviaciones sobre la firma original de
+   // este contrato — ambos opcionales, '' por defecto. `loreBlock` ya viene armado
+   // (formatLoreBlock) con las entradas seleccionadas.
 cleanReply(text: string, charName: string): string
 trimPartial(text: string): string
 // kobold.js: el ÚNICO lugar con fetch
 normUrl(raw: string): string                                  // '' si no es válida; devuelve solo el origen (sin ruta ni barra final)
 connect(rawUrl: string): Promise<{ url: string, model: string, ctx: number }>   // NO guarda nada. Lanza Error en español
 generateReply(opts: {
-  character: Character,
+  character: Character,            // adenda lorebook: se lee `character.lorebook` (compartido entre chats), no `chat.lorebook`
+  chat?: Chat,                     // adenda multi-chat: trae `scenario`
   messages: Message[],            // historial SIN la respuesta que se va a generar
   settings: Settings,
   signal?: AbortSignal,
@@ -152,6 +167,18 @@ generateReply(opts: {
 }): Promise<{ text: string, truncated: boolean, aborted: boolean }>
    // Si `signal` aborta: pide al servidor detener la generación y RESUELVE con lo recibido (aborted:true). Nunca lanza por abort.
    // Otros fallos: lanza Error con `message` en español apto para mostrar tal cual y `code` ('INVALID_URL'|'NETWORK'|'MIXED_CONTENT'|'HTTP'|'SERVER').
+completeOnce(prompt: string, settings: Settings, opts?: { temp?: number, maxLen?: number }): Promise<string>
+   // Adenda lorebook (docs/NOTES.md "Lorebook por personaje"): completado de una sola vez sin
+   // streaming contra /api/v1/generate, para la extracción de lorebook. Mismos códigos de error
+   // que generateReply().
+
+// lorebook.js (adenda, ver docs/NOTES.md "Lorebook por personaje"): puro, sin DOM ni fetch
+shouldUpdateLorebook(chat: Chat, messageCount: number): boolean   // dispara por chat; el lorebook resultante se guarda en el personaje
+buildExtractionPrompt(character: Character, settings: Settings, newMessages: Message[], existingEntries?: LoreEntry[]): string
+parseExtractionResponse(rawText: string): object[]|null
+sanitizeLoreEntries(rawEntries: object[], existingEntries?: LoreEntry[], now?: number): LoreEntry[]
+selectLoreEntries(entries: LoreEntry[], recentMessages: Message[], opts?: { scanCount?: number, charBudget?: number }): LoreEntry[]
+formatLoreBlock(entries: LoreEntry[]): string
 ```
 
 ### `www/js/ui/format.js` y `www/js/ui/settings.js` (módulos 05 y 06)

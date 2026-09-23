@@ -4,6 +4,7 @@
 // respuestas en streaming. No guarda nada en localStorage/IndexedDB.
 
 import { buildPlainPrompt, buildChatMessages, cleanReply, trimPartial } from './prompt.js';
+import { selectLoreEntries, formatLoreBlock } from './lorebook.js';
 
 const TOP_P = 0.92;
 const TOP_K = 0;
@@ -104,6 +105,67 @@ export async function connect(rawUrl) {
   return { url: base, model, ctx };
 }
 
+// Timeout generoso para completeOnce(): la extracción de lorebook (ver
+// api/lorebook.js) le pasa al modelo bastante más texto que una respuesta
+// normal de chat, y corre en segundo plano sin que el usuario esté
+// esperando, así que preferimos tolerancia a un modelo local lento antes
+// que cortar la llamada de más.
+const COMPLETE_ONCE_TIMEOUT_MS = 120000;
+
+/**
+ * Completado de una sola vez, sin streaming, contra `/api/v1/generate`.
+ * A diferencia de `generateReply()` (pensada para roleplay en streaming con
+ * callbacks de UI), esta función recibe un prompt de texto ya armado por
+ * quien llama y devuelve el texto completo cuando termina. La usa el
+ * lorebook automático (ver api/lorebook.js) para su llamada de extracción,
+ * con una temperatura baja propia, independiente de `settings.temp`.
+ * @param {string} prompt
+ * @param {import('../state.js').Settings} settings
+ * @param {{ temp?: number, maxLen?: number }} [opts]
+ * @returns {Promise<string>}
+ */
+export async function completeOnce(prompt, settings, opts = {}) {
+  const base = normUrl(settings && settings.url);
+  if (!base) throw makeError(INVALID_URL_MSG, 'INVALID_URL');
+
+  let res;
+  try {
+    res = await fetchWithTimeout(
+      base + '/api/v1/generate',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt,
+          max_context_length: settings.ctx,
+          max_length: opts.maxLen || settings.maxLen,
+          temperature: typeof opts.temp === 'number' ? opts.temp : settings.temp,
+          top_p: TOP_P,
+          top_k: TOP_K,
+          min_p: MIN_P,
+          rep_pen: REP_PEN,
+          rep_pen_range: REP_PEN_RANGE
+        })
+      },
+      COMPLETE_ONCE_TIMEOUT_MS
+    );
+  } catch {
+    throw makeError(STREAM_NETWORK_MSG, 'NETWORK');
+  }
+  if (!res.ok) {
+    throw makeError(`El servidor respondió ${res.status}. ¿Es la URL de KoboldCpp?`, 'HTTP');
+  }
+  let data;
+  try {
+    data = await res.json();
+  } catch {
+    throw makeError(SERVER_MSG, 'SERVER');
+  }
+  const text = data && data.results && data.results[0] && data.results[0].text;
+  if (typeof text !== 'string') throw makeError(SERVER_MSG, 'SERVER');
+  return text;
+}
+
 // Lector de Server-Sent Events propio: tolera líneas partidas entre trozos
 // de red, líneas `event:` o vacías, y el marcador [DONE].
 async function readSSE(response, onEvent) {
@@ -139,8 +201,8 @@ function canStream(res) {
 // Respaldo sin streaming: usa el endpoint nativo de generación de una sola
 // vez, con el prompt en formato de texto simple (es el único formato que
 // acepta este endpoint). Entrega el texto completo a `emit` de un tirón.
-async function nonStreamingGenerate(base, card, messages, settings, chatScenario, signal, emit) {
-  const { prompt } = buildPlainPrompt(card, messages, settings, chatScenario);
+async function nonStreamingGenerate(base, card, messages, settings, chatScenario, loreBlock, signal, emit) {
+  const { prompt } = buildPlainPrompt(card, messages, settings, chatScenario, loreBlock);
   const res = await fetch(base + '/api/v1/generate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -195,6 +257,11 @@ export async function generateReply({ character, chat, messages, settings, signa
 
   const card = character.card;
   const chatScenario = (chat && chat.scenario) || '';
+  // Lorebook automático (docs/NOTES.md, "Lorebook por personaje"): es del
+  // personaje, no del chat — compartido entre todos sus chats. Solo se
+  // inyectan las entradas que matchearon por keyword contra los últimos
+  // mensajes, dentro de un tope de caracteres — nunca el lorebook entero.
+  const loreBlock = formatLoreBlock(selectLoreEntries((character && character.lorebook) || [], messages));
   const genkey = makeGenKey();
   const mode = settings.mode === 'chat' ? 'chat' : 'plain';
   const maxLen = settings.maxLen || 220;
@@ -220,7 +287,7 @@ export async function generateReply({ character, chat, messages, settings, signa
   try {
     let res;
     if (mode === 'chat') {
-      const { messages: chatMessages, stop } = buildChatMessages(card, messages, settings, chatScenario);
+      const { messages: chatMessages, stop } = buildChatMessages(card, messages, settings, chatScenario, loreBlock);
       res = await fetch(base + '/v1/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -235,7 +302,7 @@ export async function generateReply({ character, chat, messages, settings, signa
         })
       });
     } else {
-      const { prompt, stop } = buildPlainPrompt(card, messages, settings, chatScenario);
+      const { prompt, stop } = buildPlainPrompt(card, messages, settings, chatScenario, loreBlock);
       res = await fetch(base + '/api/extra/generate/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -259,12 +326,12 @@ export async function generateReply({ character, chat, messages, settings, signa
 
     if (res.status === 404) {
       usedFallback = true;
-      await nonStreamingGenerate(base, card, messages, settings, chatScenario, signal, emit);
+      await nonStreamingGenerate(base, card, messages, settings, chatScenario, loreBlock, signal, emit);
     } else if (!res.ok) {
       throw makeError(`El servidor respondió ${res.status}. ¿Es la URL de KoboldCpp?`, 'HTTP');
     } else if (!canStream(res)) {
       usedFallback = true;
-      await nonStreamingGenerate(base, card, messages, settings, chatScenario, signal, emit);
+      await nonStreamingGenerate(base, card, messages, settings, chatScenario, loreBlock, signal, emit);
     } else if (mode === 'chat') {
       await readSSE(res, (obj) => {
         const chunk = obj && obj.choices && obj.choices[0] && obj.choices[0].delta && obj.choices[0].delta.content;

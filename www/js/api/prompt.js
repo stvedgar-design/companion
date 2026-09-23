@@ -129,8 +129,11 @@ export function scenarioGreeting(character, settings, chatScenario) {
 // card (si existe), una instrucción breve de rol, y los campos de la card
 // con las macros ya resueltas. `chatScenario` es el escenario escrito a
 // mano para ESTE chat en particular (adenda multi-chat): se suma al
-// escenario de la card, nunca lo reemplaza.
-function headBlock(card, settings, chatScenario) {
+// escenario de la card, nunca lo reemplaza. `loreBlock` es el texto ya
+// armado (ver `formatLoreBlock` en api/lorebook.js) con las entradas del
+// lorebook automático que matchearon por keyword en los últimos mensajes;
+// '' si ninguna matcheó o el chat todavía no tiene lorebook.
+function headBlock(card, settings, chatScenario, loreBlock) {
   const N = card.name;
   const U = (settings && settings.user) || 'User';
   const sub = (s) => subMacros(s, N, U);
@@ -150,6 +153,8 @@ function headBlock(card, settings, chatScenario) {
   if (card.scenario) scenarioLines.push(sub(card.scenario));
   if (chatScenario) scenarioLines.push(sub(chatScenario));
   if (scenarioLines.length) parts.push(`Scenario: ${scenarioLines.join('\n')}`);
+
+  if (loreBlock) parts.push(loreBlock);
 
   if (card.mes_example) {
     parts.push(`Example dialogue:\n${sub(card.mes_example).replace(/<START>/gi, '').trim()}`);
@@ -179,15 +184,16 @@ function pickHistory(items, budget, lengthOf) {
  * @param {Message[]} messages
  * @param {Settings} settings
  * @param {string} [chatScenario] Escenario propio del chat (adenda multi-chat).
+ * @param {string} [loreBlock] Entradas del lorebook automático ya seleccionadas (ver api/lorebook.js).
  * @returns {{ prompt: string, stop: string[] }}
  */
-export function buildPlainPrompt(card, messages, settings, chatScenario = '') {
+export function buildPlainPrompt(card, messages, settings, chatScenario = '', loreBlock = '') {
   const N = card.name;
   const U = (settings && settings.user) || 'User';
   const ctx = (settings && settings.ctx) || 4096;
   const maxLen = (settings && settings.maxLen) || 220;
 
-  const head = headBlock(card, settings, chatScenario) + '\n\n[Start of chat]';
+  const head = headBlock(card, settings, chatScenario, loreBlock) + '\n\n[Start of chat]';
   const post = card.post_history_instructions
     ? `\n[${subMacros(card.post_history_instructions, N, U)}]`
     : '';
@@ -214,15 +220,16 @@ export function buildPlainPrompt(card, messages, settings, chatScenario = '') {
  * @param {Message[]} messages
  * @param {Settings} settings
  * @param {string} [chatScenario] Escenario propio del chat (adenda multi-chat).
+ * @param {string} [loreBlock] Entradas del lorebook automático ya seleccionadas (ver api/lorebook.js).
  * @returns {{ messages: {role:'system'|'user'|'assistant', content:string}[], stop: string[] }}
  */
-export function buildChatMessages(card, messages, settings, chatScenario = '') {
+export function buildChatMessages(card, messages, settings, chatScenario = '', loreBlock = '') {
   const N = card.name;
   const U = (settings && settings.user) || 'User';
   const ctx = (settings && settings.ctx) || 4096;
   const maxLen = (settings && settings.maxLen) || 220;
 
-  let head = headBlock(card, settings, chatScenario);
+  let head = headBlock(card, settings, chatScenario, loreBlock);
   if (card.post_history_instructions) {
     head += '\n\n' + subMacros(card.post_history_instructions, N, U);
   }
@@ -252,14 +259,15 @@ export function buildChatMessages(card, messages, settings, chatScenario = '') {
  * @param {Message[]} messages
  * @param {Settings} settings
  * @param {string} [chatScenario]
+ * @param {string} [loreBlock] Entradas del lorebook automático ya seleccionadas (ver api/lorebook.js).
  * @returns {{ approxTokens: number, budgetTokens: number, ratio: number }}
  *   `ratio` es approxTokens/budgetTokens, sin recortar a 1 (puede superar 1
  *   si ya no entra todo el historial y algunos mensajes se recortarían).
  */
-export function estimateContextUsage(card, messages, settings, chatScenario = '') {
+export function estimateContextUsage(card, messages, settings, chatScenario = '', loreBlock = '') {
   const ctx = (settings && settings.ctx) || 4096;
   const maxLen = (settings && settings.maxLen) || 220;
-  const head = headBlock(card, settings, chatScenario);
+  const head = headBlock(card, settings, chatScenario, loreBlock);
   const historyChars = messages.reduce((sum, m) => sum + String(m.text || '').length + LINE_OVERHEAD, 0);
   const approxTokens = Math.ceil((head.length + historyChars) / CHARS_PER_TOKEN);
   const budgetTokens = Math.max(1, ctx - maxLen);

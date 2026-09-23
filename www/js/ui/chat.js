@@ -1,9 +1,17 @@
 // www/js/ui/chat.js
 // Pantalla de chat: burbujas, streaming, avatar en 3 modos, composer, menú.
 
-import { getChat, getChatMessages, saveChatMessages, getCharacter, saveCharacter, getSettings, markChatExported } from '../state.js';
-import { generateReply } from '../api/kobold.js';
+import { getChat, getChatMessages, saveChatMessages, getCharacter, saveCharacter, getSettings, markChatExported, saveCharacterLorebook, markChatLorebookProgress } from '../state.js';
+import { generateReply, completeOnce } from '../api/kobold.js';
 import { initialMessages, scenarioGreeting, estimateContextUsage } from '../api/prompt.js';
+import {
+  shouldUpdateLorebook,
+  buildExtractionPrompt,
+  parseExtractionResponse,
+  sanitizeLoreEntries,
+  LOREBOOK_UPDATE_EVERY_MESSAGES,
+  LOREBOOK_EXTRACT_TEMP,
+} from '../api/lorebook.js';
 import { openSettings } from './settings.js';
 import { formatMessage } from './format.js';
 import { makeAvatar } from '../cards/avatar.js';
@@ -531,6 +539,101 @@ async function persistChat() {
     return;
   }
   maybeAutoBackup();
+  maybeUpdateLorebook();
+}
+
+/* ---------- lorebook automático (docs/NOTES.md, "Lorebook por personaje") ---------- */
+
+// Evita disparar dos actualizaciones de lorebook superpuestas (p. ej. dos
+// mensajes seguidos que cruzan el umbral antes de que termine la primera).
+let lorebookUpdateInFlight = false;
+
+// Cada LOREBOOK_UPDATE_EVERY_MESSAGES mensajes nuevos de ESTE chat, le pide
+// al propio servidor del usuario (mismo KoboldCpp de siempre, una llamada
+// de una sola vez sin streaming) que actualice el lorebook del PERSONAJE a
+// partir de los mensajes nuevos. El lorebook es del personaje, no del chat:
+// se comparte entre todos sus chats (así el personaje "recuerda" lo mismo
+// sin importar en cuál chat se estableció), pero el progreso de disparo
+// (`chat.lorebookMessageCount`) es por chat, porque cada chat recibe
+// mensajes nuevos por su cuenta. Mejor esfuerzo total, como
+// `maybeAutoBackup()`: nunca bloquea el chat, nunca lanza, nunca le muestra
+// nada al usuario si falla.
+//
+// Decisión de diseño (los modelos locales chicos generan JSON poco
+// confiable, ver api/lorebook.js): si el servidor responde pero el texto no
+// se puede parsear como lorebook, igual se avanza `lorebookMessageCount` al
+// tamaño actual del chat. La alternativa (dejarlo sin avanzar) reintentaría
+// en cada mensaje siguiente reenviando una ventana de mensajes cada vez más
+// grande contra un modelo que ya mostró que no sabe seguir el formato
+// pedido — así, en cambio, se pierde esa ventana puntual de memoria pero no
+// se entra en un reintento sin fin. Si en cambio falla la llamada en sí
+// (red, servidor caído), no se avanza el contador: ahí sí vale la pena
+// reintentar pronto, apenas el servidor vuelva a responder.
+async function maybeUpdateLorebook() {
+  if (lorebookUpdateInFlight) return;
+  if (!character || !chat || !settings) return;
+  if (!shouldUpdateLorebook(chat, messages.length)) return;
+
+  const targetChatId = chat.id;
+  const targetCharacterId = character.id;
+  const targetCount = messages.length;
+  const baseLorebook = character.lorebook || [];
+  const newMessages = messages.slice(chat.lorebookMessageCount || 0);
+
+  lorebookUpdateInFlight = true;
+  try {
+    const prompt = buildExtractionPrompt(character, settings, newMessages, baseLorebook);
+    const raw = await completeOnce(prompt, settings, { temp: LOREBOOK_EXTRACT_TEMP });
+    const parsed = parseExtractionResponse(raw);
+    const lorebook = parsed ? sanitizeLoreEntries(parsed, baseLorebook) : baseLorebook;
+    const updatedCharacter = await saveCharacterLorebook(targetCharacterId, lorebook);
+    const updatedChat = await markChatLorebookProgress(targetChatId, targetCount);
+    if (character && character.id === targetCharacterId) character = updatedCharacter;
+    if (chat && chat.id === targetChatId) chat = updatedChat;
+  } catch (err) {
+    // Mejor esfuerzo: se reintenta solo cuando el umbral se vuelva a cumplir.
+  } finally {
+    lorebookUpdateInFlight = false;
+  }
+}
+
+function openLorebookSheet() {
+  const wrap = document.createElement('div');
+  const title = document.createElement('h3');
+  title.className = 'sheet__title';
+  title.textContent = character ? `Lorebook de ${character.name}` : 'Lorebook';
+  wrap.appendChild(title);
+
+  const entries = (character && character.lorebook) || [];
+  if (!entries.length) {
+    const hint = document.createElement('div');
+    hint.className = 'field__hint';
+    hint.textContent = `Todavía no hay entradas. Se generan solas a medida que avanza la conversación ` +
+      `en cualquiera de tus chats con este personaje (cada ~${LOREBOOK_UPDATE_EVERY_MESSAGES} mensajes).`;
+    wrap.appendChild(hint);
+  } else {
+    entries
+      .slice()
+      .sort((a, b) => (b.updated || 0) - (a.updated || 0))
+      .forEach((entry) => {
+        const field = document.createElement('div');
+        field.className = 'field';
+
+        const label = document.createElement('div');
+        label.className = 'field__label';
+        label.textContent = entry.content;
+        field.appendChild(label);
+
+        const hint = document.createElement('div');
+        hint.className = 'field__hint';
+        hint.textContent = (entry.keys || []).join(', ');
+        field.appendChild(hint);
+
+        wrap.appendChild(field);
+      });
+  }
+
+  app.openSheet(wrap);
 }
 
 /* ---------- barra superior ---------- */
@@ -594,6 +697,15 @@ function onMenu() {
     app.navigate('chats', { characterId: chat.characterId });
   });
   wrap.appendChild(backToChatsBtn);
+
+  const lorebookBtn = document.createElement('button');
+  lorebookBtn.type = 'button';
+  lorebookBtn.className = 'menu-item';
+  lorebookBtn.textContent = 'Ver lorebook';
+  lorebookBtn.addEventListener('click', () => {
+    openLorebookSheet();
+  });
+  wrap.appendChild(lorebookBtn);
 
   if (character && character.card.alternate_greetings && character.card.alternate_greetings.length && isOnlyGreeting()) {
     const greetBtn = document.createElement('button');

@@ -159,20 +159,29 @@ cronológica. Resumen de alto nivel para orientarte rápido:
   las rechazó.
 - Formato de prompt por defecto: "plantilla del modelo" (`mode: 'chat'`),
   no "texto simple" — al usuario le daba peor resultado de roleplay.
-- **Encargo en curso, con su propio contrato dedicado**:
-  `docs/CONTRACT-LOREBOOK.md` — subsistema de memoria/lorebook que se
-  autoactualiza cada N mensajes (30–50) a partir del log de cada chat. Si
-  ese trabajo todavía no se hizo cuando arrancás, es probablemente lo más
-  importante que el usuario quiere a continuación — confirmá con él antes
-  de asumir otra prioridad.
+- **Subsistema de memoria/lorebook** (`docs/CONTRACT-LOREBOOK.md`):
+  implementado — disparo automático cada 40 mensajes de un chat, extracción
+  vía el propio KoboldCpp del usuario, inyección acotada por keyword en el
+  prompt, vista de solo lectura en el menú del chat. El lorebook es **por
+  personaje**, no por chat (compartido entre todos sus chats) — decisión
+  del contrato original cambiada a pedido explícito del usuario, ver
+  "Cambio de diseño: lorebook por personaje, no por chat" en
+  `docs/NOTES.md`. Ver también la sección "Subsistema de memoria/lorebook
+  automático" (más arriba en el mismo archivo) para el resto de las
+  decisiones tomadas. Pendiente real que queda de esa entrega: editar
+  entradas a mano (hoy es solo lectura) y la "memoria curada" del punto 1
+  del roadmap más abajo.
 
-95 tests automáticos a la fecha de este documento (`node --test tests/*.test.mjs`).
+137 tests automáticos a la fecha de esta edición (`node --test tests/*.test.mjs`).
 
 ## 6. Pendientes conocidos (no son bugs, son trabajo no empezado)
 
-- El subsistema de memoria/lorebook (`docs/CONTRACT-LOREBOOK.md`).
+- Editar/borrar a mano entradas del lorebook automático (hoy es de solo
+  lectura — ver `docs/NOTES.md`, sección del lorebook).
 - Probar en un APK real (no solo navegador): el fix de exportación a
-  `Directory.DOCUMENTS`, el respaldo automático, el bloqueo con PIN.
+  `Directory.DOCUMENTS`, el respaldo automático, el bloqueo con PIN, y
+  ahora también el disparo automático del lorebook (no se probó contra un
+  servidor KoboldCpp real en esta sesión).
 - Buscador dentro de un chat largo (idea validada por el usuario como
   buena, sin implementar).
 - Ajustes de IA (temperatura/longitud) por personaje o por chat en vez de
@@ -196,8 +205,9 @@ haya pedido en esa conversación puntual**.
 2. **`character.card.character_book` como puente hacia el proyecto de
    worldbook del usuario.** Ese campo existe desde el contrato original,
    reservado y sin usar. El lorebook automático de este proyecto (por
-   chat) es distinto y no debe pisarlo — pero el día que el proyecto de
-   worldbook externo exista, probablemente va a querer tanto leer como
+   personaje, ver `docs/NOTES.md`) es distinto y no debe pisarlo — pero el
+   día que el proyecto de worldbook externo exista, probablemente va a
+   querer tanto leer como
    escribir lore relacionado con los personajes de Companion. Pensá en
    mantener el formato de las entradas compatible con Tavern world info
    para que ese puente sea fácil el día que haga falta.
@@ -220,6 +230,19 @@ haya pedido en esa conversación puntual**.
    personajes, lista de chats) se queden cortas. Buscador dentro de un
    chat, y probablemente tags/favoritos en el hub, van a dejar de ser
    "buena idea" y pasar a ser necesarios.
+6. **Portabilidad de hardware/plataforma y salud del pipeline de build.**
+   Ver `docs/NOTES.md`, sección "Portabilidad y calidad a futuro
+   (2026-09-23)" para el detalle completo: modularidad ya lograda para
+   cambiar de servidor/modelo (todo el fetch vive en `kobold.js`), qué
+   haría falta para portar a iOS con Capacitor, la causa raíz confirmada de
+   por qué cada APK nueva exige desinstalar la anterior (keystore de
+   depuración que se regenera en cada build de GitHub Actions — con el
+   arreglo ya identificado, no implementado), la política de "developer
+   verification" de Google para sideloading (a vigilar, cambia con el
+   tiempo), y una lista de mejoras de calidad/profesionalismo sugeridas
+   (gate de tests en el CI, mostrar versión en la UI, pantalla de
+   respaldos, temas/skins alternativos aprovechando que `tokens.css`
+   centraliza los colores, diagnóstico exportable).
 
 ## 8. Reglas técnicas que siguen vigentes
 

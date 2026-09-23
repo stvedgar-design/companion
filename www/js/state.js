@@ -18,6 +18,15 @@
  */
 
 /**
+ * @typedef {Object} LoreEntry  Ver también www/js/api/lorebook.js.
+ * @property {string} id
+ * @property {string[]} keys        // palabras/frases que activan esta entrada
+ * @property {string} content       // el hecho en sí, en texto plano, conciso
+ * @property {number} updated       // ms desde epoch
+ * @property {'auto'|'manual'} source  // 'auto' = generado por el lorebook automático
+ */
+
+/**
  * @typedef {Object} Character
  * @property {string} id
  * @property {string} name
@@ -25,6 +34,8 @@
  * @property {Card} card
  * @property {'none'|'mini'|'large'} avatarMode
  * @property {number} created
+ * @property {LoreEntry[]} lorebook  // memoria de largo plazo autogenerada de ESTE personaje,
+ *   compartida entre todos sus chats (ver docs/NOTES.md, "Lorebook por personaje")
  */
 
 /**
@@ -37,6 +48,8 @@
  * @property {number} updated
  * @property {string} last         // vista previa del último mensaje de este chat
  * @property {number} lastExportAt // reservado para exportación automática de log
+ * @property {number} lorebookMessageCount  // mensajes de ESTE chat ya usados para actualizar
+ *   el lorebook (compartido) del personaje — marcador de progreso, no guarda entradas
  */
 
 /**
@@ -114,6 +127,35 @@ function previewLast(messages) {
   return text;
 }
 
+// Valida una entrada de lorebook suelta (p. ej. al cargar un personaje
+// guardado por una versión anterior, o al importar un backup ajeno).
+// Descarta lo que no tenga la forma esperada en vez de dejar pasar basura
+// al prompt real.
+function sanitizeLoreEntry(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const content = typeof raw.content === 'string' ? raw.content.trim() : '';
+  if (!content) return null;
+  const keys = Array.isArray(raw.keys) ? raw.keys.map((k) => String(k || '')).filter(Boolean) : [];
+  if (!keys.length) return null;
+  return {
+    id: typeof raw.id === 'string' && raw.id ? raw.id : ('l' + Math.random().toString(36).slice(2, 10)),
+    keys,
+    content,
+    updated: Number.isFinite(raw.updated) ? raw.updated : Date.now(),
+    source: raw.source === 'manual' ? 'manual' : 'auto',
+  };
+}
+
+// Asegura que un Character tenga un `lorebook` válido (personajes guardados
+// antes de esta feature no lo tienen todavía). No toca el resto del objeto:
+// a diferencia de sanitizeChat(), el resto de los campos de Character no se
+// validan acá (nunca se validaron, no es parte de esta feature).
+function sanitizeCharacterLorebook(raw) {
+  if (!raw || typeof raw !== 'object') return raw;
+  const lorebook = Array.isArray(raw.lorebook) ? raw.lorebook.map(sanitizeLoreEntry).filter(Boolean) : [];
+  return { ...raw, lorebook };
+}
+
 function sanitizeChat(raw) {
   if (!raw || typeof raw !== 'object') return null;
   if (typeof raw.id !== 'string' || !raw.id) return null;
@@ -128,6 +170,7 @@ function sanitizeChat(raw) {
     updated: Number.isFinite(raw.updated) ? raw.updated : now,
     last: typeof raw.last === 'string' ? raw.last : '',
     lastExportAt: Number.isFinite(raw.lastExportAt) ? raw.lastExportAt : 0,
+    lorebookMessageCount: Number.isFinite(raw.lorebookMessageCount) ? raw.lorebookMessageCount : 0,
   };
 }
 
@@ -166,12 +209,12 @@ export function createState(backend) {
 
   async function listCharacters() {
     const all = await backend.getAll('characters');
-    return all.slice().sort((a, b) => (b.updated || 0) - (a.updated || 0));
+    return all.map(sanitizeCharacterLorebook).sort((a, b) => (b.updated || 0) - (a.updated || 0));
   }
 
   async function getCharacter(id) {
     const found = await backend.get('characters', id);
-    return found || null;
+    return found ? sanitizeCharacterLorebook(found) : null;
   }
 
   async function saveCharacter(character) {
@@ -180,6 +223,18 @@ export function createState(backend) {
     }
     await backend.put('characters', character.id, character);
     return character;
+  }
+
+  // Persiste el lorebook autogenerado de un personaje (ver docs/NOTES.md,
+  // "Lorebook por personaje", y www/js/api/lorebook.js). Es compartido por
+  // todos los chats de ese personaje — a diferencia del progreso de disparo
+  // (`chat.lorebookMessageCount`), que es por chat.
+  async function saveCharacterLorebook(characterId, lorebook) {
+    const character = await getCharacter(characterId);
+    if (!character) throw new Error('El personaje no existe.');
+    const updated = sanitizeCharacterLorebook({ ...character, lorebook });
+    await backend.put('characters', characterId, updated);
+    return updated;
   }
 
   async function deleteCharacter(id) {
@@ -258,6 +313,18 @@ export function createState(backend) {
     const chat = await getChat(chatId);
     if (!chat) throw new Error('El chat no existe.');
     const updated = { ...chat, lastExportAt: Date.now() };
+    await backend.put('chatMeta', chatId, updated);
+    return updated;
+  }
+
+  // Marca cuántos mensajes de ESTE chat ya se usaron para actualizar el
+  // lorebook (compartido) de su personaje — ver `lorebookMessageCount` en
+  // el typedef `Chat` y `saveCharacterLorebook()` más arriba, que es donde
+  // se guardan las entradas en sí.
+  async function markChatLorebookProgress(chatId, lorebookMessageCount) {
+    const chat = await getChat(chatId);
+    if (!chat) throw new Error('El chat no existe.');
+    const updated = { ...chat, lorebookMessageCount: Number(lorebookMessageCount) || 0 };
     await backend.put('chatMeta', chatId, updated);
     return updated;
   }
@@ -387,6 +454,7 @@ export function createState(backend) {
     listCharacters,
     getCharacter,
     saveCharacter,
+    saveCharacterLorebook,
     deleteCharacter,
     listChats,
     getChat,
@@ -395,6 +463,7 @@ export function createState(backend) {
     createChat,
     renameChat,
     markChatExported,
+    markChatLorebookProgress,
     deleteChat,
     migrateLegacyChats,
     exportBackup,
@@ -507,6 +576,7 @@ export const saveSettings = (...args) => getDefaultInstance().saveSettings(...ar
 export const listCharacters = (...args) => getDefaultInstance().listCharacters(...args);
 export const getCharacter = (...args) => getDefaultInstance().getCharacter(...args);
 export const saveCharacter = (...args) => getDefaultInstance().saveCharacter(...args);
+export const saveCharacterLorebook = (...args) => getDefaultInstance().saveCharacterLorebook(...args);
 export const deleteCharacter = (...args) => getDefaultInstance().deleteCharacter(...args);
 export const listChats = (...args) => getDefaultInstance().listChats(...args);
 export const getChat = (...args) => getDefaultInstance().getChat(...args);
@@ -515,6 +585,7 @@ export const saveChatMessages = (...args) => getDefaultInstance().saveChatMessag
 export const createChat = (...args) => getDefaultInstance().createChat(...args);
 export const renameChat = (...args) => getDefaultInstance().renameChat(...args);
 export const markChatExported = (...args) => getDefaultInstance().markChatExported(...args);
+export const markChatLorebookProgress = (...args) => getDefaultInstance().markChatLorebookProgress(...args);
 export const deleteChat = (...args) => getDefaultInstance().deleteChat(...args);
 export const migrateLegacyChats = (...args) => getDefaultInstance().migrateLegacyChats(...args);
 export const exportBackup = (...args) => getDefaultInstance().exportBackup(...args);

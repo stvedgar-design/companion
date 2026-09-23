@@ -122,6 +122,7 @@ test('createChat crea un chat vacío ligado al personaje', async () => {
   assert.equal(chat.scenario, 'En un café');
   assert.equal(chat.last, '');
   assert.equal(chat.lastExportAt, 0);
+  assert.equal(chat.lorebookMessageCount, 0);
 
   const fetched = await state.getChat(chat.id);
   assert.deepEqual(fetched, chat);
@@ -194,6 +195,112 @@ test('renameChat cambia el título sin tocar los mensajes', async () => {
 
   const messages = await state.getChatMessages(chat.id);
   assert.equal(messages.length, 1);
+});
+
+// ---------- lorebook automático por personaje (docs/NOTES.md) ----------
+
+test('saveCharacterLorebook guarda las entradas del personaje', async () => {
+  const state = createState(createMemoryBackend());
+  await state.saveCharacter(makeCharacter({ id: 'x' }));
+
+  const lorebook = [{ id: 'l1', keys: ['café'], content: 'Se conocieron en un café.', updated: 1, source: 'auto' }];
+  const updated = await state.saveCharacterLorebook('x', lorebook);
+  assert.deepEqual(updated.lorebook, lorebook);
+
+  const fetched = await state.getCharacter('x');
+  assert.deepEqual(fetched.lorebook, lorebook);
+});
+
+test('saveCharacterLorebook contra un personaje inexistente lanza', async () => {
+  const state = createState(createMemoryBackend());
+  await assert.rejects(() => state.saveCharacterLorebook('no-existe', []));
+});
+
+test('el lorebook de un personaje es compartido entre todos sus chats', async () => {
+  const state = createState(createMemoryBackend());
+  await state.saveCharacter(makeCharacter({ id: 'x' }));
+  const a = await state.createChat('x', { title: 'A' });
+  const b = await state.createChat('x', { title: 'B' });
+
+  const lorebook = [{ id: 'l1', keys: ['tema'], content: 'Un hecho compartido.', updated: 1, source: 'auto' }];
+  await state.saveCharacterLorebook('x', lorebook);
+
+  // Da igual desde qué chat se actualizó: lo ve cualquier chat del mismo personaje.
+  assert.equal(a.characterId, 'x');
+  assert.equal(b.characterId, 'x');
+  const character = await state.getCharacter('x');
+  assert.deepEqual(character.lorebook, lorebook);
+});
+
+test('markChatLorebookProgress avanza lorebookMessageCount de ese chat, sin tocar otros chats', async () => {
+  const state = createState(createMemoryBackend());
+  await state.saveCharacter(makeCharacter({ id: 'x' }));
+  const a = await state.createChat('x', { title: 'A' });
+  const b = await state.createChat('x', { title: 'B' });
+
+  const updated = await state.markChatLorebookProgress(a.id, 40);
+  assert.equal(updated.lorebookMessageCount, 40);
+
+  const fetchedA = await state.getChat(a.id);
+  assert.equal(fetchedA.lorebookMessageCount, 40);
+  const fetchedB = await state.getChat(b.id);
+  assert.equal(fetchedB.lorebookMessageCount, 0); // otro chat del mismo personaje no se toca
+});
+
+test('markChatLorebookProgress contra un chat inexistente lanza', async () => {
+  const state = createState(createMemoryBackend());
+  await assert.rejects(() => state.markChatLorebookProgress('no-existe', 40));
+});
+
+test('un personaje guardado antes de esta feature (sin lorebook) sigue cargando con valores por defecto seguros', async () => {
+  const backend = createMemoryBackend();
+  const state = createState(backend);
+  // Simula un personaje guardado por una versión anterior de la app: sin `lorebook`.
+  backend._raw.characters.set('viejo', {
+    id: 'viejo', name: 'Viejo', avatar: '',
+    card: { name: 'Viejo', description: '', personality: '', scenario: '', first_mes: '', mes_example: '', system_prompt: '', post_history_instructions: '', alternate_greetings: [], character_book: null },
+    avatarMode: 'mini', created: 1,
+  });
+
+  const character = await state.getCharacter('viejo');
+  assert.deepEqual(character.lorebook, []);
+
+  const list = await state.listCharacters();
+  assert.deepEqual(list[0].lorebook, []);
+});
+
+test('un chat guardado antes de esta feature (sin lorebookMessageCount) sigue cargando con valores por defecto seguros', async () => {
+  const backend = createMemoryBackend();
+  const state = createState(backend);
+  await state.saveCharacter(makeCharacter({ id: 'x' }));
+  backend._raw.chatMeta.set('viejo', {
+    id: 'viejo', characterId: 'x', title: '', scenario: '',
+    created: 1, updated: 1, last: '', lastExportAt: 0,
+  });
+
+  const chat = await state.getChat('viejo');
+  assert.equal(chat.lorebookMessageCount, 0);
+});
+
+test('getCharacter descarta entradas de lorebook con forma inválida en vez de romperse', async () => {
+  const backend = createMemoryBackend();
+  const state = createState(backend);
+  backend._raw.characters.set('x', {
+    id: 'x', name: 'X', avatar: '',
+    card: { name: 'X', description: '', personality: '', scenario: '', first_mes: '', mes_example: '', system_prompt: '', post_history_instructions: '', alternate_greetings: [], character_book: null },
+    avatarMode: 'mini', created: 1,
+    lorebook: [
+      { id: 'ok', keys: ['a'], content: 'Válida', updated: 1, source: 'auto' },
+      { id: 'sin-keys', keys: [], content: 'Sin keys' },
+      { id: 'sin-content', keys: ['b'], content: '' },
+      'no es un objeto',
+      null,
+    ],
+  });
+
+  const character = await state.getCharacter('x');
+  assert.equal(character.lorebook.length, 1);
+  assert.equal(character.lorebook[0].content, 'Válida');
 });
 
 test('deleteChat borra un chat sin afectar a los demás del mismo personaje', async () => {

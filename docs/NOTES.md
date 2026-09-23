@@ -261,18 +261,284 @@ pueda retomar sin perder el hilo:
   datos, extracción vía el propio KoboldCpp del usuario, inyección
   acotada en el prompt.
 
+## Subsistema de memoria/lorebook automático (2026-09-23)
+
+Implementado completo según `docs/CONTRACT-LOREBOOK.md`. Resumen de qué se
+hizo y las decisiones tomadas en los puntos marcados `[TU CRITERIO]` en ese
+contrato:
+
+- **Nuevo `www/js/api/lorebook.js`**: módulo puro (sin DOM, sin fetch).
+  `LOREBOOK_UPDATE_EVERY_MESSAGES = 40` (dentro del rango sugerido, sin
+  razón para desviarse). `LOREBOOK_MAX_ENTRIES = 24`,
+  `LOREBOOK_MAX_ENTRY_CHARS = 320`, `LOREBOOK_INJECT_CHAR_BUDGET = 1000`
+  caracteres inyectados por turno (~300 tokens), `LOREBOOK_SCAN_LAST_MESSAGES = 3`,
+  `LOREBOOK_EXTRACT_TEMP = 0.3`. Funciones: `shouldUpdateLorebook`,
+  `buildExtractionPrompt`, `parseExtractionResponse` (JSON directo → bloque
+  `[...]`/`{...}` balanceado dentro del texto → `null` si nada sirve, nunca
+  lanza), `sanitizeLoreEntries` (valida forma, trunca, dedupea por
+  contenido, tope de cantidad), `selectLoreEntries` (keyword matching
+  contra los últimos mensajes, estilo World Info, con tope de caracteres),
+  `formatLoreBlock`.
+- **`state.js`**: `Chat` suma `lorebook: LoreEntry[]` (`[]` por defecto) y
+  `lorebookMessageCount: number` (`0` por defecto) — chats guardados antes
+  de este cambio siguen cargando sin romperse (`sanitizeChat` les aplica
+  los valores por defecto, y además valida cada entrada de lorebook
+  individual por si un backup externo trae algo corrupto). Nueva
+  `saveChatLorebook(chatId, lorebook, lorebookMessageCount)`, mismo patrón
+  que `renameChat`/`markChatExported`.
+- **`kobold.js`**: nueva `completeOnce(prompt, settings, opts)` — completado
+  de una sola vez sin streaming contra `/api/v1/generate`, para la
+  extracción de lorebook, con su propia `temp` (independiente de
+  `settings.temp`) y un timeout de 2 minutos (más tolerante que las
+  llamadas de chat normales: corre en segundo plano, sin que el usuario
+  esté esperando). `generateReply()` ahora arma `loreBlock` con
+  `selectLoreEntries`/`formatLoreBlock` a partir de `chat.lorebook` y se lo
+  pasa a `buildPlainPrompt`/`buildChatMessages` (y al respaldo sin
+  streaming).
+- **`prompt.js`**: `headBlock`, `buildPlainPrompt`, `buildChatMessages` y
+  `estimateContextUsage` suman un parámetro `loreBlock` (string, `''` por
+  defecto) que se inyecta justo debajo del bloque `Scenario:` cuando no
+  está vacío. Ver `docs/CONTRACTS.md` §5, actualizado con estas firmas.
+- **`chat.js`**: `maybeUpdateLorebook()`, enganchada en `persistChat()` al
+  lado de `maybeAutoBackup()` — mismo estilo "mejor esfuerzo total": nunca
+  bloquea, nunca lanza, nunca le muestra nada al usuario si falla. Nueva
+  entrada de menú (⋮) "Ver lorebook" con una hoja de solo lectura (contenido
+  + keys de cada entrada, ordenadas por más reciente) — cumple el mínimo
+  pedido por el contrato §4.6; editar/borrar a mano queda pendiente (ver
+  más abajo).
+- **Decisión sobre reintentos fallidos** (el contrato dejaba elegir): si
+  `completeOnce()` responde pero el texto no se puede parsear como
+  lorebook, `lorebookMessageCount` **se avanza igual** (se pierde esa
+  ventana puntual de memoria, pero no se reintenta en cada mensaje
+  siguiente reenviando un historial cada vez más grande contra un modelo
+  que ya mostró que no sabe seguir el formato). Si en cambio falla la
+  llamada en sí (red, servidor apagado), el contador **no avanza** — ahí sí
+  conviene reintentar pronto. Ver el comentario junto a `maybeUpdateLorebook()`
+  en `chat.js`.
+- **Merge de entradas**: el prompt de extracción ya le pide al modelo el
+  lorebook completo actualizado (nuevas + vigentes, sin las que se
+  contradijeron), así que `sanitizeLoreEntries()` no intenta fusionar con
+  lo anterior — solo valida, trunca y dedupea por seguridad. La única
+  excepción son las entradas `source:'manual'`, que esta función nunca
+  toca ni descarta (hoy no hay forma de crearlas — es una previsión para
+  cuando exista la "memoria curada" del roadmap, sección siguiente).
+- **Cobertura de las 4 categorías que pidió el usuario** (identidad de
+  usuario/personaje, momentos compartidos, gustos/percepciones, estado de
+  la relación): están en el prompt de extracción como guía, no como
+  estructura rígida — el esquema de datos sigue siendo el `LoreEntry` plano
+  del contrato (compatible con Tavern world info), sin campos de categoría
+  separados, para no romper ese formato de intercambio pensado para el
+  proyecto de worldbook externo del usuario. Ver la nota de alcance más
+  abajo sobre el "estado de la relación" en particular.
+- Tests nuevos: `tests/lorebook.test.mjs` (23 tests, cubre todo lo puro del
+  módulo) + tests sumados a `state.test.mjs` (incluido uno que verifica que
+  un chat guardado sin `lorebook` sigue cargando bien), `prompt.test.mjs` y
+  `kobold.test.mjs` (incluida la inyección real vía `generateReply` y
+  `completeOnce` contra un servidor de prueba, más tests actualizados tras
+  el cambio a lorebook por personaje descrito más abajo). 137 tests en
+  total ahora.
+  No se probó contra un servidor KoboldCpp real (no había uno disponible en
+  esta sesión) — se verificó a mano en el navegador (ver más abajo) con
+  datos de lorebook sembrados directo en IndexedDB, y la lógica de
+  extracción/parseo con mocks en los tests.
+- Verificado a mano en el navegador integrado (375×812, `companion-web`):
+  se sembró un chat con dos entradas de lorebook y se confirmó que el menú
+  (⋮) → "Ver lorebook" las muestra correctamente (contenido + keys). No se
+  probó el disparo automático real (requiere un servidor KoboldCpp
+  respondiendo) ni el APK nativo.
+
+**Nota de alcance sobre la visión original del usuario** (memoria tipo
+Nomi AI: identidad, momentos compartidos, preferencias/percepciones,
+estado de la relación — ver su mensaje pidiendo este trabajo): las primeras
+tres categorías encajan bien con la inyección por keyword ya decidida en el
+contrato (una anécdota o un gusto se mencionan y ahí matchea). El "estado de
+la relación" es distinto: es la categoría que más se beneficiaría de estar
+*siempre* presente en el prompt, no solo cuando una palabra clave la
+dispara — pero el contrato fija deliberadamente la inyección por keyword
+(nunca "meter todo siempre") para no comerse el presupuesto de contexto ya
+ajustado del usuario, y esa restricción sigue siendo la correcta con
+hardware limitado. No se resolvió con una excepción especial para no
+complicar el mecanismo de inyección sin que el usuario lo pida — queda
+anotado acá como una tensión real entre la visión original y la
+implementación, no resuelta unilateralmente.
+
+**Pendiente para más adelante** (no bloqueante, no pedido en este encargo):
+editar/borrar entradas de lorebook a mano (hoy son de solo lectura), y la
+"memoria curada" del roadmap (`docs/CONTRACT-HANDOFF.md` §7.1) que dejaría
+fijar hechos a mano (`source:'manual'`, ya soportado por el esquema aunque
+hoy nada lo genera) — y, si el usuario todavía quiere el dashboard visual
+por personaje que mencionó, es una pantalla nueva aparte de este encargo
+(el contrato solo pedía una vista mínima de solo lectura).
+
+### Cambio de diseño: lorebook por personaje, no por chat (2026-09-23)
+
+El contrato original (`docs/CONTRACT-LOREBOOK.md` §4.1) fijaba el lorebook
+**por chat**, explícitamente dejando la alternativa "por personaje" como
+algo a validar con el usuario antes de decidirlo. El usuario la validó y
+pidió el cambio en la misma sesión: su objetivo declarado con todo este
+proyecto es acercarse lo más posible a un companion persistente al estilo
+Nomi AI dentro de las limitaciones de su hardware (sin memoria vectorial ni
+nada más pesado) — y para eso, un mismo personaje tiene que "recordar" lo
+mismo sin importar en qué chat se estableció un hecho. Mezclar lore de
+escenarios distintos ya no se consideró un riesgo mayor que ese objetivo.
+
+Cambios técnicos (`www/js/state.js`, `www/js/api/kobold.js`, `www/js/ui/chat.js`):
+
+- `Character` suma `lorebook: LoreEntry[]` (compartido entre todos sus
+  chats). `Chat` ya NO tiene `lorebook`; conserva `lorebookMessageCount`
+  como marcador de *disparo* — cada chat sigue avisando por su cuenta
+  cuándo le tocó cruzar el umbral de mensajes nuevos, pero las entradas que
+  resultan de esa extracción se guardan en el personaje, no en el chat.
+- `state.js`: `saveChatLorebook()` se separó en dos funciones con una sola
+  responsabilidad cada una: `saveCharacterLorebook(characterId, lorebook)`
+  (guarda las entradas) y `markChatLorebookProgress(chatId, count)` (avanza
+  el marcador de ese chat). `getCharacter()`/`listCharacters()` ahora
+  sanean `lorebook` igual que `getChat()` ya saneaba el suyo, así que un
+  personaje guardado antes de este cambio sigue cargando con `lorebook: []`
+  sin romperse.
+- `kobold.js`: `generateReply()` arma el bloque de lorebook a inyectar a
+  partir de `character.lorebook`, no de `chat.lorebook`.
+- `chat.js`: `maybeUpdateLorebook()` lee/actualiza `character.lorebook`
+  (compartido) y `chat.lorebookMessageCount` (del chat actual) por
+  separado; la hoja "Ver lorebook" del menú ahora se titula con el nombre
+  del personaje y lista su lorebook completo, sin importar desde qué chat
+  se abra.
+- No hubo datos reales que migrar: esta feature se implementó y se cambió
+  de diseño dentro de la misma sesión, antes de que ningún chat real
+  acumulara lorebook propio.
+
+## Portabilidad y calidad a futuro (2026-09-23)
+
+El usuario pidió, en su rol de "producto" (no como bug ni feature puntual),
+una lectura de ingeniero sobre qué tan preparada está la app para cambios
+grandes de hardware/plataforma más adelante, y un pulso general de qué
+subiría el "estándar de calidad" del proyecto. Queda anotado acá para no
+repetir el análisis en una sesión futura.
+
+### A) Cambiar de placa de video / usar un modelo más grande
+
+Ya es modular sin cambios: toda la comunicación de red vive en
+`www/js/api/kobold.js`, contra los endpoints estándar de KoboldCpp
+(`/api/v1/model`, `/api/v1/generate`, `/v1/chat/completions`,
+`/api/extra/generate/stream`). Mientras el servidor nuevo siga hablando esa
+misma API (cualquier KoboldCpp más nuevo, y probablemente text-generation-webui
+u otros con modo de compatibilidad OpenAI), un modelo más grande no requiere
+tocar código — `connect()` ya lee el contexto real del modelo
+(`true_max_context_length`) y todo lo demás (prompt, historial, lorebook) se
+adapta a `settings.ctx`. Si el usuario migrara a un servidor con una API
+distinta, el cambio quedaría contenido en ese único archivo, no esparcido
+por la app. Con más contexto disponible también tendría sentido revisar a
+mano las constantes de `lorebook.js` (`LOREBOOK_INJECT_CHAR_BUDGET`,
+`LOREBOOK_MAX_ENTRIES`) — hoy están pensadas para contextos chicos (4-8K).
+
+### B) Portar a iOS
+
+Viable sin reescribir la app: Capacitor soporta iOS como plataforma de
+primera clase igual que Android (`npx cap add ios`), reusando el 100% de
+`www/` tal cual. Lo que sí hace falta, y es trabajo real aunque acotado:
+- Una Mac con Xcode para compilar/firmar (no hay forma de evitarlo; GitHub
+  Actions tiene runners macOS si no se quiere depender de una Mac propia,
+  con menos minutos gratis que los runners Linux).
+- Excepción de ATS (App Transport Security) en `Info.plist` para permitir
+  `http://` hacia el servidor KoboldCpp por Tailscale — el equivalente
+  exacto en iOS del `androidScheme: "http"` que ya se configuró para
+  Android.
+- Los plugins ya usados (`@capacitor/filesystem`, `@capacitor/share`) son
+  multiplataforma — la lógica de `platform.js` debería andar en iOS con
+  cambios menores, no una reescritura.
+- Para uso 100% personal (instalar en su propio iPhone vía Xcode, sin subir
+  nada a la App Store) **no aplica la revisión estricta de Apple** — esa
+  revisión es solo para publicar en la App Store. Sí hace falta una cuenta
+  de Apple Developer (gratuita alcanza para instalar en el propio
+  dispositivo, pero la app deja de funcionar a los 7 días y hay que
+  reinstalarla desde Xcode; la cuenta paga, US$99/año, evita ese límite).
+
+### C) Firma de APKs: por qué reinstalar borra los chats, y cómo arreglarlo
+
+Causa raíz confirmada leyendo `.github/workflows/build-apk.yml`: el
+workflow corre `npx cap add android` en cada build, sobre un runner de
+GitHub Actions que arranca limpio cada vez — no hay ningún `android/`
+versionado en el repo ni un keystore de depuración persistente. Gradle
+genera (o usa) el keystore de depuración desde `~/.android/debug.keystore`,
+que en un runner nuevo **no existe todavía**, así que se crea uno nuevo al
+azar en cada build. Resultado: cada APK queda firmado con una clave
+distinta, y Android trata eso como una app distinta con el mismo nombre —
+por eso exige desinstalar la versión anterior antes de instalar la nueva
+(no es un bug de esta app, es el comportamiento esperado de Android ante
+una firma que cambió).
+
+Arreglo (no implementado todavía, no era prioridad en esta sesión): generar
+un keystore de depuración una sola vez y reusarlo en cada build. El
+keystore de depuración de Android no es sensible (contraseña pública y
+conocida, `android`/`android`, no sirve para firmar nada que vaya a la Play
+Store) — es común y aceptado commitearlo al repo o guardarlo en un secreto
+de GitHub Actions y volcarlo a `~/.android/debug.keystore` (o referenciarlo
+desde `android/app/build.gradle`) antes de `gradlew assembleDebug`. Una vez
+hecho esto, **instalar una APK nueva encima de la vieja actualiza la app
+conservando los datos de IndexedDB**, como cualquier app normal — dejaría
+de hacer falta el export/import manual solo para actualizar de versión.
+
+**Importante mientras tanto**: "Ajustes → Exportar copia" (`exportBackup()`
+en `state.js`) ya guarda personajes, chats Y mensajes completos, no solo
+ajustes — a pesar del nombre del botón. Es la red de seguridad real hoy
+para actualizar de versión sin perder nada; solo hay que acordarse de
+correrlo antes de desinstalar.
+
+### D) Requisito de Google de "developer verification" para sideloading
+
+Google anunció (2025) que a partir de ciertas versiones de Android va a
+exigir que hasta las apps instaladas por fuera de Play Store (sideloading,
+que es como se instala esta app hoy) vengan de un "desarrollador
+verificado", con despliegue gradual por país empezando por unos pocos
+mercados y expandiéndose después. Esto es una política externa en
+movimiento y esta nota puede quedar desactualizada — antes de que el
+usuario cambie de teléfono/versión de Android, conviene chequear el estado
+actual de "Android Developer Verification" en la documentación oficial de
+Google. Si llega a aplicar a su dispositivo, la mitigación conocida es
+registrarse como desarrollador verificado (proceso de identidad, no
+equivale a publicar la app en la Play Store ni a pasar su revisión de
+contenido) — no debería impedir seguir usando una app personal sin
+publicar, pero sí podría agregar un paso de registro que hoy no hace falta.
+
+### Lista de mejoras sugeridas (calidad/profesionalismo, no urgentes)
+
+Pulso general pedido por el usuario para que sus próximos aportes sean
+"más creativos que técnicos". Ninguna de estas se implementó en esta
+sesión — quedan para cuando el usuario las priorice:
+
+- **Gate de tests en el CI**: `build-apk.yml` hoy compila el APK sin correr
+  `node --test` antes. Agregar ese paso es barato y evita que un cambio
+  roto termine instalado en el teléfono real.
+- **Firma de depuración estable** (ver punto C) — la mejora de calidad de
+  vida más concreta y de mayor impacto de esta lista.
+- **Mostrar la versión de la app en algún lado de la UI** (ajustes o
+  splash), para que el usuario sepa si una instalación nueva "prendió" de
+  verdad.
+- **Pantalla para ver los respaldos existentes** (ya estaba en el roadmap
+  de `CONTRACT-HANDOFF.md` §7.4): hoy los respaldos automáticos quedan en
+  `Documents/Companion-backups/` sin ninguna forma de listarlos desde la
+  app.
+- **Editar/borrar entradas de lorebook a mano**, y más adelante "memoria
+  curada" (hechos fijados a mano, ver `CONTRACT-HANDOFF.md` §7.1) — ambos
+  ya anotados como pendientes del encargo de lorebook.
+- **Temas/skins alternativos**: totalmente viable con bajo costo de
+  ingeniería gracias a que `tokens.css` centraliza todos los colores — un
+  segundo archivo de variables (p. ej. estética "glass"/vidrio esmerilado,
+  como la referencia visual que mostró el usuario: botones con
+  `backdrop-filter: blur()`, superficies semitransparentes, colores sólidos
+  de fondo difuminados) + un selector en Ajustes que alterne qué hoja de
+  variables se carga, sin tocar la lógica de ninguna pantalla. Es la
+  puerta de entrada más barata para que el usuario aporte diseño sin tocar
+  JS.
+- **Diagnóstico exportable**: hoy, si la extracción de lorebook falla
+  silenciosamente (a propósito, ver la sección del lorebook más arriba), no
+  hay forma de saber por qué sin abrir las herramientas de desarrollador.
+  Una pantalla simple de "ver el último error" (guardado en memoria, no
+  persistente) ayudaría a diagnosticar problemas reales sin exponer nada al
+  usuario en el flujo normal.
+
 ## Qué NO se ha hecho todavía (pendiente real, no roto)
 
-- **Subsistema de memoria/lorebook automático**: no empezado. Encargo
-  completo en `docs/CONTRACT-LOREBOOK.md` — disparo cada 30–50 mensajes
-  (constante configurable), lorebook por chat (no por personaje, para no
-  mezclar escenarios distintos de un mismo personaje), separado de
-  `character.card.character_book` (ese es lore importado de la card
-  original, de solo lectura para este sistema). El usuario tiene un
-  proyecto aparte, todavía sin construir, que va a consumir estos logs —
-  por eso se evitó deliberadamente el resumen automático de todo el
-  historial sin un estándar claro (ver el contrato para el razonamiento
-  completo).
 - Probar en un APK real (no solo navegador): el fix de exportación a
   `Directory.DOCUMENTS`, el respaldo automático a
   `Documents/Companion-backups/`, y el bloqueo con PIN.

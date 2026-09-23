@@ -126,6 +126,34 @@ test('buildPlainPrompt incluye post_history_instructions entre corchetes, con ma
   assert.ok(prompt.includes('[Recuerda ser breve, Edgar.]'));
 });
 
+// ---------- lorebook automático (docs/CONTRACT-LOREBOOK.md) ----------
+
+test('buildPlainPrompt inyecta el loreBlock en la cabecera cuando se lo pasan', () => {
+  const card = makeCard({ scenario: 'Una torre' });
+  const { prompt } = buildPlainPrompt(card, [], makeSettings(), '', 'Known facts (from memory):\n- Se conocieron en un café.');
+  assert.ok(prompt.includes('Known facts (from memory):\n- Se conocieron en un café.'));
+});
+
+test('buildPlainPrompt no agrega nada si el loreBlock está vacío', () => {
+  const card = makeCard();
+  const { prompt } = buildPlainPrompt(card, [], makeSettings(), '', '');
+  assert.ok(!prompt.includes('Known facts'));
+});
+
+test('buildChatMessages inyecta el loreBlock en el mensaje system', () => {
+  const card = makeCard();
+  const { messages: out } = buildChatMessages(card, [], makeSettings(), '', 'Known facts (from memory):\n- Un hecho.');
+  assert.ok(out[0].content.includes('Known facts (from memory):\n- Un hecho.'));
+});
+
+test('estimateContextUsage suma el loreBlock al estimar', () => {
+  const card = makeCard();
+  const settings = makeSettings();
+  const sinLore = estimateContextUsage(card, [], settings, '');
+  const conLore = estimateContextUsage(card, [], settings, '', 'Known facts (from memory):\n- '.repeat(20));
+  assert.ok(conLore.approxTokens > sinLore.approxTokens);
+});
+
 // ---------- escenario del chat (adenda multi-chat) ----------
 
 test('buildPlainPrompt suma el escenario del chat debajo del de la card, sin reemplazarlo', () => {
