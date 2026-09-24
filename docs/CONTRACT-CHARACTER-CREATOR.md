@@ -30,7 +30,7 @@ se come el presupuesto de contexto (su hardware es limitado, ver
 `docs/CONTRACT-LOREBOOK.md` §3 para el contexto de esa restricción). Como
 punto de partida más chico y seguro, propuso que el personaje se arme a
 partir de **opciones pre-existentes tipo botón/pill** (coherente con el
-lenguaje visual ya establecido — ver `docs/NOTES.md`, secciones de
+lenguaje visual ya establecido — ver `docs/HISTORIAL.md`, secciones de
 Apariencia/skins), en vez de campos de texto libre sin límite.
 
 Pidió, en ese orden: (1) que estudie a fondo la card de Mia para entender
@@ -69,7 +69,7 @@ encargo tiene que preservar.
   directamente "pill-eable"**: una lista de tags elegibles mapea 1 a 1 a
   este formato.
 - **`scenario` está vacío a propósito.** Coherente con la adenda multi-chat
-  ya implementada (`chat.scenario`, ver `docs/NOTES.md`): el escenario vive
+  ya implementada (`chat.scenario`, ver `docs/HISTORIAL.md`): el escenario vive
   por chat, no por personaje, para no mezclar historias distintas del mismo
   personaje. El creador de personajes **no debe pedir un escenario** — eso
   ya tiene su lugar (la pantalla de "Nuevo chat", `chats.js`).
@@ -173,7 +173,7 @@ texto libre en ninguno de los dos):
   ser por personaje o seguir siendo global?) para que el usuario la
   resolviera antes de tocar código. Ya la resolvió: el fondo es **por
   personaje** (`chatBackground*` vive en `Character`, no en `Settings` —
-  ver `docs/NOTES.md`, "Fondo de chat por personaje"), visible solo en los
+  ver `docs/HISTORIAL.md`, "Fondo de chat por personaje"), visible solo en los
   chats de ESE personaje; el resto de la app sigue el fondo del skin activo
   (`www/css/themes.css`). Esto en realidad simplifica este encargo: ahora
   el creador **sí puede** sumar un paso de "elegir fondo" sin ninguna

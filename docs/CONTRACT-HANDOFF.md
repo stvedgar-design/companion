@@ -4,17 +4,20 @@
 > escribió se estaba quedando sin espacio de contexto. Es el punto de
 > partida oficial para **cualquier instancia nueva de Claude Code** que
 > retome este proyecto sin memoria de las sesiones anteriores. Leelo
-> completo antes de tocar código. Después, leé `docs/NOTES.md` (estado
-> real y cronológico del proyecto — manda sobre todo lo demás si hay
-> contradicción) y `docs/CONTRACTS.md` (arquitectura y reglas técnicas
-> originales, parcialmente superadas pero aún la base).
+> completo antes de tocar código. Después, leé `docs/NOTES.md` **completo**
+> (estado vigente, perfil del servidor, principios, registro de contratos y
+> mapa de la historia — manda sobre todo lo demás si hay contradicción) y
+> consultá `docs/CONTRACTS.md` (arquitectura y reglas técnicas originales,
+> parcialmente superadas pero aún la base). `docs/HISTORIAL.md` (toda la
+> historia detallada) es **solo bajo demanda**: no lo leas entero.
 
 ## 0. Punto de partida rápido (si solo vas a leer una sección)
 
 Estado al 2026-09-23, escrito asumiendo que la conversación anterior pudo
 ser la última con contexto completo:
 
-- La app está **estable y con los 144 tests en verde**. Todo lo pedido hasta
+- La app está **estable y con los tests en verde** (número vigente en
+  `docs/NOTES.md`, "Estado vigente"). Todo lo pedido hasta
   ahora está implementado, commiteado y pusheado a `main` (el push dispara
   el build del APK en GitHub Actions). Si `git status` te muestra cambios
   sin commitear al arrancar, no son tuyos: preguntale al usuario antes de
@@ -34,11 +37,14 @@ ser la última con contexto completo:
 - **Flujo de trabajo que funcionó**: para una feature nueva y grande →
   primero un documento `docs/CONTRACT-*.md` con análisis + recomendación, y
   esperar confirmación; para ajustes/bugs/pedidos claros → implementar,
-  verificar en el navegador, actualizar `docs/NOTES.md`, commit y push
+  verificar en el navegador, actualizar la documentación (`docs/NOTES.md` y `docs/HISTORIAL.md`), commit y push
   (el usuario autorizó el push habitual en esta línea de trabajo, pero
   nunca `--force`).
-- **Dónde está cada cosa**: `docs/NOTES.md` = historia y decisiones
-  detalladas (manda si hay contradicción); `docs/DESIGN.md` = tokens de
+- **Orden de lectura (DOC-003):** este archivo (secciones 0, 3 y 4) y luego
+  `docs/NOTES.md` completo; `docs/HISTORIAL.md` solo bajo demanda.
+- **Dónde está cada cosa**: `docs/NOTES.md` = estado vigente, principios y
+  registro de contratos (manda si hay contradicción); `docs/HISTORIAL.md` =
+  historia y decisiones detalladas; `docs/DESIGN.md` = tokens de
   diseño; `docs/CONTRACT-LOREBOOK.md` y `docs/CONTRACT-CHARACTER-CREATOR.md`
   = encargos específicos; `docs/examples/` = cards de referencia.
 
@@ -157,9 +163,9 @@ hizo `push --force` sobre el remoto de GitHub para reemplazar el commit
    solo se hace con confirmación explícita del usuario para ese caso
    puntual, nunca por costumbre.
 
-## 5. Qué existe hoy (resumen — el detalle real está en `docs/NOTES.md`)
+## 5. Qué existe hoy (resumen — el detalle real está en `docs/NOTES.md` y `docs/HISTORIAL.md`)
 
-No dupliques acá lo que `docs/NOTES.md` ya cuenta con precisión
+No dupliques acá lo que `docs/NOTES.md` y `docs/HISTORIAL.md` ya cuentan con precisión
 cronológica. Resumen de alto nivel para orientarte rápido:
 
 - Los 6 módulos base del contrato original (`docs/CONTRACTS.md`):
@@ -199,8 +205,8 @@ cronológica. Resumen de alto nivel para orientarte rápido:
   personaje**, no por chat (compartido entre todos sus chats) — decisión
   del contrato original cambiada a pedido explícito del usuario, ver
   "Cambio de diseño: lorebook por personaje, no por chat" en
-  `docs/NOTES.md`. Ver también la sección "Subsistema de memoria/lorebook
-  automático" (más arriba en el mismo archivo) para el resto de las
+  `docs/HISTORIAL.md`. Ver también la sección "Subsistema de memoria/lorebook
+  automático" (en el mismo archivo) para el resto de las
   decisiones tomadas. Pendiente real que queda de esa entrega: editar
   entradas a mano (hoy es solo lectura) y la "memoria curada" del punto 1
   del roadmap más abajo.
@@ -218,7 +224,7 @@ cronológica. Resumen de alto nivel para orientarte rápido:
   combinación skin+modo es un bloque completo en `www/css/themes.css`
   (reemplazó a `theme-glass.css`, que se borró). Tres skins (Nomi/Glass/
   iMessage) × dos modos (oscuro/claro) = 6 combinaciones. Ver
-  "Rearquitectura del sistema de skins" en `docs/NOTES.md` para el detalle
+  "Rearquitectura del sistema de skins" en `docs/HISTORIAL.md` para el detalle
   completo — es lectura obligatoria antes de tocar cualquier CSS de la app,
   incluido el motivo por el que ya no hay que ir seleccionando a mano qué
   componentes "tocar" para un skin nuevo.
@@ -230,7 +236,7 @@ cronológica. Resumen de alto nivel para orientarte rápido:
   quedó solo con skin + modo claro/oscuro (global). El resto de la app
   sigue el fondo del skin activo. El tinte del skin Glass responde al fondo
   del personaje mientras se ve su chat y se suelta al salir. Ver "Fondo de
-  chat por personaje" en `docs/NOTES.md`.
+  chat por personaje" en `docs/HISTORIAL.md`.
 - **Buscador de personajes en el hub**: ícono de lupa en la barra
   superior que despliega el input de búsqueda (siempre disponible, ya no
   solo con más de 6 personajes). No confundir con "buscador dentro de un
@@ -249,13 +255,13 @@ cronológica. Resumen de alto nivel para orientarte rápido:
   de arrancar** — el documento es una propuesta que él pidió por escrito,
   no un visto bueno para construir.
 - Editar/borrar a mano entradas del lorebook automático (hoy es de solo
-  lectura — ver `docs/NOTES.md`, sección del lorebook).
+  lectura — ver `docs/HISTORIAL.md`, sección del lorebook).
 - Pantalla para ver los respaldos automáticos existentes
   (`Documents/Companion-backups/`) — depende de `Filesystem.readdir` de
   Capacitor, no se puede verificar fuera de un APK real.
 - Firma de depuración estable en el CI (para que actualizar el APK no
   exija desinstalar la versión anterior) — causa raíz y arreglo propuesto
-  documentados en `docs/NOTES.md`, sección "Portabilidad y calidad a
+  documentados en `docs/HISTORIAL.md`, sección "Portabilidad y calidad a
   futuro".
 - Probar en un APK real (no solo navegador): el fix de exportación a
   `Directory.DOCUMENTS`, el respaldo automático, el bloqueo con PIN, el
@@ -285,7 +291,7 @@ haya pedido en esa conversación puntual**.
 2. **`character.card.character_book` como puente hacia el proyecto de
    worldbook del usuario.** Ese campo existe desde el contrato original,
    reservado y sin usar. El lorebook automático de este proyecto (por
-   personaje, ver `docs/NOTES.md`) es distinto y no debe pisarlo — pero el
+   personaje, ver `docs/HISTORIAL.md`) es distinto y no debe pisarlo — pero el
    día que el proyecto de worldbook externo exista, probablemente va a
    querer tanto leer como
    escribir lore relacionado con los personajes de Companion. Pensá en
@@ -317,7 +323,7 @@ haya pedido en esa conversación puntual**.
    usuario funciona tan bien y una recomendación de diseño híbrido
    (pills para lo estructural, texto libre guiado para el contenido).
 7. **Portabilidad de hardware/plataforma y salud del pipeline de build.**
-   Ver `docs/NOTES.md`, sección "Portabilidad y calidad a futuro
+   Ver `docs/HISTORIAL.md`, sección "Portabilidad y calidad a futuro
    (2026-09-23)" para el detalle completo: modularidad ya lograda para
    cambiar de servidor/modelo (todo el fetch vive en `kobold.js`), qué
    haría falta para portar a iOS con Capacitor, la causa raíz confirmada de
@@ -358,7 +364,7 @@ recordatorio de lo más importante):
 
 1. `node --check archivo.js` en cada archivo que toques.
 2. `node --test tests/*.test.mjs` — tiene que quedar en verde. Anotá el
-   número de tests nuevo en `docs/NOTES.md` si agregaste tests (es
+   número de tests en `docs/NOTES.md` ("Estado vigente") si agregaste tests (es
    costumbre en este proyecto llevar la cuenta).
 3. Para cambios de UI/UX: probalos de verdad en el navegador integrado
    (ver §3), simulando pantalla de celular. No reportes un cambio visual
@@ -367,8 +373,10 @@ recordatorio de lo más importante):
    (Capacitor/Android — exportación de archivos, plugins nativos,
    permisos, notificaciones), decilo explícitamente: "no se pudo probar
    en un APK real en esta sesión".
-5. Actualizá `docs/NOTES.md` al terminar, siguiendo el estilo ya
-   establecido (cronológico, con qué se hizo, por qué, qué se decidió en
-   los puntos ambiguos y por qué, qué quedó pendiente). Esa continuidad de
+5. Al terminar, registrá el contrato en el "Registro de contratos" de
+   `docs/NOTES.md` (con un resumen corto, máx. ~15 líneas) y dejá el informe
+   completo en `docs/HISTORIAL.md`, siguiendo el estilo ya establecido
+   (cronológico, con qué se hizo, por qué, qué se decidió en los puntos
+   ambiguos y por qué, qué quedó pendiente). Esa continuidad de
    documentación es lo que permite que estas sesiones se puedan retomar
    sin perder contexto — no la rompas.

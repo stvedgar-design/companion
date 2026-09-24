@@ -7,7 +7,7 @@ Todo cabe en 360px sin scroll horizontal.
 
 **Skins**: desde 2026-09-23 la app tiene tres skins (Nomi, Glass, iMessage),
 cada uno en versión clara y oscura — ver "Rearquitectura del sistema de
-skins" en `docs/NOTES.md` para el detalle completo. Lo que sigue describe
+skins" en `docs/HISTORIAL.md` para el detalle completo. Lo que sigue describe
 los tokens tal cual están definidos para **Nomi Dark** (el skin y modo por
 defecto, y el único que existía cuando se escribió este documento) — los
 demás skins redefinen estos mismos tokens en `www/css/themes.css`, nunca

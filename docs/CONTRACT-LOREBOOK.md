@@ -4,9 +4,9 @@
 >
 > Este contrato se implementó y **después cambió de diseño**. Lo que sigue
 > abajo es el encargo original, conservado como historia. Antes de aplicar
-> cualquier punto, comprueba esta lista; el código y `docs/NOTES.md`
-> ("Estado vigente" y "Cambio de diseño: lorebook por personaje, no por chat")
-> mandan.
+> cualquier punto, comprueba esta lista; el código, `docs/NOTES.md`
+> ("Estado vigente") y `docs/HISTORIAL.md` ("Cambio de diseño: lorebook por
+> personaje, no por chat") mandan.
 >
 > | Parte de este contrato | Estado hoy |
 > |---|---|
@@ -18,14 +18,14 @@
 > | §6 "95 tests" | **SUPERADO.** Hoy son 144. |
 > | §4.2 (`LoreEntry`), §4.4 (parseo robusto, `completeOnce`, temperatura baja), §4.5 (inyección por keyword con tope), nunca tocar `card.character_book` | **VIGENTES.** |
 >
-> Además, la auditoría VER-001 (`docs/NOTES.md`, "Auditoría VER-001") documenta
+> Además, la auditoría VER-001 (`docs/HISTORIAL.md`, "Auditoría VER-001") documenta
 > comportamientos reales de la implementación que este contrato no anticipaba
 > (truncado por `maxLen`, coincidencia con la respuesta del chat). No están
 > corregidos.
 
 > Este documento es un encargo de trabajo autocontenido para una instancia
 > de Claude Code que arranca **sin memoria de conversaciones anteriores**.
-> Antes de escribir una línea de código, leé `docs/NOTES.md` completo (es
+> Antes de escribir una línea de código, leé `docs/NOTES.md` completo (`docs/HISTORIAL.md` solo bajo demanda) (es
 > el estado real del proyecto, manda sobre `docs/CONTRACTS.md` en caso de
 > conflicto) y `docs/CONTRACTS.md` (arquitectura y reglas técnicas base).
 > Este contrato asume que ya los leíste y no repite lo que ahí dice salvo
@@ -100,7 +100,7 @@ la coherencia del sistema, y espacio para tu criterio donde no. Marcado
 **Por chat, no por personaje.** Guardalo en una propiedad nueva del `Chat`
 (ver `Chat` en `www/js/state.js`), por ejemplo `chat.lorebook: LoreEntry[]`.
 
-Razón: la adenda multi-chat (`docs/NOTES.md`, sección "Adenda grande:
+Razón: la adenda multi-chat (`docs/HISTORIAL.md`, sección "Adenda grande:
 varios chats por personaje") existe justamente porque un mismo personaje
 puede protagonizar historias distintas y no relacionadas en chats
 distintos. Mezclar lore entre chats de un mismo personaje contaminaría
@@ -146,7 +146,7 @@ hace falta `priority`/`enabled`/etc., que lo agregue quien lo necesite.
   mensajes tenía el chat la última vez que se actualizó el lorebook) al
   `Chat` typedef — **no reuses `chat.lastExportAt`**, ese campo es de una
   feature completamente distinta (respaldo automático, ver
-  `docs/NOTES.md`) y mezclar los dos conceptos va a confundir a la próxima
+  `docs/HISTORIAL.md`) y mezclar los dos conceptos va a confundir a la próxima
   persona que lea el código.
 - Disparo: `messages.length - (chat.lorebookMessageCount || 0) >= LOREBOOK_UPDATE_EVERY_MESSAGES`.
 - Enganchalo en el mismo lugar donde ya vive el patrón "mejor esfuerzo en
@@ -263,7 +263,8 @@ contexto que el usuario ya tiene ajustado.
 - **Modificar** `docs/CONTRACTS.md`: actualizá el `Chat` typedef en §4 y,
   si cambiaste las firmas de `buildPlainPrompt`/`buildChatMessages`, la
   tabla de §5.
-- **Modificar** `docs/NOTES.md`: agregá una sección nueva (seguí el estilo
+- **Modificar** `docs/HISTORIAL.md` (informe completo) y `docs/NOTES.md` (registro de
+  contratos y resumen corto): agregá una sección nueva (seguí el estilo
   cronológico existente: qué se hizo, por qué, qué se decidió y por qué,
   qué quedó pendiente) documentando esta feature completa, incluidas las
   decisiones que tomaste en los puntos marcados `[TU CRITERIO]`.

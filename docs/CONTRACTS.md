@@ -20,7 +20,7 @@ Existe un **prototipo funcional en un solo archivo, `companion.html`**, que el u
 
 ## 2. Reglas técnicas para todos los módulos
 
-- JavaScript vanilla con módulos ES (`<script type="module">`). Sin npm, sin bundler, sin frameworks, sin librerías externas. Única dependencia externa permitida: Google Fonts (Literata — cambiada desde Outfit el 2026-09-23, ver `docs/NOTES.md`; el skin iMessage usa la fuente del sistema en su lugar, sin dependencia externa) enlazada desde `index.html`.
+- JavaScript vanilla con módulos ES (`<script type="module">`). Sin npm, sin bundler, sin frameworks, sin librerías externas. Única dependencia externa permitida: Google Fonts (Literata — cambiada desde Outfit el 2026-09-23, ver `docs/HISTORIAL.md`; el skin iMessage usa la fuente del sistema en su lugar, sin dependencia externa) enlazada desde `index.html`.
 - Objetivo: WebView de Chromium reciente en Android, pantalla táctil de 360 a 430 px de ancho. Sin hover; usa `:active` y `:focus-visible`.
 - Identificadores de código en inglés. Comentarios y textos de interfaz en español neutro.
 - Sin variables globales. `localStorage`/IndexedDB solo dentro de `www/js/state.js`. `fetch` a servidores solo dentro de `www/js/api/kobold.js`. Prohibido `alert`, `confirm` y `prompt` nativos: usa `app.confirmDialog` y `app.toast`.
@@ -48,7 +48,7 @@ www/
              lock.js  appearance.js  chat-background.js  format.js
   dev/       design-preview.html
 tests/       cards  format  kobold  lock  lorebook  prompt  state  (*.test.mjs, node:test)
-docs/        CONTRACTS.md  DESIGN.md  NOTES.md  CONTRACT-*.md  examples/
+docs/        CONTRACTS.md  DESIGN.md  NOTES.md  HISTORIAL.md  CONTRACT-*.md  examples/
 .github/workflows/build-apk.yml      capacitor.config.json      package.json
 ```
 
@@ -90,7 +90,7 @@ Los imports son ESM relativos y siempre con extensión `.js`. Los tests importan
  */
 
 /**
- * @typedef {Object} LoreEntry  Lorebook automático (adenda, ver docs/NOTES.md "Lorebook por personaje" y www/js/api/lorebook.js).
+ * @typedef {Object} LoreEntry  Lorebook automático (adenda, ver docs/HISTORIAL.md "Lorebook por personaje" y www/js/api/lorebook.js).
  * @property {string} id
  * @property {string[]} keys        // palabras/frases que activan esta entrada
  * @property {string} content       // el hecho en sí, en texto plano, conciso
@@ -106,7 +106,7 @@ Los imports son ESM relativos y siempre con extensión `.js`. Los tests importan
  * @property {Card} card
  * @property {'none'|'mini'|'large'} avatarMode   // por defecto 'mini'
  * @property {number} created       // ms desde epoch
- * @property {LoreEntry[]} lorebook // memoria de largo plazo, compartida entre todos los chats de este personaje (por personaje, no por chat: docs/NOTES.md)
+ * @property {LoreEntry[]} lorebook // memoria de largo plazo, compartida entre todos los chats de este personaje (por personaje, no por chat: docs/HISTORIAL.md)
  * @property {LoreEntry[]} lorebookPrevious   // MEM-001 v2: copia del lorebook justo antes de la última actualización de memoria (un solo nivel de "Deshacer"); [] por defecto
  * @property {number} lorebookPreviousAt      // MEM-001 v2: cuándo se guardó esa copia (ms); 0 = no hay nada que deshacer (distingue "sin copia" de "el lorebook estaba vacío")
  * @property {string} chatBackground            // data URL JPEG del fondo de SUS chats, '' si no hay
@@ -197,7 +197,7 @@ newId(): string
 
 `getChat`/`saveChat` **por personaje** (contrato original, `Message[]` por `id` de
 personaje) ya no existen: se reemplazaron por el modelo `Chat` (adenda
-multi-chat, `docs/NOTES.md`). `saveChat` ya no actualiza `character.last` ni
+multi-chat, `docs/HISTORIAL.md`). `saveChat` ya no actualiza `character.last` ni
 `character.updated`.
 
 **Otros formatos de archivo que produce la app** (no son un "backup" de
@@ -228,7 +228,7 @@ initialMessages(character: Character, settings: Settings, greetingIndex?: number
    // greetingIndex 0 = card.first_mes (por defecto); i >= 1 = card.alternate_greetings[i-1]. Devuelve [] si no hay saludo.
 buildPlainPrompt(card: Card, messages: Message[], settings: Settings, chatScenario?: string, loreBlock?: string): { prompt: string, stop: string[] }
 buildChatMessages(card: Card, messages: Message[], settings: Settings, chatScenario?: string, loreBlock?: string): { messages: {role:'system'|'user'|'assistant', content:string}[], stop: string[] }
-   // `chatScenario` (adenda multi-chat) y `loreBlock` (adenda lorebook, ver docs/NOTES.md
+   // `chatScenario` (adenda multi-chat) y `loreBlock` (adenda lorebook, ver docs/HISTORIAL.md
    // "Lorebook por personaje" y api/lorebook.js) son desviaciones sobre la firma original de
    // este contrato — ambos opcionales, '' por defecto. `loreBlock` ya viene armado
    // (formatLoreBlock) con las entradas seleccionadas.
@@ -259,13 +259,13 @@ generateReplyNonEmpty(opts: <los de generateReply>, generate?: typeof generateRe
    // NUNCA guarda un mensaje del personaje vacío (queda el botón "Reintentar respuesta"). `generate` es
    // inyectable para tests. chat.js usa ESTA función, no generateReply directamente.
 completeOnce(prompt: string, settings: Settings, opts?: { temp?: number, maxLen?: number, signal?: AbortSignal, genkey?: string }): Promise<string>
-   // Adenda lorebook (docs/NOTES.md "Lorebook por personaje"): completado de una sola vez sin
+   // Adenda lorebook (docs/HISTORIAL.md "Lorebook por personaje"): completado de una sola vez sin
    // streaming contra /api/v1/generate, para la extracción de lorebook. Mismos códigos de error
    // que generateReply(), más `'ABORTED'` (MEM-001 v2) cuando `signal` cancela la llamada; con `genkey`
    // además se le pide al servidor cortar la generación (POST /api/extra/abort).
 
-// lorebook.js (adenda, ver docs/NOTES.md "Lorebook por personaje"): puro, sin DOM ni fetch
-// MEM-001 v2: extracción ADITIVA, una línea, hasta 3 entradas, compatible con el servidor real (docs/NOTES.md, "MEM-001 v2").
+// lorebook.js (adenda, ver docs/HISTORIAL.md "Lorebook por personaje"): puro, sin DOM ni fetch
+// MEM-001 v2: extracción ADITIVA, una línea, hasta 3 entradas, compatible con el servidor real (docs/HISTORIAL.md, "MEM-001 v2").
 shouldUpdateLorebook(chat: Chat, messageCount: number): boolean   // dispara por chat (cada LOREBOOK_UPDATE_EVERY_MESSAGES = 20); el lorebook resultante se guarda en el personaje
 buildExtractionPrompt(character: Character, settings: Settings, windowMessages: Message[], existingEntries?: LoreEntry[]): string
    // Ventana = últimos ≤20 mensajes, recortados desde el más antiguo para caber en settings.ctx; solo lleva las KEYS existentes;
@@ -372,7 +372,7 @@ Clases de estado: `.view.is-active`, `.sheet.is-open`, `.toast.is-visible`.
 Orden de hojas de estilo: `tokens.css`, `base.css`, `chat.css`, `home.css`, `themes.css`.
 `<html>` lleva `data-theme` y `data-mode` (los pone `ui/shell.js`); `themes.css` define
 un bloque completo por cada combinación skin+modo. Los componentes no conocen los skins:
-solo leen tokens (ver `docs/NOTES.md`, "Rearquitectura del sistema de skins").
+solo leen tokens (ver `docs/HISTORIAL.md`, "Rearquitectura del sistema de skins").
 El módulo 02 mantiene actualizadas en `:root` las variables `--vh` (alto visible real, se reduce cuando aparece el teclado) y `--vt` (desplazamiento superior del viewport visual). `.app` las usa para que el cuadro de texto nunca quede tapado por el teclado. No uses `100vh` en ningún lado.
 
 **Variables de `tokens.css`** (el módulo 01 puede afinar los valores, no los nombres):
@@ -390,7 +390,7 @@ El módulo 02 mantiene actualizadas en `:root` las variables `--vh` (alto visibl
 --sat --sab          (safe-area superior e inferior)
 ```
 
-Valores de partida (del prototipo): fondo `#181924`, superficie `#20222f`, burbuja del personaje `#2d2f40` (`--color-surface-2`), línea `#383b52`, texto `#f3f3f8`, apagado `#9b9eb8`, acento `#8b1fe0` / `#a24cf2`, peligro `#f0566a`, ok `#6ee7a8`, burbuja del usuario `linear-gradient(135deg,#7a12d6,#9b3ff0)`, avatar por defecto `linear-gradient(135deg,#5b1fa8,#c04bd6)`, fuente Outfit (reemplazada por Literata, ver `docs/NOTES.md`).
+Valores de partida (del prototipo): fondo `#181924`, superficie `#20222f`, burbuja del personaje `#2d2f40` (`--color-surface-2`), línea `#383b52`, texto `#f3f3f8`, apagado `#9b9eb8`, acento `#8b1fe0` / `#a24cf2`, peligro `#f0566a`, ok `#6ee7a8`, burbuja del usuario `linear-gradient(135deg,#7a12d6,#9b3ff0)`, avatar por defecto `linear-gradient(135deg,#5b1fa8,#c04bd6)`, fuente Outfit (reemplazada por Literata, ver `docs/HISTORIAL.md`).
 
 **Clases base de `base.css`** (las puede usar cualquier módulo):
 
