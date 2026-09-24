@@ -234,11 +234,12 @@ test('buildChatMessages no antepone relleno si el historial ya empieza en user',
   assert.equal(out[1].content, 'Hola');
 });
 
-test('buildChatMessages incluye post_history_instructions en el system y usa stop solo con el usuario', () => {
+test('buildChatMessages incluye post_history_instructions en el system y usa stop con salto de línea y usuario', () => {
   const card = makeCard({ post_history_instructions: 'Sé breve, {{user}}.' });
   const { messages: out, stop } = buildChatMessages(card, [], makeSettings());
   assert.ok(out[0].content.includes('Sé breve, Edgar.'));
-  assert.deepEqual(stop, ['\nEdgar:']);
+  // FMT-001: "\n" fuerza un solo párrafo también en /v1/chat/completions.
+  assert.deepEqual(stop, ['\n', '\nEdgar:']);
 });
 
 test('buildChatMessages recorta el historial y conserva lo más reciente', () => {

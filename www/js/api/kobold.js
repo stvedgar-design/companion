@@ -403,3 +403,38 @@ export async function generateReply({ character, chat, messages, settings, signa
   }
   return { text, truncated, aborted: false };
 }
+
+/**
+ * Como `generateReply()`, pero si el texto final queda vacío (p. ej. el modelo
+ * empezó con un salto de línea y el servidor cortó ahí) reintenta UNA vez, en
+ * silencio. Mientras el texto recibido sea solo espacios no se le pasa nada a
+ * `onToken`, así el usuario no ve texto a medias que desaparezca. Un aborto no
+ * se reintenta; los errores se propagan tal cual. Si el reintento también sale
+ * vacío, devuelve ese resultado vacío y quien llama decide (chat.js avisa y deja
+ * el botón "Reintentar respuesta").
+ * @param {Parameters<typeof generateReply>[0]} opts
+ * @param {typeof generateReply} [generate] Inyectable para tests.
+ * @returns {Promise<{ text: string, truncated: boolean, aborted: boolean }>}
+ */
+export async function generateReplyNonEmpty(opts, generate = generateReply) {
+  const attempt = () => {
+    let held = '';
+    let released = false;
+    const onToken = opts.onToken
+      ? (chunk) => {
+          if (released) return opts.onToken(chunk);
+          held += chunk;
+          if (held.trim()) {
+            released = true;
+            opts.onToken(held);
+          }
+        }
+      : undefined;
+    return generate({ ...opts, onToken });
+  };
+
+  const first = await attempt();
+  if (first.aborted || first.text.trim()) return first;
+  if (opts.signal && opts.signal.aborted) return first;
+  return attempt();
+}

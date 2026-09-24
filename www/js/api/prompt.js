@@ -244,7 +244,11 @@ export function buildChatMessages(card, messages, settings, chatScenario = '', l
   }
   kept.forEach((m) => out.push({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text }));
 
-  const stop = [`\n${U}:`];
+  // "\n" primero: en /v1/chat/completions el corte en salto de línea de los
+  // `gendefaults` del servidor NO se aplica si la petición trae su propio `stop`
+  // (medido en FMT-001), y sin él el modelo a veces responde en varios párrafos.
+  // Formato Nomi = un solo párrafo por turno del personaje.
+  const stop = ['\n', `\n${U}:`];
 
   return { messages: out, stop };
 }

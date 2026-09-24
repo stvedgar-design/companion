@@ -2,7 +2,7 @@
 // Pantalla de chat: burbujas, streaming, avatar en 3 modos, composer, menú.
 
 import { getChat, getChatMessages, saveChatMessages, getCharacter, saveCharacter, getSettings, markChatExported, saveCharacterLorebook, markChatLorebookProgress } from '../state.js';
-import { generateReply, completeOnce } from '../api/kobold.js';
+import { generateReplyNonEmpty, completeOnce } from '../api/kobold.js';
 import { initialMessages, scenarioGreeting, estimateContextUsage } from '../api/prompt.js';
 import {
   createLoreUpdater,
@@ -545,7 +545,7 @@ async function generate() {
   abortCtl = new AbortController();
 
   try {
-    const result = await generateReply({
+    const result = await generateReplyNonEmpty({
       character,
       chat,
       messages: history,
@@ -557,6 +557,11 @@ async function generate() {
       },
     });
     reply.text = (result && result.text) || '';
+    // Vacía tras el reintento automático: no se guarda nada (ver `finally`) y
+    // el botón "Reintentar respuesta" queda visible.
+    if (!reply.text && !(result && result.aborted)) {
+      app.toast('El personaje no respondió. Toca «Reintentar respuesta».');
+    }
   } catch (err) {
     app.toast((err && err.message) || 'No se pudo generar la respuesta.');
   } finally {

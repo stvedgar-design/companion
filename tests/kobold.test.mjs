@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { normUrl, connect, generateReply, completeOnce } from '../www/js/api/kobold.js';
+import { normUrl, connect, generateReply, generateReplyNonEmpty, completeOnce } from '../www/js/api/kobold.js';
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -528,6 +528,133 @@ test('generateReply devuelve el texto recibido (truncated:true) si la conexión 
     });
     assert.equal(result.aborted, false);
     assert.equal(result.truncated, true);
+    assert.equal(result.text, 'Hola');
+  } finally {
+    server.close();
+  }
+});
+
+// ---------- generateReplyNonEmpty (FMT-001) ----------
+
+test('generateReply en modo chat envía "\\n" en stop (un solo párrafo)', async () => {
+  let seen = null;
+  const { server } = createFakeServer({
+    onChatStream: async (res, body) => {
+      seen = body;
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+      res.write('data: {"choices":[{"delta":{"content":"Hola"}}]}\n\n');
+      res.write('data: [DONE]\n\n');
+      res.end();
+    }
+  });
+  const base = await listen(server);
+  try {
+    await generateReply({
+      character: makeCharacter(),
+      messages: [{ role: 'user', text: 'Hola', ts: 1 }],
+      settings: makeSettings(base, { mode: 'chat' })
+    });
+    assert.ok(seen.stop.includes('\n'));
+    assert.ok(seen.stop.includes('\nEdgar:'));
+  } finally {
+    server.close();
+  }
+});
+
+test('generateReplyNonEmpty: una respuesta vacía provoca un solo reintento y devuelve la segunda', async () => {
+  const texts = ['  ', 'Hola'];
+  let calls = 0;
+  const fake = async () => ({ text: texts[calls++], truncated: false, aborted: false });
+  const result = await generateReplyNonEmpty({ character: makeCharacter(), messages: [] }, fake);
+  assert.equal(calls, 2);
+  assert.equal(result.text, 'Hola');
+});
+
+test('generateReplyNonEmpty: si el reintento también sale vacío devuelve vacío tras solo 2 intentos', async () => {
+  let calls = 0;
+  const fake = async () => {
+    calls++;
+    return { text: '', truncated: false, aborted: false };
+  };
+  const result = await generateReplyNonEmpty({ character: makeCharacter(), messages: [] }, fake);
+  assert.equal(calls, 2);
+  assert.equal(result.text, '');
+});
+
+test('generateReplyNonEmpty: una respuesta normal no se reintenta', async () => {
+  let calls = 0;
+  const fake = async () => {
+    calls++;
+    return { text: 'Hola', truncated: false, aborted: false };
+  };
+  await generateReplyNonEmpty({ character: makeCharacter(), messages: [] }, fake);
+  assert.equal(calls, 1);
+});
+
+test('generateReplyNonEmpty: un aborto no se reintenta', async () => {
+  let calls = 0;
+  const fake = async () => {
+    calls++;
+    return { text: '', truncated: false, aborted: true };
+  };
+  const result = await generateReplyNonEmpty({ character: makeCharacter(), messages: [] }, fake);
+  assert.equal(calls, 1);
+  assert.equal(result.aborted, true);
+});
+
+test('generateReplyNonEmpty: los errores se propagan sin reintentar', async () => {
+  let calls = 0;
+  const fake = async () => {
+    calls++;
+    throw new Error('boom');
+  };
+  await assert.rejects(generateReplyNonEmpty({ character: makeCharacter(), messages: [] }, fake), /boom/);
+  assert.equal(calls, 1);
+});
+
+test('generateReplyNonEmpty: no le pasa a onToken texto de espacios; el usuario no ve nada del intento vacío', async () => {
+  const scripts = [['\n', ' '], ['\n', 'Ho', 'la']];
+  let n = 0;
+  const fake = async (o) => {
+    const chunks = scripts[n++];
+    let text = '';
+    for (const c of chunks) {
+      text += c;
+      if (o.onToken) o.onToken(c);
+    }
+    return { text: text.trim(), truncated: false, aborted: false };
+  };
+  const seen = [];
+  const result = await generateReplyNonEmpty(
+    { character: makeCharacter(), messages: [], onToken: (c) => seen.push(c) },
+    fake
+  );
+  assert.equal(n, 2);
+  assert.equal(result.text, 'Hola');
+  // Primer intento: nada. Segundo: lo retenido ("\n"+"Ho") se entrega junto y luego "la".
+  assert.equal(seen.join(''), '\nHola');
+  assert.equal(seen[0], '\nHo');
+});
+
+test('generateReplyNonEmpty con el servidor simulado: 1.ª respuesta vacía, 2.ª con texto', async () => {
+  let calls = 0;
+  const { server } = createFakeServer({
+    onChatStream: async (res) => {
+      calls++;
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+      if (calls > 1) res.write('data: {"choices":[{"delta":{"content":"Hola"}}]}\n\n');
+      res.write('data: [DONE]\n\n');
+      res.end();
+    }
+  });
+  const base = await listen(server);
+  try {
+    const result = await generateReplyNonEmpty({
+      character: makeCharacter(),
+      messages: [{ role: 'user', text: 'Hola', ts: 1 }],
+      settings: makeSettings(base, { mode: 'chat' })
+    });
+    assert.equal(calls, 2);
     assert.equal(result.text, 'Hola');
   } finally {
     server.close();

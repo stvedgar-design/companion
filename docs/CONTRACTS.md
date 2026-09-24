@@ -231,6 +231,9 @@ buildChatMessages(card: Card, messages: Message[], settings: Settings, chatScena
    // "Lorebook por personaje" y api/lorebook.js) son desviaciones sobre la firma original de
    // este contrato — ambos opcionales, '' por defecto. `loreBlock` ya viene armado
    // (formatLoreBlock) con las entradas seleccionadas.
+   // FMT-001: `stop` = ['\n', '\n<usuario>:']. El '\n' fuerza un solo párrafo (formato Nomi):
+   // en /v1/chat/completions el corte en salto de línea del servidor no se aplica si la
+   // petición trae su propio `stop`. NO debe aplicarse a completeOnce() ni a otros usos.
 scenarioGreeting(character: Character, settings: Settings, chatScenario: string): Message[]   // nota de escenario en *asteriscos* como primer mensaje de un chat con escenario propio
 estimateContextUsage(card: Card, messages: Message[], settings: Settings, chatScenario?: string, loreBlock?: string): { approxTokens: number, budgetTokens: number, ratio: number }
 cleanReply(text: string, charName: string): string
@@ -248,6 +251,12 @@ generateReply(opts: {
 }): Promise<{ text: string, truncated: boolean, aborted: boolean }>
    // Si `signal` aborta: pide al servidor detener la generación y RESUELVE con lo recibido (aborted:true). Nunca lanza por abort.
    // Otros fallos: lanza Error con `message` en español apto para mostrar tal cual y `code` ('INVALID_URL'|'NETWORK'|'MIXED_CONTENT'|'HTTP'|'SERVER').
+generateReplyNonEmpty(opts: <los de generateReply>, generate?: typeof generateReply): Promise<{ text: string, truncated: boolean, aborted: boolean }>
+   // FMT-001: como generateReply(), pero si `text.trim()` queda vacío reintenta UNA vez en silencio (no
+   // reintenta abortos ni errores). Retiene el texto que sea solo espacios para que `onToken` no muestre
+   // nada del intento vacío. Si el reintento también sale vacío devuelve ese resultado; chat.js avisa y
+   // NUNCA guarda un mensaje del personaje vacío (queda el botón "Reintentar respuesta"). `generate` es
+   // inyectable para tests. chat.js usa ESTA función, no generateReply directamente.
 completeOnce(prompt: string, settings: Settings, opts?: { temp?: number, maxLen?: number, signal?: AbortSignal, genkey?: string }): Promise<string>
    // Adenda lorebook (docs/NOTES.md "Lorebook por personaje"): completado de una sola vez sin
    // streaming contra /api/v1/generate, para la extracción de lorebook. Mismos códigos de error

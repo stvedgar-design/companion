@@ -87,9 +87,11 @@ personajes guiado (solo propuesta, no autorizado). Añadido por DOC-002
   respuesta del chat tarde ~15–25 s más (invalida la caché de prompt del
   servidor). Ver "MEM-001 v2 → Informe de latencia"; decisión pendiente del
   arquitecto y del usuario.
-- El modo "plantilla del modelo" (`/v1/chat/completions`) no corta en `\n`, por lo
-  que puede devolver dos párrafos (formato Nomi = un párrafo). Causa medida y
-  arreglo sugerido en "MEM-001 v2 → Observación del tester"; sin contrato aún.
+- ~~El modo "plantilla del modelo" no corta en `\n` (posibles dos párrafos)~~:
+  **corregido por FMT-001** (2026-09-24): `stop` incluye `"\n"` y una respuesta
+  vacía se reintenta una vez. Ver "FMT-001". Pendiente relacionado, sin
+  contrato: `Settings.maxLen` (>160) y `Settings.temp` no tienen efecto real con
+  este servidor (recorta a 160 tokens e impone su muestreo); informarlo en Ajustes.
 
 ## Perfil del servidor y principios de producto (contrato DOC-002, 2026-09-24)
 
@@ -177,6 +179,7 @@ personajes: segunda iteración visual"; auditoría de recuperabilidad →
 | ARQ-002 | Corregir la firma del APK: firmar explícitamente con la llave fija | Autorizado — implementado el 2026-09-24 (este lote); **pendiente de verificar en el CI y en un teléfono real** | El workflow re-firma con `apksigner sign` y verifica la huella. Ver "ARQ-002". |
 | DOC-002 | Registrar perfil del servidor, principios de producto y estado real de los contratos | Autorizado — ejecutado el 2026-09-24 (este lote; solo `docs/`) | Sección "Perfil del servidor y principios de producto", este Registro, pendientes de "Estado vigente" y rutas con marcadores. |
 | MEM-001 v2 | Lorebook: actualizaciones aditivas compatibles con el servidor real, protección contra pérdida y gestión manual | Autorizado — **implementado el 2026-09-24** (sesión B); Paso 0 ejecutado contra el servidor real; **pendiente de probar en el teléfono** | Ver "MEM-001 v2" (al final de este archivo). Reporta un problema de latencia que requiere decisión. Reemplaza al MEM-001 anterior. |
+| FMT-001 | Preservar el formato de un solo párrafo en el modo "plantilla del modelo" y evitar respuestas vacías | Autorizado — **implementado el 2026-09-24** (sesión C); medido contra el servidor real; **pendiente de probar en el teléfono** | Ver "FMT-001" (al final de este archivo). |
 | BKP-001 | Importación de copias segura: confirmar, no pisar datos nuevos, todo o nada | **Autorizado; sin implementar** (sesión posterior a MEM-001 v2, solo cuando el usuario lo pida) | Punto de partida: hallazgos 2 y 10 de VER-001. |
 | MEM-001 (v1) | (Anulado) versión anterior de MEM-001 | **ANULADO**, reemplazado por MEM-001 v2 | Asumía que el servidor podía devolver una lista larga con saltos de línea. |
 | (previos) | `CONTRACT-LOREBOOK.md` (implementado, parcialmente superado), `CONTRACT-CHARACTER-CREATOR.md` (propuesta, no autorizada), `CONTRACT-HANDOFF.md` (briefing) | — | Ver los avisos al inicio de cada uno. |
@@ -1675,3 +1678,63 @@ una conversación de 18 mensajes con hechos, antes de añadir la reparación de 
 sin comillas el parseo funcionó 7 de 8 veces (el fallo fue justo ese error); con
 el prompt y la reparación finales, 8 de 8. Son muestras chicas: la tasa real con
 el modelo del usuario se conocerá usando la app.
+
+## FMT-001: un solo párrafo en modo "plantilla" y sin respuestas vacías (2026-09-24)
+
+**Qué cambió y por qué.** El modo por defecto (`mode:'chat'`, `/v1/chat/completions`)
+no cortaba en `\n`, porque el corte de los `gendefaults` del servidor no se aplica
+cuando la petición trae su propio `stop` (Paso 0 de MEM-001 v2, b3). Cambios:
+1. `prompt.js: buildChatMessages()` devuelve `stop = ['\n', '\n<usuario>:']`. Solo
+   afecta a la respuesta del chat; `completeOnce()` (extracción del lorebook) no usa
+   `buildChatMessages` y no cambió. El modo "texto simple" no se tocó.
+2. `kobold.js: generateReplyNonEmpty(opts, generate = generateReply)` (nueva): si el
+   texto final, tras `trim()`, queda vacío, reintenta UNA vez y en silencio (no
+   reintenta abortos ni errores). Mientras lo recibido sea solo espacios, no llama a
+   `onToken` (se retiene y se entrega junto con el primer texto real): el usuario ve
+   los puntos de "escribiendo" y nunca texto que aparece y desaparece.
+3. `chat.js: generate()` usa `generateReplyNonEmpty`. Si sigue vacía tras el reintento
+   muestra un aviso ("El personaje no respondió. Toca «Reintentar respuesta».").
+
+**Comportamiento anterior ante una respuesta vacía (Hecho, leído del código):** no
+había reintento ni aviso; `generate()` quitaba el mensaje vacío de la lista sin
+guardarlo y `renderMessages()` mostraba "Reintentar respuesta" (el último mensaje
+era del usuario). Es decir, nunca se guardaba un mensaje vacío; eso se conserva.
+
+**Mediciones (Hecho; servidor real, KoboldCpp 1.121, card de Mia
+`docs/examples/mia-card-reference.json`, funciones reales de la app: `generateReply` /
+`generateReplyNonEmpty`, usuario con nombre de prueba, scripts desechables no
+versionados).** Cada fila = 20 respuestas; "con salto" = la respuesta contiene `\n`.
+
+| Escenario | Modo | Antes: con salto / vacías | Después: con salto / vacías (reintentos) |
+|---|---|---|---|
+| Chat de 20 turnos seguidos | plantilla | 1/20 / 0 | 0/20 / 0 (0) |
+| Chat de 20 turnos seguidos | texto simple | 0/20 / 0 | 0/20 / 0 (0) |
+| 20 chats nuevos de 1 mensaje | plantilla | 0/20 / 0 | 0/20 / 0 (0) |
+| 20 chats nuevos de 1 mensaje | texto simple | 0/20 / 0 | 0/20 / 0 (0) |
+| Estrés: se le pide "dos párrafos" (12 peticiones, `stop` viejo vs nuevo, plantilla) | plantilla | **10/12** / 0 | **0/12** / 0 |
+
+Lectura: con la card real de Mia el problema es raro (1 de 80 antes; el tester lo vio
+en una instalación nueva), pero el estrés demuestra que el `stop` viejo sí deja pasar
+varios párrafos y el nuevo lo impide. Latencia media por respuesta: sin diferencia
+apreciable (plantilla ~3,2 s antes y después; texto simple 2–6 s, variable). **No se
+observó ninguna respuesta vacía en las 160 respuestas medidas, así que el reintento
+automático NO se ejercitó contra el servidor real** (solo con dobles en los tests y con
+un servidor simulado en el navegador, ver abajo); su costo real (unos segundos por
+reintento) es una **Inferencia**. La condición de parada (más de 1 de cada 20 vacías tras el
+reintento) no se dio.
+
+**Verificación en el navegador integrado (375×812) contra el servidor real (Hecho):**
+5 respuestas seguidas de Mia en modo plantilla pidiéndole incluso "párrafos" y un
+cuento: las 5 en un solo párrafo (0 `<p>`, 0 `<br>`), ninguna vacía, ninguna guardada
+con `\n`. Con la respuesta simulada como vacía dos veces: exactamente 2 llamadas al
+servidor, ningún mensaje del personaje guardado, aviso visible y botón "Reintentar
+respuesta".
+
+**Tests:** 182 en verde (`node --test tests/*.test.mjs`); nuevos: `stop` con `"\n"` y la
+regla del usuario; reintento único; sin reintento en aborto/error; sin texto a
+medias en `onToken`; servidor simulado (1.ª vacía, 2.ª con texto).
+
+**No probado:** en el teléfono (APK/WebView); el timeout con el servidor apagado.
+**Pendiente sin contrato:** `Settings.maxLen` > 160 y `Settings.temp` no tienen efecto
+real con este servidor (recorta a 160 tokens; impone su muestreo); habría que
+informarlo en Ajustes.
