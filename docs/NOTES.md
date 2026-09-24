@@ -24,8 +24,9 @@ y el código mandan sobre `CONTRACTS.md`.
 runtime (`www/`). Empaquetado como APK con Capacitor; el workflow
 (`.github/workflows/build-apk.yml`) corre `npm test`, `npx cap add android`
 y `assembleDebug` en cada push (`android/` NO está versionado). Desde ARQ-001
-firma con una llave de depuración fija versionada en `signing/` (ver el
-registro de ARQ-001). Persistencia
+firma con una llave de depuración fija versionada en `signing/`; como la
+primera versión falló en el CI, ARQ-002 re-firma el APK explícitamente con
+`apksigner` y verifica la huella (ver "ARQ-001" y "ARQ-002"). Persistencia
 solo en `www/js/state.js` (IndexedDB `companion`, versión 2, stores
 `settings`, `characters`, `chats` [legado], `chatMeta`, `chatMsgs`). `fetch`
 solo en `www/js/api/kobold.js`. Skins = solo tokens en `www/css/themes.css`
@@ -66,7 +67,72 @@ tests/*.test.mjs`).
 **Pendiente:** todo lo anterior **sin probar en un APK real** (el teléfono
 del usuario tiene la 4.ª APK del repositorio, muy anterior); editar/borrar
 lorebook a mano; pantalla de respaldos; búsqueda dentro de un chat; ajustes de IA por personaje; creador de
-personajes guiado (solo propuesta, no autorizado).
+personajes guiado (solo propuesta, no autorizado). Añadido por DOC-002
+(2026-09-24), a raíz de VER-001 y de las decisiones del arquitecto:
+- Respaldo automático completo: un archivo por `chatId` (hoy NO es así, ver
+  VER-001 hallazgo 3), con personaje y lorebook, restaurable.
+- Guardado de respuesta parcial y manejo de segundo plano
+  (`visibilitychange`/`pagehide`; VER-001 hallazgo 7).
+- `.gitignore` y `package-lock.json` (sin excluir `signing/`; VER-001
+  hallazgo 20).
+- Imágenes (avatar, fondo) fuera del registro del personaje (VER-001
+  hallazgo 18).
+- Prueba de la memoria (lorebook) contra el servidor real (MEM-001 v2, Paso 0).
+
+## Perfil del servidor y principios de producto (contrato DOC-002, 2026-09-24)
+
+> Referencia rápida para cualquier instancia nueva. Estos hechos definen qué
+> diseños tienen sentido; léelos antes de proponer funciones de memoria,
+> prompts largos o cambios de formato.
+
+**Servidor — Hecho (aportado por el usuario)**, no medido por el proyecto:
+- KoboldCpp 1.121 en el PC personal del usuario (se apaga cuando sale de
+  casa; la app lo alcanza por su red privada, `<IP-TAILSCALE>`, o por
+  `http://localhost:5001` cuando se prueba en el propio PC).
+- Modelo: Mahou-1.5-mistral-nemo-12B, cuantización IQ4_XS (~6,4 GB; ruta
+  `<RUTA-DEL-MODELO>`).
+- GPU AMD de la familia RX 470/480/570/580 vía Vulkan, todas las capas en GPU;
+  15 GiB de RAM; CPU de 12 hilos con AVX2.
+- Lanzado con: `--usevulkan 0 --gpulayers 99 --contextsize 6144 --genlimit 160
+  --port 5001 --gendefaults {...} --gendefaultsoverwrite`. Los `gendefaults`
+  fijan temperature 0.8, top_p 1.0, top_k 0, min_p 0.05, rep_pen 1.06, DRY y
+  presence_penalty 0.15, y `stop_sequence: ["\n"]`. No se lanza con
+  `--multiuser`.
+- Respuesta típica del chat: ~6 segundos. Los scripts y la configuración del
+  servidor (`jugar.sh`, `config.env`, …) están fuera del proyecto y NO se
+  modifican desde aquí.
+
+**Supuesto — a verificar en MEM-001 v2, Paso 0:** que `--genlimit 160` limite
+cada respuesta a 160 tokens sin importar el `max_length` que pida el cliente, y
+que `--gendefaultsoverwrite` haga que esos valores (incluido cortar en el
+primer salto de línea) prevalezcan sobre los de la petición. Las banderas
+existen en KoboldCpp; su comportamiento exacto en esta versión no está medido.
+Consecuencias esperadas si es cierto:
+- `Settings.maxLen` y `Settings.temp` de la app podrían estar limitados o
+  sobrescritos por el servidor (el control de la app no tendría el efecto que
+  aparenta).
+- Las respuestas salen en un solo párrafo (una línea).
+- Una extracción larga o multilínea (como la lista completa del lorebook actual)
+  no cabe.
+
+**Principios de producto (decisiones del usuario; no las cambies sin él):**
+1. **Latencia primero.** "Un chat de 20 minutos no debería ocupar 1 hora."
+   Ninguna función puede empeorar de forma perceptible la latencia del chat
+   sin autorización del usuario.
+2. **Local y sin censura.** El proyecto existe para no depender de servicios
+   comerciales que deprecan modelos.
+3. **Formato "Nomi", no SillyTavern.** Cada turno del personaje es UN solo
+   párrafo, en primera persona: `*acción en cursiva*` seguida de diálogo sin
+   comillas (p. ej. `*Me sonrojo y bajo la mirada.* Y-yo soy Mia.`). El
+   usuario escribe igual.
+4. **Conversación en inglés, interfaz en español.** El texto que se le pide al
+   modelo (p. ej. la memoria) debe ir en el idioma de la conversación.
+5. **Un personaje principal.** Mia es el único personaje de uso regular; su
+   card no ha cambiado desde la primera versión.
+6. **El servidor puede estar apagado.** Toda función que lo use debe fallar
+   con elegancia y sin perder datos.
+7. Los chats históricos del usuario solo existen como capturas de pantalla; el
+   teléfono no tiene datos valiosos en la app (versión muy antigua).
 
 **Dónde está cada decisión:** lorebook por personaje → "Cambio de diseño:
 lorebook por personaje, no por chat"; fondo por personaje → "Fondo de chat
@@ -84,8 +150,12 @@ personajes: segunda iteración visual"; auditoría de recuperabilidad →
 |---|---|---|---|
 | DOC-001 | Reconciliar la documentación con el estado real | Autorizado — ejecutado el 2026-09-23 (solo `docs/`; el commit lo confirma `git log`) | Esta sección, "Estado vigente", marcas "SUPERADO", `CONTRACTS.md` reescrito a los typedefs reales y aviso al inicio de `CONTRACT-LOREBOOK.md`. |
 | VER-001 | Auditoría de recuperabilidad y seguridad de datos | Autorizado — ejecutado el 2026-09-23; informe en "Auditoría VER-001" (al final de este archivo) | Solo lectura: no cambia comportamiento. Los hallazgos P0/P1 requieren contratos de corrección aparte (sin autorizar). |
-| ARQ-001 | Firma estable del APK | Autorizado — implementado el 2026-09-24; **pendiente de verificar en el primer build de CI y en un teléfono real** | Ver "ARQ-001: firma estable del APK" (al final de este archivo). Llave en `signing/`, workflow actualizado. |
-| MEM-001 | Proteger y gestionar el lorebook (incluye botón "Actualizar memoria ahora") | **Autorizado en principio por el usuario; pendiente de que termine VER-001; sin implementar** | Punto de partida: los hallazgos sobre lorebook de VER-001 (truncado por `maxLen`, colisión con la respuesta del chat, reemplazo total) y el pendiente "editar/borrar a mano". |
+| ARQ-001 | Firma estable del APK | Implementado el 2026-09-24; **la verificación falló en el CI** (build #14: la huella del APK no coincidió con la esperada); **corregido por ARQ-002** | Ver "ARQ-001" y "ARQ-002" (al final de este archivo). Llave en `signing/`, workflow actualizado. |
+| ARQ-002 | Corregir la firma del APK: firmar explícitamente con la llave fija | Autorizado — implementado el 2026-09-24 (este lote); **pendiente de verificar en el CI y en un teléfono real** | El workflow re-firma con `apksigner sign` y verifica la huella. Ver "ARQ-002". |
+| DOC-002 | Registrar perfil del servidor, principios de producto y estado real de los contratos | Autorizado — ejecutado el 2026-09-24 (este lote; solo `docs/`) | Sección "Perfil del servidor y principios de producto", este Registro, pendientes de "Estado vigente" y rutas con marcadores. |
+| MEM-001 v2 | Lorebook: actualizaciones aditivas compatibles con el servidor real, protección contra pérdida y gestión manual | **Autorizado; reemplaza al MEM-001 anterior; sin implementar** (siguiente sesión, solo cuando el usuario lo pida) | Incluye el Paso 0 (medir el servidor real). Punto de partida: hallazgos 11, 12, 13, 14 de VER-001. |
+| BKP-001 | Importación de copias segura: confirmar, no pisar datos nuevos, todo o nada | **Autorizado; sin implementar** (sesión posterior a MEM-001 v2, solo cuando el usuario lo pida) | Punto de partida: hallazgos 2 y 10 de VER-001. |
+| MEM-001 (v1) | (Anulado) versión anterior de MEM-001 | **ANULADO**, reemplazado por MEM-001 v2 | Asumía que el servidor podía devolver una lista larga con saltos de línea. |
 | (previos) | `CONTRACT-LOREBOOK.md` (implementado, parcialmente superado), `CONTRACT-CHARACTER-CREATOR.md` (propuesta, no autorizada), `CONTRACT-HANDOFF.md` (briefing) | — | Ver los avisos al inicio de cada uno. |
 
 ## Línea de tiempo resumida
@@ -207,7 +277,7 @@ confiar en él para no perder conversaciones.**
 ## Reorganización de Git (2026-09-22)
 
 El repositorio de git de este proyecto había quedado accidentalmente
-enganchado a la carpeta personal completa del usuario (`/home/edgar`) en vez
+enganchado a la carpeta personal completa del usuario (`<HOME-DEL-USUARIO>`) en vez
 de a esta carpeta, mezclando commits con archivos de la Papelera de
 reciclaje. Se reemplazó por un repositorio nuevo y limpio, con historial
 propio, viviendo solo dentro de `Documentos/companion/`, y se sobrescribió
@@ -275,6 +345,10 @@ IndexedDB (ver `.claude/launch.json`, config `companion-web`).
   inicial; `state.js` suma `markChatExported(chatId)` para actualizar esa
   marca. Es un respaldo "en la sombra" (sobrescribe un archivo por chat),
   no reemplaza la exportación manual con nombre de archivo propio.
+  **(Corrección DOC-002: "un archivo por chat" es INCORRECTO. El archivo se
+  llama `<personaje>[-<título>].json`, no por `chatId`, así que dos chats sin
+  título del mismo personaje se pisan entre sí. Ver VER-001, hallazgo 3;
+  pendiente de un contrato futuro de respaldo automático.)**
 - **Indicador de contexto + contador de mensajes**: nueva función pura
   `estimateContextUsage(card, messages, settings, chatScenario)` en
   `prompt.js` (misma heurística caracteres/token que ya usaban los
@@ -1067,7 +1141,7 @@ sin un APK real u otro entorno). Severidad P0 (pérdida de datos clara) a P3.
 | 14 | `saveCharacterLorebook` y `saveCharacterBackground` releen el personaje al guardar, así que la extracción larga NO pisa avatar ni fondo. Lo que queda pisable es lo contrario: `onCycleAvatarMode` y `onChangeAvatar` guardan el objeto entero en memoria; la copia en memoria se refresca al terminar la extracción del mismo chat, por lo que no encontré un camino realista, solo una ventana de milisegundos. Con "editar lorebook a mano" (MEM-001) este patrón de reemplazo total sí pasará a ser un riesgo real. | `state.js: saveCharacterLorebook`, `saveCharacterBackground`; `ui/chat.js: maybeUpdateLorebook`, `onCycleAvatarMode`, `onChangeAvatar` | H / I | P3 (hoy) |
 | 15 | Datos personales en texto plano fuera del almacenamiento privado: ver pregunta 8. La copia manual incluye `pinSalt`/`pinHash`; el PIN (≥4 dígitos, sin máximo) usa SHA-256 con sal y una sola pasada, así que un PIN corto se rompe por fuerza bruta. El PIN es un bloqueo de pantalla: los datos de IndexedDB no están cifrados. | `state.js: exportBackup`; `lock.js: hashPin`; `platform.js` | H | P2 |
 | 16 | Proyecto Android: `allowBackup="true"` (plantilla de Capacitor), sin `debuggable` explícito (el APK de `assembleDebug` es depurable), y `usesCleartextTraffic` no aparece en la plantilla. Ver pregunta 7. | plantilla oficial de Capacitor 6.x; `build-apk.yml`; `capacitor.config.json` | H (plantilla) / I (APK generado) / S (Auto Backup real) | P2 |
-| 17 | Cada APK se firma con un keystore distinto (causa ya documentada): actualizar exige desinstalar. La copia manual completa (v2) es entonces la única vía real de conservar personajes, chats y lorebook al actualizar, y es manual. | `build-apk.yml` (sin `android/` ni keystore versionados); sección "Portabilidad…", punto C | H | P1 (para futuras versiones) — **CORREGIDO por ARQ-001 (2026-09-24), a falta de verificar en un teléfono real** |
+| 17 | Cada APK se firma con un keystore distinto (causa ya documentada): actualizar exige desinstalar. La copia manual completa (v2) es entonces la única vía real de conservar personajes, chats y lorebook al actualizar, y es manual. | `build-apk.yml` (sin `android/` ni keystore versionados); sección "Portabilidad…", punto C | H | P1 (para futuras versiones) — **Corregido, pendiente de verificar en teléfono**: ARQ-001 (2026-09-24) falló la verificación en el CI (build #14) y ARQ-002 lo corrige con firma explícita |
 | 18 | Rendimiento con muchos personajes: `listCharacters()` carga objetos completos (avatar y fondo incluidos) y se llama dos veces al arrancar (`migrateLegacyChats` en `main.js`, luego el hub); además `buildLastPreviews` hace un `getAll('chatMeta')` por personaje. Ver pregunta 10. | `state.js: listCharacters`; `main.js: boot`; `ui/home.js: show`, `buildLastPreviews` | H | P2 |
 | 19 | `Character.updated` no se mantiene nunca después de importar; `listCharacters()` ordena por él, así que el hub ordena por fecha de importación y no por actividad. No es pérdida de datos. | `cards/import.js`; `state.js: listCharacters`, `saveChatMessages` | H | P3 |
 | 20 | Repositorio público: sin secretos ni archivos personales. Tres detalles menores (P3) y ausencia de `.gitignore`. Ver pregunta 1. | escaneo de `git rev-list --all` | H | P3 |
@@ -1260,14 +1334,27 @@ Ninguno está implementado ni autorizado; son insumos para el arquitecto:
    de partida (subir `maxLen` de la extracción o extraer por lotes; no
    reemplazar el lorebook si la respuesta es vacía o inesperada; no lanzar
    la extracción a la vez que la respuesta del chat; botón manual).
-4. ARQ-001: firma estable (hallazgo 17) — **hecho, ver su sección**.
+4. ARQ-001: firma estable (hallazgo 17) — implementado, falló en el CI y fue
+   corregido por ARQ-002; **pendiente de verificar en teléfono**.
 5. Guardado incremental de la respuesta parcial y manejo de segundo plano.
 6. `.gitignore` y `package-lock.json`.
 
 ## ARQ-001: firma estable del APK de depuración (2026-09-24)
 
-**Estado:** implementado; NO verificado todavía en el CI ni en un teléfono
-(ver "Verificación" abajo).
+**Estado:** implementado, pero **su primera versión FALLÓ en el CI** (build
+\#14, commit "ARQ-001: firma estable del APK de depuración en el CI"): el paso
+"Verificar que el APK lleva la firma estable esperada" detuvo el job porque el
+APK salió con una huella distinta a la esperada. **Corregido por ARQ-002** (ver
+su sección, más abajo). Lo que sigue describe el diseño original de ARQ-001; el
+paso 1 (copiar la llave a `~/.android/debug.keystore`) resultó insuficiente y el
+paso 3 (verificación) sí funcionó como se diseñó.
+
+Huellas del fallo (transcritas por el usuario desde una captura del log; pueden
+tener errores de lectura):
+- Esperada: `41ce1e19…1494dc` (la del keystore versionado)
+- Obtenida: `4db5ccb9…8b19c5` (otro certificado)
+No se subió ningún APK. **Causa NO confirmada** (Inferencia: Gradle no tomó
+`~/.android/debug.keystore` con la llave copiada, o usó otro almacén).
 
 **Qué se hizo.**
 - `signing/companion-debug.keystore`: llave JKS generada una sola vez con
@@ -1329,3 +1416,55 @@ y copiar el valor `SHA256` (sin `:`, en minúsculas) a
 **Aviso operativo.** El primer APK con esta firma exige desinstalar la
 versión anterior UNA vez (el usuario ya sabe que no hay datos valiosos en
 ella). Desde el siguiente, actualizar encima debería conservar los datos.
+
+## ARQ-002: firmar explícitamente con la llave fija (2026-09-24)
+
+**Estado:** implementado; **pendiente de verificar en el CI y en un teléfono**.
+Corrige el fallo de ARQ-001 (ver arriba).
+
+**Qué cambió** (solo `.github/workflows/build-apk.yml` y esta documentación):
+- Tras `assembleDebug` hay tres pasos nuevos, en este orden:
+  1. **Localizar apksigner**: busca `apksigner` en
+     `$ANDROID_HOME/build-tools/*/` (o `$ANDROID_SDK_ROOT`), elige la versión
+     más alta y la deja en `$APKSIGNER`. Si no la encuentra, el job falla con un
+     mensaje claro.
+  2. **Re-firmar el APK**: `apksigner sign` con
+     `signing/companion-debug.keystore` (alias `androiddebugkey`, contraseñas
+     `android`), escribe a `--out app-debug-resigned.apk` y reemplaza a
+     `app-debug.apk`. Así la firma ya no depende de dónde busque Gradle su
+     llave.
+  3. **Verificar**: `apksigner verify --verbose --print-certs`; imprime en el
+     log el DN del certificado, el SHA-256 esperado y el obtenido, y falla si
+     alguno de los certificados del APK difiere del esperado, si no se puede
+     leer ninguno, o si la firma es inválida.
+- El artifact subido es el APK re-firmado y verificado.
+- Se conserva la inyección de `versionCode` (= `github.run_number`) y
+  `versionName`. También se conserva el paso que copia la llave a
+  `~/.android/debug.keystore` (es inofensivo y sirve de respaldo si Gradle sí
+  la toma); la firma que cuenta es la explícita.
+- No cambió: `signing/companion-debug.keystore`,
+  `signing/EXPECTED-CERT-SHA256.txt`, `applicationId`, `androidScheme`
+  (`"http"`), el gate `npm test`, nada bajo `www/` ni `tests/`.
+- **No se "arregló" copiando la huella obtenida al archivo de esperadas**: eso
+  habría validado la llave equivocada.
+
+**Verificación.**
+- Hecho: la huella de `signing/EXPECTED-CERT-SHA256.txt`
+  (`41ce1e190b07…1494dc`) coincide con `keytool -list -v` del keystore
+  versionado (SHA-256 `41:CE:1E:19:0B:07:…:14:94:DC`). El YAML se parsea sin
+  errores. La lógica de los pasos "Localizar" y "Verificar" se probó
+  localmente con un `apksigner` simulado en tres casos: huella igual (pasa),
+  huella distinta (falla mostrando esperada y obtenida) y salida sin
+  certificado (falla). 144/144 tests en verde.
+- **Supuesto (no verificable sin el CI):** que `apksigner sign` acepte el
+  keystore JKS tal cual, que `apksigner` exista en el runner y que su salida
+  tenga las líneas `certificate DN` y `certificate SHA-256 digest` (así fue en
+  el build #14, que llegó a ese punto). No hay Android SDK local ni `gh` para
+  leer los logs de Actions; si el build sale en rojo, el mensaje del paso
+  indica cuál requisito falló.
+- **Supuesto (solo con un teléfono):** que instalar un APK sobre otro
+  conserve los datos; se comprueba con "MARCA-1" al instalar el APK de MEM-001
+  v2 sin desinstalar el anterior.
+
+**Aviso operativo (igual que ARQ-001).** El primer APK con la firma estable
+exige desinstalar la versión anterior una vez.

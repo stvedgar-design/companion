@@ -107,7 +107,7 @@ lo contrario explícitamente.
 
 ## 4. Estado del repositorio Git — leé esto con cuidado
 
-**La carpeta del proyecto (`/home/edgar/Documentos/companion` en la
+**La carpeta del proyecto (`<RUTA-DEL-PROYECTO>` en la
 máquina donde se desarrolló hasta ahora) ES la raíz del repositorio git.**
 El remoto es `https://github.com/stvedgar-design/companion.git`, rama
 `main`.
@@ -116,7 +116,7 @@ El remoto es `https://github.com/stvedgar-design/companion.git`, rama
 
 En algún momento anterior a esta sesión, el repositorio git terminó
 enraizado accidentalmente en el directorio **personal** del usuario
-(`/home/edgar`) en vez de en la carpeta del proyecto — probablemente
+(`<HOME-DEL-USUARIO>`) en vez de en la carpeta del proyecto — probablemente
 porque algún comando de git se corrió desde el directorio equivocado.
 Consecuencias reales que se encontraron y corrigieron en esta sesión:
 - Un commit terminó incluyendo una copia entera del proyecto extraída de
@@ -133,7 +133,7 @@ Consecuencias reales que se encontraron y corrigieron en esta sesión:
 
 ### Cómo se arregló
 
-Se **eliminó por completo** el `.git` viejo (enraizado en `/home/edgar`,
+Se **eliminó por completo** el `.git` viejo (enraizado en `<HOME-DEL-USUARIO>`,
 con autorización explícita del usuario) y se inicializó un repositorio
 **nuevo y limpio**, con root en la carpeta del proyecto, conteniendo
 exactamente los archivos reales del proyecto (verificado contra el

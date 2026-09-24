@@ -34,6 +34,8 @@ jobs:
       # Firma estable (ARQ-001). `cap add android` regenera todo el proyecto,
       # así que estos pasos deben ir DESPUÉS de él. Ver docs/NOTES.md.
       # Es una llave SOLO de depuración: nunca usarla para publicar en una tienda.
+      # (ARQ-002: se conserva como respaldo; la firma que vale es la explícita
+      # de "Re-firmar el APK…", más abajo.)
       - name: Instalar la llave de firma de depuración fija
         run: |
           mkdir -p ~/.android
@@ -63,18 +65,66 @@ jobs:
       - name: Compilar APK de depuración
         run: cd android && ./gradlew assembleDebug
 
+      # ARQ-002: el build #14 (ARQ-001) salió firmado con un certificado distinto
+      # al del keystore versionado. En vez de depender de dónde busque Gradle su
+      # llave, el APK se RE-FIRMA aquí de forma explícita con signing/ y se verifica.
+      - name: Localizar apksigner
+        run: |
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          if [ -z "$SDK" ]; then
+            echo "::error::ANDROID_HOME y ANDROID_SDK_ROOT están vacíos: no se puede localizar apksigner"
+            exit 1
+          fi
+          APKSIGNER=$(ls -d "$SDK"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1 || true)
+          if [ -z "$APKSIGNER" ] || [ ! -x "$APKSIGNER" ]; then
+            echo "::error::No se encontró apksigner en $SDK/build-tools/*/"
+            ls -la "$SDK/build-tools" 2>&1 || true
+            exit 1
+          fi
+          echo "apksigner: $APKSIGNER"
+          echo "APKSIGNER=$APKSIGNER" >> "$GITHUB_ENV"
+
+      - name: Re-firmar el APK con la llave de depuración fija
+        run: |
+          APK=android/app/build/outputs/apk/debug/app-debug.apk
+          SIGNED=android/app/build/outputs/apk/debug/app-debug-resigned.apk
+          [ -f "$APK" ] || { echo "::error::No existe $APK"; exit 1; }
+          rm -f "$SIGNED"
+          "$APKSIGNER" sign \
+            --ks signing/companion-debug.keystore \
+            --ks-key-alias androiddebugkey \
+            --ks-pass pass:android \
+            --key-pass pass:android \
+            --out "$SIGNED" \
+            "$APK"
+          [ -s "$SIGNED" ] || { echo "::error::apksigner no produjo $SIGNED"; exit 1; }
+          mv -f "$SIGNED" "$APK"
+          ls -l "$APK"
+
       - name: Verificar que el APK lleva la firma estable esperada
         run: |
-          APKSIGNER=$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
           APK=android/app/build/outputs/apk/debug/app-debug.apk
-          "$APKSIGNER" verify --print-certs "$APK"
-          ACTUAL=$("$APKSIGNER" verify --print-certs "$APK" \
-            | grep -m1 "certificate SHA-256 digest" | sed 's/.*: *//' | tr -d ':' | tr 'A-F' 'a-f')
           EXPECTED=$(tr -d ':[:space:]' < signing/EXPECTED-CERT-SHA256.txt | tr 'A-F' 'a-f')
-          echo "Esperada: $EXPECTED"
-          echo "Obtenida: $ACTUAL"
-          [ -n "$ACTUAL" ] && [ "$ACTUAL" = "$EXPECTED" ] \
-            || { echo "::error::La firma del APK no coincide con signing/EXPECTED-CERT-SHA256.txt"; exit 1; }
+          # apksigner verify falla (y con él este paso) si la firma es inválida.
+          VERIFY_OUT=$("$APKSIGNER" verify --verbose --print-certs "$APK")
+          echo "$VERIFY_OUT"
+          echo "-----"
+          echo "Certificado (DN):"
+          echo "$VERIFY_OUT" | grep "certificate DN" || echo "(no aparece ninguna línea 'certificate DN')"
+          ACTUAL_LIST=$(echo "$VERIFY_OUT" | grep "certificate SHA-256 digest" | sed 's/.*: *//' | tr -d ':[:space:]' | tr 'A-F' 'a-f' || true)
+          echo "SHA-256 esperado: $EXPECTED"
+          echo "SHA-256 obtenido: ${ACTUAL_LIST:-<ninguno>}"
+          if [ -z "$ACTUAL_LIST" ]; then
+            echo "::error::No se pudo leer el SHA-256 del certificado en la salida de apksigner"
+            exit 1
+          fi
+          for ACTUAL in $ACTUAL_LIST; do
+            if [ "$ACTUAL" != "$EXPECTED" ]; then
+              echo "::error::La firma del APK no coincide con signing/EXPECTED-CERT-SHA256.txt (esperado $EXPECTED, obtenido $ACTUAL)"
+              exit 1
+            fi
+          done
+          echo "OK: el APK está firmado con la llave estable esperada."
 
       - name: Subir el APK como artefacto descargable
         uses: actions/upload-artifact@v4
