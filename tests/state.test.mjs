@@ -57,6 +57,7 @@ test('getSettings devuelve valores por defecto cuando no hay nada guardado', asy
     url: '', user: '', maxLen: 220, temp: 0.85, mode: 'chat', ctx: 4096,
     pinSalt: '', pinHash: '',
     theme: 'nomi', themeMode: 'dark',
+    lorebookAuto: false,
   });
 });
 
@@ -661,4 +662,35 @@ test('guardar el lorebook no pisa un chatBackground* ni un avatar cambiados entr
   assert.equal(after.chatBackground, 'data:image/jpeg;base64,NUEVO');
   assert.equal(after.chatBackgroundBrightness, 60);
   assert.equal(after.avatar, 'data:image/png;base64,AVATAR');
+});
+
+test('MEM-002: lorebookAuto es false por defecto y solo acepta true estricto', async () => {
+  const state = createState(createMemoryBackend());
+  assert.equal((await state.getSettings()).lorebookAuto, false);
+  assert.equal((await state.saveSettings({ lorebookAuto: 'true' })).lorebookAuto, false);
+  assert.equal((await state.saveSettings({ lorebookAuto: 1 })).lorebookAuto, false);
+  assert.equal((await state.saveSettings({ lorebookAuto: true })).lorebookAuto, true);
+  // merge parcial: otro cambio no lo apaga
+  assert.equal((await state.saveSettings({ temp: 1.0 })).lorebookAuto, true);
+  assert.equal((await state.getSettings()).lorebookAuto, true);
+});
+
+test('MEM-002: Settings guardados sin el campo (instalación o copia anterior) cargan con lorebookAuto=false', async () => {
+  const backend = createMemoryBackend();
+  await backend.put('settings', 'main', { url: 'http://100.1.1.1:5001', user: 'Ada', theme: 'glass' });
+  const state = createState(backend);
+  const settings = await state.getSettings();
+  assert.equal(settings.lorebookAuto, false);
+  assert.equal(settings.user, 'Ada');
+});
+
+test('MEM-002: una copia v2 sin lorebookAuto (Settings antiguos) sigue importando', async () => {
+  const state = createState(createMemoryBackend());
+  const backup = {
+    app: 'companion', version: 2, exported: 1, settings: { url: '', user: 'Ada' },
+    characters: [{ id: 'c1', name: 'Mia', card: {}, created: 1 }], chats: [], chatMessages: {},
+  };
+  await state.importBackup({ text: async () => JSON.stringify(backup) });
+  assert.equal((await state.listCharacters()).length, 1);
+  assert.equal((await state.getSettings()).lorebookAuto, false);
 });

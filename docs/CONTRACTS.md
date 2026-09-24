@@ -155,6 +155,7 @@ Los imports son ESM relativos y siempre con extensión `.js`. Los tests importan
  * @property {string} pinHash       // '' si está desactivado; SHA-256 salteado (ver www/js/lock.js)
  * @property {'nomi'|'glass'|'imessage'} theme  // skin visual (www/css/themes.css), por defecto 'nomi'
  * @property {'dark'|'light'} themeMode         // claro/oscuro, aplica a cualquier skin, por defecto 'dark'
+ * @property {boolean} lorebookAuto              // MEM-002: extracción automática de memoria (cada ~20 mensajes); false por defecto; solo `=== true` la activa
  *
  * Los antiguos `chatBackground*` YA NO están en Settings (pasaron a Character).
  */
@@ -280,7 +281,8 @@ parseKeysInput(text: string): string[]
 editLoreEntry(entries: LoreEntry[], id: string, patch: { content: string, keys: string[] }, now?: number): LoreEntry[]|null   // la entrada pasa a source:'manual'
 removeLoreEntry(entries: LoreEntry[], id: string): LoreEntry[]
 createLoreUpdater(deps): { maybeRun(), runNow(), abort(), isRunning(), getStatus() }
-   // Actualizador con dependencias inyectables (probado sin DOM ni red). maybeRun() = automático (no arranca con el chat ocupado);
+   // Actualizador con dependencias inyectables (probado sin DOM ni red). maybeRun() = automático (no arranca con el chat ocupado
+   // ni si `settings.lorebookAuto !== true`, MEM-002);
    // runNow() = "Actualizar memoria ahora"; abort() = el usuario envió un mensaje. Resultado: { kind: ok|nochange|unparsed|unavailable|
    // aborted|error|skipped|busy|toolittle, added?, updated? }.
 selectLoreEntries(entries: LoreEntry[], recentMessages: Message[], opts?: { scanCount?: number, charBudget?: number }): LoreEntry[]

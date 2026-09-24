@@ -607,6 +607,10 @@ export function createLoreUpdater(deps) {
       if (running || deps.isChatBusy()) return { kind: 'skipped' };
       const ctx = deps.getContext();
       if (!ctx || !ctx.character || !ctx.chat || !ctx.settings) return { kind: 'skipped' };
+      // MEM-002: apagado por defecto; cada extracción invalida la caché de prompt
+      // del servidor y encarece la siguiente respuesta (~20 s). Solo `runNow()`
+      // (manual) ignora este ajuste.
+      if (ctx.settings.lorebookAuto !== true) return { kind: 'skipped' };
       if (!shouldUpdateLorebook(ctx.chat, ctx.messages.length)) return { kind: 'skipped' };
       const fresh = ctx.messages.slice(ctx.chat.lorebookMessageCount || 0);
       return run(ctx, fresh.slice(-LOREBOOK_EXTRACT_WINDOW_MESSAGES));

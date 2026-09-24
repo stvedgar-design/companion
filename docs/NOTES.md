@@ -37,7 +37,9 @@ navegación), `setup`, `home`, `chats`, `chat`. Versión: `APP_VERSION`
 **Modelo de datos actual** (fuente de verdad: typedefs de `state.js`):
 - `Settings` (1 registro, clave `main`): `url`, `user`, `maxLen`, `temp`,
   `mode` (`'chat'` por defecto | `'plain'`), `ctx`, `pinSalt`, `pinHash`,
-  `theme` (`nomi|glass|imessage`), `themeMode` (`dark|light`).
+  `theme` (`nomi|glass|imessage`), `themeMode` (`dark|light`), `lorebookAuto`
+  (boolean, `false` por defecto; MEM-002: solo `true` activa la extracción
+  automática de memoria).
 - `Character` (store `characters`): `id`, `name`, `avatar` (data URL),
   `card` (Card normalizada), `avatarMode`, `created`, `lorebook: LoreEntry[]`
   (por personaje, compartido entre sus chats), `lorebookPrevious: LoreEntry[]` y
@@ -62,11 +64,12 @@ navegación), `setup`, `home`, `chats`, `chat`. Versión: `APP_VERSION`
 importar chat y copia completa; respaldo automático silencioso a
 `Documents/Companion-backups/` (solo APK); PIN opcional; indicador de
 contexto; hub de 2 columnas con lupa de búsqueda; lorebook automático por
-personaje (MEM-001 v2: cada 20 mensajes, extracción aditiva de una línea vía
-KoboldCpp, inyección por keyword, hoja "Ver lorebook" con editar/borrar/deshacer
-y "Actualizar memoria ahora"); 3 skins × claro/oscuro; fondo de chat por
-personaje; CI con gate de tests; versión visible en Ajustes; 174 tests (`node
---test tests/*.test.mjs`).
+personaje (MEM-001 v2: extracción aditiva de una línea vía KoboldCpp, inyección
+por keyword, hoja "Ver lorebook" con editar/borrar/deshacer y "Actualizar memoria
+ahora"; MEM-002: la actualización automática cada 20 mensajes está APAGADA por
+defecto y se activa con un interruptor en esa hoja); 3 skins × claro/oscuro; fondo
+de chat por personaje; CI con gate de tests; versión visible en Ajustes; 187
+tests (`node --test tests/*.test.mjs`).
 
 **Pendiente:** todo lo anterior **sin probar en un APK real** (el teléfono
 del usuario tiene la 4.ª APK del repositorio, muy anterior); pantalla de respaldos; búsqueda dentro de un chat; ajustes de IA por personaje; creador de
@@ -85,8 +88,11 @@ personajes guiado (solo propuesta, no autorizado). Añadido por DOC-002
   **sigue pendiente la prueba desde el teléfono con el APK.**
 - Latencia de la memoria: cada actualización de memoria hace que la SIGUIENTE
   respuesta del chat tarde ~15–25 s más (invalida la caché de prompt del
-  servidor). Ver "MEM-001 v2 → Informe de latencia"; decisión pendiente del
-  arquitecto y del usuario.
+  servidor). **Decisión (MEM-002, 2026-09-24):** la actualización automática
+  queda apagada por defecto (`Settings.lorebookAuto`); la manual se conserva y
+  avisa el costo. Siguen pendientes de evaluar las opciones 2 (extraer sobre el
+  prefijo del chat, VER-004) y 4 (espaciar o disparar al salir del chat); ver
+  "MEM-001 v2 → Informe de latencia" y "MEM-002".
 - ~~El modo "plantilla del modelo" no corta en `\n` (posibles dos párrafos)~~:
   **corregido por FMT-001** (2026-09-24): `stop` incluye `"\n"` y una respuesta
   vacía se reintenta una vez. Ver "FMT-001". Pendiente relacionado, sin
@@ -180,6 +186,7 @@ personajes: segunda iteración visual"; auditoría de recuperabilidad →
 | DOC-002 | Registrar perfil del servidor, principios de producto y estado real de los contratos | Autorizado — ejecutado el 2026-09-24 (este lote; solo `docs/`) | Sección "Perfil del servidor y principios de producto", este Registro, pendientes de "Estado vigente" y rutas con marcadores. |
 | MEM-001 v2 | Lorebook: actualizaciones aditivas compatibles con el servidor real, protección contra pérdida y gestión manual | Autorizado — **implementado el 2026-09-24** (sesión B); Paso 0 ejecutado contra el servidor real; **pendiente de probar en el teléfono** | Ver "MEM-001 v2" (al final de este archivo). Reporta un problema de latencia que requiere decisión. Reemplaza al MEM-001 anterior. |
 | FMT-001 | Preservar el formato de un solo párrafo en el modo "plantilla del modelo" y evitar respuestas vacías | Autorizado — **implementado el 2026-09-24** (sesión C); medido contra el servidor real; **pendiente de probar en el teléfono** | Ver "FMT-001" (al final de este archivo). |
+| MEM-002 | Extracción automática de memoria apagada por defecto (protección de la latencia del chat) | Autorizado (decisión del arquitecto) — **implementado el 2026-09-24** (sesión C); **pendiente de probar en el teléfono** | Ver "MEM-002" (al final de este archivo). Campo `Settings.lorebookAuto`. |
 | BKP-001 | Importación de copias segura: confirmar, no pisar datos nuevos, todo o nada | **Autorizado; sin implementar** (sesión posterior a MEM-001 v2, solo cuando el usuario lo pida) | Punto de partida: hallazgos 2 y 10 de VER-001. |
 | MEM-001 (v1) | (Anulado) versión anterior de MEM-001 | **ANULADO**, reemplazado por MEM-001 v2 | Asumía que el servidor podía devolver una lista larga con saltos de línea. |
 | (previos) | `CONTRACT-LOREBOOK.md` (implementado, parcialmente superado), `CONTRACT-CHARACTER-CREATOR.md` (propuesta, no autorizada), `CONTRACT-HANDOFF.md` (briefing) | — | Ver los avisos al inicio de cada uno. |
@@ -1738,3 +1745,54 @@ medias en `onToken`; servidor simulado (1.ª vacía, 2.ª con texto).
 **Pendiente sin contrato:** `Settings.maxLen` > 160 y `Settings.temp` no tienen efecto
 real con este servidor (recorta a 160 tokens; impone su muestreo); habría que
 informarlo en Ajustes.
+
+## MEM-002: memoria automática apagada por defecto (2026-09-24)
+
+**Decisión y razón.** El principio de producto nº 1 del usuario es la latencia y
+prohíbe empeorarla de forma perceptible sin su autorización. MEM-001 v2 midió que
+cada extracción (automática o manual) invalida la caché de prompt del servidor y la
+SIGUIENTE respuesta del chat tarda ~20 s más en vez de ~0,5 s de primer token (Paso
+0, c2: 19,3–21,0 s con ventana de 40 mensajes; 22,1–24,2 s con ventana de 12; el
+costo no baja con un prompt más corto y crece con el historial). Con el disparo
+automático activo, cada ~20 mensajes aparecería esa pausa. Por eso el disparo
+automático queda **apagado por defecto** y el usuario lo activa a sabiendas. La
+alternativa medida en c3 (extraer como continuación del mismo prefijo del chat:
+penalización 0, 1,3 s) NO está validada en calidad de extracción.
+
+**Qué cambió.**
+- `state.js`: `Settings.lorebookAuto: boolean`, por defecto `false`; el saneado solo
+  acepta `=== true`. Settings guardados (o copias v1/v2) sin el campo cargan con
+  `false`; `importBackup` no lee ni exige el campo (además no restaura Settings).
+- `api/lorebook.js: createLoreUpdater().maybeRun()`: única línea nueva de lógica: si
+  `ctx.settings.lorebookAuto !== true` devuelve `{kind:'skipped'}` antes de mirar el
+  conteo. `runNow()` (manual), la extracción, la aplicación aditiva, el deshacer, la
+  edición y el aborto al enviar NO cambiaron.
+- `ui/chat.js` (hoja "Ver lorebook"): casilla "Actualizar automáticamente cada 20
+  mensajes" (apagada por defecto) con el aviso "Mientras actualiza, la siguiente
+  respuesta de tu personaje puede tardar más (en pruebas, unos 20 segundos o más).";
+  bajo "Actualizar memoria ahora": "La siguiente respuesta puede tardar más. Conviene
+  usarlo al terminar de chatear."; el texto de "sin recuerdos" ya no dice que se
+  generan solos. Al activar la casilla se guarda el ajuste y el marcador de disparo
+  del chat abierto se fija a su conteo actual de mensajes (sin extracción
+  retroactiva inmediata). Es una casilla nativa (no hay componente "interruptor"
+  en el proyecto); se conservan las pantallas internas de la hoja (no usa
+  `app.confirmDialog`).
+
+**Limitación conocida (Inferencia):** el marcador solo se ajusta en el chat abierto
+al activar. Otros chats del mismo personaje conservan su marcador antiguo; si ya
+acumulaban ≥20 mensajes desde él, tras activar la opción la extracción se disparará
+en el siguiente mensaje que se envíe en ese chat (con la ventana de los últimos 10
+mensajes). Es el comportamiento de siempre para un chat "vencido"; no se cambió.
+
+**Verificación (Hecho).** 187 tests en verde (nuevos: default y saneado de
+`lorebookAuto`, Settings sin el campo, copia v2 sin el campo; con `false` cruzar el
+umbral no dispara ni guarda ni avanza el marcador; con `true` sí; la manual funciona
+con ambos valores). En el navegador integrado (375×812): casilla visible y apagada
+por defecto, avisos legibles; al activarla el ajuste se guardó (`true`) y el
+marcador del chat de prueba pasó a 25 (= mensajes del chat); se volvió a apagar y se
+limpiaron los datos de prueba. **No probado:** teléfono/APK; el efecto de latencia
+real en el teléfono.
+
+**Pendiente de evaluación (sin contrato):** opción 2 (extraer sobre el prefijo del
+chat; medir calidad, VER-004) y opción 4 (espaciar el disparo o dispararlo al salir
+del chat).

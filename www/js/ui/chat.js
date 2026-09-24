@@ -1,7 +1,7 @@
 // www/js/ui/chat.js
 // Pantalla de chat: burbujas, streaming, avatar en 3 modos, composer, menú.
 
-import { getChat, getChatMessages, saveChatMessages, getCharacter, saveCharacter, getSettings, markChatExported, saveCharacterLorebook, markChatLorebookProgress } from '../state.js';
+import { getChat, getChatMessages, saveChatMessages, getCharacter, saveCharacter, getSettings, saveSettings, markChatExported, saveCharacterLorebook, markChatLorebookProgress } from '../state.js';
 import { generateReplyNonEmpty, completeOnce } from '../api/kobold.js';
 import { initialMessages, scenarioGreeting, estimateContextUsage } from '../api/prompt.js';
 import {
@@ -755,6 +755,38 @@ function openLorebookSheet(note = '') {
   undoBtn.style.marginTop = 'var(--space-2, 8px)';
   undoBtn.disabled = inFlight;
 
+  // MEM-002: la actualización automática está apagada por defecto porque cada
+  // extracción hace que la SIGUIENTE respuesta del chat tarde ~20 s más.
+  const autoRow = loreEl('label', 'field__label');
+  autoRow.style.display = 'flex';
+  autoRow.style.alignItems = 'center';
+  autoRow.style.gap = 'var(--space-2, 8px)';
+  const autoBox = document.createElement('input');
+  autoBox.type = 'checkbox';
+  autoBox.checked = !!(settings && settings.lorebookAuto);
+  autoBox.style.accentColor = 'var(--color-accent, #8b1fe0)';
+  autoRow.append(autoBox, loreEl('span', '', `Actualizar automáticamente cada ${LOREBOOK_UPDATE_EVERY_MESSAGES} mensajes`));
+  const autoHint = loreEl(
+    'div',
+    'field__hint',
+    'Mientras actualiza, la siguiente respuesta de tu personaje puede tardar más (en pruebas, unos 20 segundos o más).'
+  );
+  autoHint.style.marginBottom = 'var(--space-3, 12px)';
+  autoBox.addEventListener('change', async () => {
+    const enable = autoBox.checked;
+    autoBox.disabled = true;
+    try {
+      settings = await saveSettings({ lorebookAuto: enable });
+      // Al activar, el marcador se fija al conteo actual: sin extracción retroactiva inmediata.
+      if (enable && chat) chat = await markChatLorebookProgress(chat.id, messages.length);
+      openLorebookSheet(enable ? 'Actualización automática activada.' : 'Actualización automática desactivada.');
+    } catch {
+      autoBox.checked = !enable;
+      autoBox.disabled = false;
+      openLorebookSheet('No se pudo guardar el ajuste.');
+    }
+  });
+
   refreshBtn.addEventListener('click', async () => {
     refreshBtn.disabled = true;
     undoBtn.disabled = true;
@@ -773,7 +805,10 @@ function openLorebookSheet(note = '') {
     }
   });
 
-  wrap.append(progress, refreshBtn, undoBtn);
+  const costHint = loreEl('div', 'field__hint', 'La siguiente respuesta puede tardar más. Conviene usarlo al terminar de chatear.');
+  costHint.style.marginTop = 'var(--space-2, 8px)';
+
+  wrap.append(autoRow, autoHint, progress, refreshBtn, costHint, undoBtn);
 
   const entries = (character.lorebook || []).slice().sort((a, b) => (b.updated || 0) - (a.updated || 0));
   const list = loreEl('div');
@@ -783,8 +818,8 @@ function openLorebookSheet(note = '') {
       loreEl(
         'div',
         'field__hint',
-        'Todavía no hay recuerdos. Se generan solos a medida que avanza la conversación en cualquiera de tus ' +
-          `chats con este personaje (cada ~${LOREBOOK_UPDATE_EVERY_MESSAGES} mensajes), o con el botón de arriba.`
+        'Todavía no hay recuerdos. Se crean al usar el botón de arriba (con lo que hayas hablado en cualquiera de tus ' +
+          'chats con este personaje), o solos si activas la actualización automática.'
       )
     );
   }

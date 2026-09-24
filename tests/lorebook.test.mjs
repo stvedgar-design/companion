@@ -352,9 +352,10 @@ function makeUpdaterHarness(overrides = {}) {
     chat: { id: 'chat1', lorebookMessageCount: 0 },
     messages: Array.from({ length: LOREBOOK_UPDATE_EVERY_MESSAGES }, (_, i) => ({ role: i % 2 ? 'char' : 'user', text: `msg ${i}`, ts: i })),
     reply: '{"k":["panadería"],"c":"Trabaja en una panadería."}]',
+    auto: true, // MEM-002: el disparo automático solo ocurre con Settings.lorebookAuto === true
   };
   const updater = createLoreUpdater({
-    getContext: () => ({ character: makeCharacter(), chat: state.chat, messages: state.messages, settings: makeSettings() }),
+    getContext: () => ({ character: makeCharacter(), chat: state.chat, messages: state.messages, settings: makeSettings({ lorebookAuto: state.auto }) }),
     isChatBusy: () => state.busy,
     complete: overrides.complete || ((prompt, opts) => {
       calls.complete++;
@@ -395,6 +396,29 @@ test('createLoreUpdater NO inicia una extracción mientras hay una generación d
   state.busy = false;
   assert.equal((await updater.maybeRun()).kind, 'ok');
   assert.equal(calls.complete, 1);
+});
+
+test('MEM-002: con lorebookAuto=false cruzar el umbral NO dispara la extracción; con true sí', async () => {
+  const { updater, state, calls } = makeUpdaterHarness();
+  state.auto = false;
+  assert.deepEqual(await updater.maybeRun(), { kind: 'skipped' });
+  assert.equal(calls.complete, 0);
+  assert.equal(calls.save.length, 0);
+  assert.deepEqual(calls.progress, []);
+  state.auto = true;
+  assert.equal((await updater.maybeRun()).kind, 'ok');
+  assert.equal(calls.complete, 1);
+});
+
+test('MEM-002: la actualización manual (runNow) funciona con lorebookAuto=false y con true', async () => {
+  for (const auto of [false, true]) {
+    const { updater, state, calls } = makeUpdaterHarness();
+    state.auto = auto;
+    const result = await updater.runNow();
+    assert.equal(result.kind, 'ok', `auto=${auto}`);
+    assert.equal(calls.complete, 1);
+    assert.equal(calls.save.length, 1);
+  }
 });
 
 test('createLoreUpdater no dispara si aún no toca por conteo', async () => {
