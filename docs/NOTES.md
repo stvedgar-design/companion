@@ -78,8 +78,13 @@ defecto y se activa con un interruptor en esa hoja); 3 skins × claro/oscuro; fo
 de chat por personaje; CI con gate de tests; versión visible en Ajustes; 187
 tests (`node --test tests/*.test.mjs`).
 
-**Pendiente:** todo lo anterior **sin probar en un APK real** (el teléfono
-del usuario tiene la 4.ª APK del repositorio, muy anterior); pantalla de respaldos; búsqueda dentro de un chat; ajustes de IA por personaje; creador de
+**Verificado en un teléfono real (Hecho, reportado por el tester, 2026-09-24):**
+el APK nuevo se instaló ENCIMA del anterior, sin desinstalar, y los datos se
+conservaron (firma estable ARQ-001/ARQ-002 verificada); MEM-001 v2 "Actualizar
+memoria ahora" funcionó. Calidad de la memoria y formato: ver Pendientes.
+
+**Pendiente:** el resto de lo anterior **sigue sin probarse en un APK real**
+(FMT-001, MEM-002, respaldo automático, PIN, etc.); pantalla de respaldos; búsqueda dentro de un chat; ajustes de IA por personaje; creador de
 personajes guiado (solo propuesta, no autorizado). Añadido por DOC-002
 (2026-09-24), a raíz de VER-001 y de las decisiones del arquitecto:
 - Respaldo automático completo: un archivo por `chatId` (hoy NO es así, ver
@@ -92,7 +97,8 @@ personajes guiado (solo propuesta, no autorizado). Añadido por DOC-002
   hallazgo 18).
 - ~~Prueba de la memoria (lorebook) contra el servidor real~~: hecha desde el PC
   en MEM-001 v2 (Paso 0 y prueba de la hoja en el navegador integrado);
-  **sigue pendiente la prueba desde el teléfono con el APK.**
+  **en el teléfono, "Actualizar memoria ahora" funcionó** (1 nueva); sin probar
+  allí: el disparo automático.
 - Latencia de la memoria: cada actualización de memoria hace que la SIGUIENTE
   respuesta del chat tarde ~15–25 s más (invalida la caché de prompt del
   servidor). **Decisión (MEM-002, 2026-09-24):** la actualización automática
@@ -100,6 +106,20 @@ personajes guiado (solo propuesta, no autorizado). Añadido por DOC-002
   avisa el costo. Siguen pendientes de evaluar las opciones 2 (extraer sobre el
   prefijo del chat, VER-004) y 4 (espaciar o disparar al salir del chat); ver
   "MEM-001 v2 → Informe de latencia" (en `HISTORIAL.md`) y "MEM-002".
+- **Calidad de la memoria (Hecho, tester en teléfono):** tras "Actualizar memoria
+  ahora" ("correcta, 1 nueva") la lista mostró 2 entradas casi duplicadas, con
+  keys "personality" y "person who loves physical touch". Con la inyección vigente
+  (solo si una key aparece en los últimos 3 mensajes) casi nunca llegarían al
+  prompt. **Candidatos a contrato futuro (SIN autorizar):** higiene de keys
+  (palabras sueltas, sin genéricas); fusión de casi-duplicados aunque las keys
+  difieran; recuerdos "siempre presentes" con tope de caracteres.
+- **Formato del personaje (Hecho, observado varias veces por el tester, también en
+  versiones antiguas):** a veces la narración sale SIN asteriscos y parece
+  diálogo, y a veces queda un asterisco suelto que se ve literal ("...sincere.*").
+  Regenerar suele arreglarlo. **Candidato a contrato futuro (SIN autorizar):**
+  medir la tasa de violaciones de formato; probar que la respuesta empiece ya
+  dentro de asteriscos o un recordatorio de formato al final del prompt (sin costo
+  de latencia).
 - ~~El modo "plantilla del modelo" no corta en `\n` (posibles dos párrafos)~~:
   **corregido por FMT-001** (2026-09-24): `stop` incluye `"\n"` y una respuesta
   vacía se reintenta una vez. Ver "FMT-001" en `HISTORIAL.md`. Pendiente relacionado, sin
@@ -198,10 +218,10 @@ personajes: segunda iteración visual"; auditoría de recuperabilidad →
 |---|---|---|---|
 | DOC-001 | Reconciliar la documentación con el estado real | Autorizado — ejecutado el 2026-09-23 (solo `docs/`; el commit lo confirma `git log`) | Esta sección, "Estado vigente", marcas "SUPERADO", `CONTRACTS.md` reescrito a los typedefs reales y aviso al inicio de `CONTRACT-LOREBOOK.md`. |
 | VER-001 | Auditoría de recuperabilidad y seguridad de datos | Autorizado — ejecutado el 2026-09-23; informe en "Auditoría VER-001" (en `HISTORIAL.md`) | Solo lectura: no cambia comportamiento. Los hallazgos P0/P1 requieren contratos de corrección aparte (sin autorizar). |
-| ARQ-001 | Firma estable del APK | Implementado el 2026-09-24; **la verificación falló en el CI** (build #14: la huella del APK no coincidió con la esperada); **corregido por ARQ-002** | Ver "ARQ-001" y "ARQ-002" (en `HISTORIAL.md`). Llave en `signing/`, workflow actualizado. |
-| ARQ-002 | Corregir la firma del APK: firmar explícitamente con la llave fija | Autorizado — implementado el 2026-09-24 (este lote); **pendiente de verificar en el CI y en un teléfono real** | El workflow re-firma con `apksigner sign` y verifica la huella. Ver "ARQ-002". |
+| ARQ-001 | Firma estable del APK | Implementado el 2026-09-24; **la verificación falló en el CI** (build #14: la huella del APK no coincidió con la esperada); **corregido por ARQ-002, verificado en un teléfono real** (ver ARQ-002) | Ver "ARQ-001" y "ARQ-002" (en `HISTORIAL.md`). Llave en `signing/`, workflow actualizado. |
+| ARQ-002 | Corregir la firma del APK: firmar explícitamente con la llave fija | Autorizado — implementado el 2026-09-24 (este lote); **VERIFICADO en un teléfono real (2026-09-24): el APK nuevo se instaló encima del anterior, sin desinstalar, y los datos se conservaron** | El workflow re-firma con `apksigner sign` y verifica la huella. Ver "ARQ-002". |
 | DOC-002 | Registrar perfil del servidor, principios de producto y estado real de los contratos | Autorizado — ejecutado el 2026-09-24 (este lote; solo `docs/`) | Sección "Perfil del servidor y principios de producto", este Registro, pendientes de "Estado vigente" y rutas con marcadores. |
-| MEM-001 v2 | Lorebook: actualizaciones aditivas compatibles con el servidor real, protección contra pérdida y gestión manual | Autorizado — **implementado el 2026-09-24** (sesión B); Paso 0 ejecutado contra el servidor real; **pendiente de probar en el teléfono** | Ver "MEM-001 v2" (en `HISTORIAL.md`). Reporta un problema de latencia que requiere decisión. Reemplaza al MEM-001 anterior. |
+| MEM-001 v2 | Lorebook: actualizaciones aditivas compatibles con el servidor real, protección contra pérdida y gestión manual | Autorizado — **implementado el 2026-09-24** (sesión B); Paso 0 ejecutado contra el servidor real; **en el teléfono: la actualización manual funcionó** (2 entradas casi duplicadas, ver Estado vigente); sin probar el disparo automático | Ver "MEM-001 v2" (en `HISTORIAL.md`). Reporta un problema de latencia que requiere decisión. Reemplaza al MEM-001 anterior. |
 | FMT-001 | Preservar el formato de un solo párrafo en el modo "plantilla del modelo" y evitar respuestas vacías | Autorizado — **implementado el 2026-09-24** (sesión C); medido contra el servidor real; **pendiente de probar en el teléfono** | Ver "FMT-001" (en `HISTORIAL.md`). |
 | MEM-002 | Extracción automática de memoria apagada por defecto (protección de la latencia del chat) | Autorizado (decisión del arquitecto) — **implementado el 2026-09-24** (sesión C); **pendiente de probar en el teléfono** | Ver "MEM-002" (en `HISTORIAL.md`). Campo `Settings.lorebookAuto`. |
 | DOC-003 | Reducir el costo de leer la documentación: dividir NOTES.md y registrar principios y hoja de ruta | Autorizado — ejecutado el 2026-09-24 (sesión C; solo `docs/`) | Historia movida tal cual a `HISTORIAL.md`; este archivo queda como punto de partida. Añade principios 8 y 9 y la hoja de ruta. |
@@ -215,8 +235,10 @@ personajes: segunda iteración visual"; auditoría de recuperabilidad →
 - **ARQ-001 / ARQ-002 (2026-09-24), firma estable del APK.** Cada APK salía con una
   llave distinta y actualizar obligaba a desinstalar (perdiendo datos). ARQ-001
   versionó una llave fija en `signing/`, pero su verificación falló en el CI
-  (build #14). ARQ-002 re-firma con `apksigner` y verifica la huella. **Pendiente
-  de verificar en el CI y en un teléfono real.**
+  (build #14). ARQ-002 re-firma con `apksigner` y verifica la huella. **Verificado
+  en un teléfono real (Hecho, tester): el APK se instaló encima del anterior y los
+  datos se conservaron.** (Que el CI pasó la verificación es Inferencia: el APK
+  salió del artifact.)
 - **VER-001 (2026-09-23), auditoría de recuperabilidad y seguridad de datos.** Solo
   lectura. 20 hallazgos (P0–P3). Los más importantes: el respaldo automático NO es
   una copia completa ni restaurable con `importBackup` (1–4), `importBackup` pisa
@@ -226,8 +248,9 @@ personajes: segunda iteración visual"; auditoría de recuperabilidad →
   hasta 3 entradas con prefill, compatible con el servidor real; hoja "Ver
   lorebook" con editar/borrar/deshacer y "Actualizar memoria ahora". Incluye el
   Paso 0 (mediciones del servidor: límite de 160 tokens, corte en `\n` por
-  endpoint, caché de prompt) y el informe de latencia. **Pendiente de probar en el
-  teléfono.**
+  endpoint, caché de prompt) y el informe de latencia. **En el teléfono
+  (Hecho, tester): la actualización manual funcionó; la calidad de las entradas
+  es mejorable (ver "Calidad de la memoria" en Estado vigente).**
 - **FMT-001 (2026-09-24), un solo párrafo y sin respuestas vacías.** `stop` de
   `buildChatMessages` incluye `"\n"`; `generateReplyNonEmpty` reintenta una vez si
   la respuesta sale vacía y `chat.js` avisa si sigue vacía. Medido: estrés 10/12 →

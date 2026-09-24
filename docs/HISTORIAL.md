@@ -1030,7 +1030,7 @@ sin un APK real u otro entorno). Severidad P0 (pérdida de datos clara) a P3.
 | 14 | `saveCharacterLorebook` y `saveCharacterBackground` releen el personaje al guardar, así que la extracción larga NO pisa avatar ni fondo. Lo que queda pisable es lo contrario: `onCycleAvatarMode` y `onChangeAvatar` guardan el objeto entero en memoria; la copia en memoria se refresca al terminar la extracción del mismo chat, por lo que no encontré un camino realista, solo una ventana de milisegundos. Con "editar lorebook a mano" (MEM-001) este patrón de reemplazo total sí pasará a ser un riesgo real. | `state.js: saveCharacterLorebook`, `saveCharacterBackground`; `ui/chat.js: maybeUpdateLorebook`, `onCycleAvatarMode`, `onChangeAvatar` | H / I | P3 (hoy) — **MITIGADO parcialmente por MEM-001 v2**: las ediciones manuales y la extracción releen el lorebook justo antes de guardar y `saveCharacterLorebook` solo toca los campos de lorebook; `character` en memoria se refresca tras cada guardado. `onCycleAvatarMode`/`onChangeAvatar` siguen guardando el objeto entero (sin cambio). |
 | 15 | Datos personales en texto plano fuera del almacenamiento privado: ver pregunta 8. La copia manual incluye `pinSalt`/`pinHash`; el PIN (≥4 dígitos, sin máximo) usa SHA-256 con sal y una sola pasada, así que un PIN corto se rompe por fuerza bruta. El PIN es un bloqueo de pantalla: los datos de IndexedDB no están cifrados. | `state.js: exportBackup`; `lock.js: hashPin`; `platform.js` | H | P2 |
 | 16 | Proyecto Android: `allowBackup="true"` (plantilla de Capacitor), sin `debuggable` explícito (el APK de `assembleDebug` es depurable), y `usesCleartextTraffic` no aparece en la plantilla. Ver pregunta 7. | plantilla oficial de Capacitor 6.x; `build-apk.yml`; `capacitor.config.json` | H (plantilla) / I (APK generado) / S (Auto Backup real) | P2 |
-| 17 | Cada APK se firma con un keystore distinto (causa ya documentada): actualizar exige desinstalar. La copia manual completa (v2) es entonces la única vía real de conservar personajes, chats y lorebook al actualizar, y es manual. | `build-apk.yml` (sin `android/` ni keystore versionados); sección "Portabilidad…", punto C | H | P1 (para futuras versiones) — **Corregido, pendiente de verificar en teléfono**: ARQ-001 (2026-09-24) falló la verificación en el CI (build #14) y ARQ-002 lo corrige con firma explícita |
+| 17 | Cada APK se firma con un keystore distinto (causa ya documentada): actualizar exige desinstalar. La copia manual completa (v2) es entonces la única vía real de conservar personajes, chats y lorebook al actualizar, y es manual. | `build-apk.yml` (sin `android/` ni keystore versionados); sección "Portabilidad…", punto C | H | P1 (para futuras versiones) — **Corregido y verificado en teléfono**: ARQ-001 (2026-09-24) falló la verificación en el CI (build #14) y ARQ-002 lo corrige con firma explícita. **Verificado en un teléfono real (Hecho, tester, 2026-09-24): el APK nuevo se instaló encima del anterior, sin desinstalar, y los datos se conservaron** |
 | 18 | Rendimiento con muchos personajes: `listCharacters()` carga objetos completos (avatar y fondo incluidos) y se llama dos veces al arrancar (`migrateLegacyChats` en `main.js`, luego el hub); además `buildLastPreviews` hace un `getAll('chatMeta')` por personaje. Ver pregunta 10. | `state.js: listCharacters`; `main.js: boot`; `ui/home.js: show`, `buildLastPreviews` | H | P2 |
 | 19 | `Character.updated` no se mantiene nunca después de importar; `listCharacters()` ordena por él, así que el hub ordena por fecha de importación y no por actividad. No es pérdida de datos. | `cards/import.js`; `state.js: listCharacters`, `saveChatMessages` | H | P3 |
 | 20 | Repositorio público: sin secretos ni archivos personales. Tres detalles menores (P3) y ausencia de `.gitignore`. Ver pregunta 1. | escaneo de `git rev-list --all` | H | P3 |
@@ -1534,6 +1534,15 @@ una conversación de 18 mensajes con hechos, antes de añadir la reparación de 
 sin comillas el parseo funcionó 7 de 8 veces (el fallo fue justo ese error); con
 el prompt y la reparación finales, 8 de 8. Son muestras chicas: la tasa real con
 el modelo del usuario se conocerá usando la app.
+
+**Observación en el teléfono real (Hecho, tester, 2026-09-24):** "Actualizar memoria
+ahora" funcionó (última actualización "correcta, 1 nueva"), pero la lista mostró 2
+entradas casi duplicadas, con keys "personality" y "person who loves physical
+touch". Con la regla de inyección vigente (solo si una key aparece en los últimos 3
+mensajes) esas entradas casi nunca llegarían al prompt. Pendientes (contrato futuro,
+sin autorizar): higiene de keys (palabras sueltas, sin genéricas), fusión de
+casi-duplicados aunque las keys difieran y recuerdos "siempre presentes" con tope de
+caracteres. Ver "Estado vigente" en `NOTES.md`.
 
 ## FMT-001: un solo párrafo en modo "plantilla" y sin respuestas vacías (2026-09-24)
 
