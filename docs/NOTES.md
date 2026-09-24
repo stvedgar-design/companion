@@ -805,6 +805,84 @@ tema. Sin tests automáticos nuevos (es CSS + un par de funciones de DOM en
 sumaron tests en `state.test.mjs` para los nuevos campos de `Settings`
 (`theme` con tres valores válidos, `themeMode`).
 
+## Fondo de chat por personaje + buscador de personajes (2026-09-23)
+
+El usuario pidió dos cosas en el mismo mensaje, resolviendo de paso la
+única pregunta que `docs/CONTRACT-CHARACTER-CREATOR.md` había dejado
+abierta a propósito.
+
+### Fondo de chat: de global a por personaje
+
+Decisión del usuario, explícita: "cada personaje y solo en los chats
+tendrá el fondo de pantalla custom. El resto de menús deben ser coherentes
+en sus fondos con la skin que tenga aplicada la app." Se movieron
+`chatBackground`, `chatBackgroundBrightness`, `chatBackgroundFade` y
+`chatBackgroundFit` de `Settings` a `Character` — mismo patrón exacto que
+ya se usó para el lorebook (`docs/NOTES.md`, "Lorebook por personaje"):
+compartido entre todos los chats de ESE personaje, invisible para los
+demás.
+
+- **`state.js`**: los 4 campos salieron del typedef `Settings` y entraron al
+  typedef `Character`. `sanitizeCharacterLorebook()` se renombró a
+  `sanitizeCharacterExtras()` (ahora sanea lorebook Y fondo — mismo criterio
+  que antes: personajes guardados antes de esta feature, o de cuando el
+  fondo todavía era un ajuste global, cargan con los valores por defecto de
+  siempre sin romperse). Nueva `saveCharacterBackground(characterId, patch)`
+  con merge parcial, mismo estilo que `saveSettings(patch)`.
+- **`ui/appearance.js`** quedó *solo* con skin + modo claro/oscuro (ajuste
+  global de verdad, no tiene sentido que dependa de un personaje). Todo el
+  código de fondo de chat que tenía antes se movió a un archivo nuevo,
+  **`ui/chat-background.js`** (`openChatBackground(app, character)`), que
+  solo se puede abrir con un personaje en mano — por eso vive en el menú ⋮
+  del chat (`ui/chat.js`), nunca en Ajustes. El menú del chat ahora tiene
+  dos ítems separados: "Apariencia" (global) y "Fondo del chat" (de ese
+  personaje).
+- **Tinte del skin Glass, ahora por sesión de chat, no por app**: antes se
+  calculaba una vez al arrancar la app (fondo global). Ahora `ui/chat.js`
+  lo calcula al entrar a un chat (`show()`, a partir de
+  `character.chatBackground`) y lo **suelta** al salir (`hide()`, vuelve al
+  tinte por defecto del tema) — así el resto de la app (hub, Ajustes) nunca
+  se queda pegada con el tinte de "el último personaje que viste", que es
+  justo lo que pedía la parte de "el resto de menús deben ser coherentes
+  con la skin". Verificado a mano: fondo puesto en un personaje, tinte
+  Glass reaccionando en la propia hoja de "Fondo del chat"; al volver al
+  hub, el tinte vuelve al morado neutro de siempre (no se queda con el
+  tono del fondo que se acababa de ver).
+- El evento de DOM que usa `chat.js` para refrescar el fondo sin salir y
+  volver a entrar se renombró de `'companion:appearancechange'` a
+  `'companion:chatbackgroundchange'` (más preciso ahora que el skin y el
+  fondo son cosas separadas) y ahora viaja con el `Character` actualizado,
+  no con `Settings`.
+- Esto también resuelve la tensión que `docs/CONTRACT-CHARACTER-CREATOR.md`
+  §3.3 había dejado abierta a propósito ("¿el fondo debería ser por
+  personaje?") — ya se actualizó ese documento con la decisión tomada.
+
+### Buscador de personajes en el hub
+
+Ya existía un `<input>` de búsqueda en `home.js` (filtraba por nombre), pero
+solo se mostraba automáticamente con más de 6 personajes — con pocos, no
+había forma de saber que existía. El usuario confirmó sumarlo de forma
+minimalista: un ícono de lupa en la barra superior del hub que, al tocarlo,
+despliega la misma barra de siempre para escribir (no un panel nuevo ni una
+pantalla aparte — se evaluó y se descartó por ser más trabajo de ingeniería
+sin sumar nada funcional sobre reusar el input que ya filtraba bien). Se
+sacó la condición de "más de 6 personajes"; ahora el ícono siempre está,
+independientemente de cuántos personajes haya. `.home-search` pasó de
+`hidden` a una transición de `max-height`/`opacity` (mismo patrón que
+`.chat-avatarpanel--collapsed` en `chat.css`) para que abrir/cerrar la
+barra sea un despliegue suave, no un salto brusco.
+
+### Verificación
+
+144 tests (`node --test tests/*.test.mjs`), incluidos nuevos para
+`saveCharacterBackground` (merge parcial, validación de rangos, un
+personaje no pisa el fondo de otro) y para personajes/ajustes guardados
+antes de esta migración (sin campos de fondo en `Character`, o con ellos
+todavía en `Settings` de una versión vieja). Verificado a mano en el
+navegador integrado (375×812): dos personajes con fondos distintos, cada
+uno visible solo en su propio chat; el buscador filtrando en vivo y
+limpiándose al cerrar.
+
 ## Qué NO se ha hecho todavía (pendiente real, no roto)
 
 - Probar en un APK real (no solo navegador): el fix de exportación a
@@ -813,8 +891,9 @@ sumaron tests en `state.test.mjs` para los nuevos campos de `Settings`
 - Ajustes de IA (temperatura/longitud) por personaje o por chat en vez de
   solo globales: el usuario está más interesado en continuidad narrativa
   (ligado al punto del lorebook) que en esto por ahora.
-- Búsqueda dentro de un chat largo: idea validada como "buena", sin
-  implementar todavía.
+- Búsqueda dentro de un chat largo (buscar texto entre los mensajes de una
+  conversación): idea validada como "buena", sin implementar todavía —
+  **distinto** del buscador de personajes en el hub, que ya está hecho.
 - Editar/borrar entradas de lorebook a mano.
 - Pantalla para ver los respaldos automáticos existentes
   (`Documents/Companion-backups/`), solo se puede probar en un APK real.

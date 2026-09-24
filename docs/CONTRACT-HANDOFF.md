@@ -9,6 +9,39 @@
 > contradicción) y `docs/CONTRACTS.md` (arquitectura y reglas técnicas
 > originales, parcialmente superadas pero aún la base).
 
+## 0. Punto de partida rápido (si solo vas a leer una sección)
+
+Estado al 2026-09-23, escrito asumiendo que la conversación anterior pudo
+ser la última con contexto completo:
+
+- La app está **estable y con los 144 tests en verde**. Todo lo pedido hasta
+  ahora está implementado, commiteado y pusheado a `main` (el push dispara
+  el build del APK en GitHub Actions). Si `git status` te muestra cambios
+  sin commitear al arrancar, no son tuyos: preguntale al usuario antes de
+  tocarlos.
+- **No hay ningún trabajo a medias.** Lo único "abierto" es una *propuesta*
+  sin código: el creador de personajes guiado
+  (`docs/CONTRACT-CHARACTER-CREATOR.md`). El usuario pidió explícitamente
+  escribirla antes de construir — confirmá el alcance con él antes de
+  implementarla.
+- **Reglas que más importan** (todas explicadas más abajo y en
+  `docs/NOTES.md`): (1) nunca perder datos del usuario — ya perdió chats
+  tres veces; (2) los skins son solo tokens en `www/css/themes.css`, nunca
+  parchar CSS de componentes por skin; (3) el lorebook y el fondo de chat
+  son **por personaje**, no por chat ni globales; (4) hablale en español
+  simple, no es programador; (5) probá todo en el navegador integrado
+  (375×812) y decí explícitamente qué no se pudo probar en un APK real.
+- **Flujo de trabajo que funcionó**: para una feature nueva y grande →
+  primero un documento `docs/CONTRACT-*.md` con análisis + recomendación, y
+  esperar confirmación; para ajustes/bugs/pedidos claros → implementar,
+  verificar en el navegador, actualizar `docs/NOTES.md`, commit y push
+  (el usuario autorizó el push habitual en esta línea de trabajo, pero
+  nunca `--force`).
+- **Dónde está cada cosa**: `docs/NOTES.md` = historia y decisiones
+  detalladas (manda si hay contradicción); `docs/DESIGN.md` = tokens de
+  diseño; `docs/CONTRACT-LOREBOOK.md` y `docs/CONTRACT-CHARACTER-CREATOR.md`
+  = encargos específicos; `docs/examples/` = cards de referencia.
+
 ## 1. Tu rol
 
 Sos el ingeniero de software full-stack que continúa este proyecto. Según
@@ -190,7 +223,20 @@ cronológica. Resumen de alto nivel para orientarte rápido:
   incluido el motivo por el que ya no hay que ir seleccionando a mano qué
   componentes "tocar" para un skin nuevo.
 
-140 tests automáticos a la fecha de esta edición (`node --test tests/*.test.mjs`).
+- **Fondo de chat por personaje** (antes era un ajuste global): cada
+  personaje tiene su propia imagen de fondo (con brillo, fundido a negro y
+  ajuste llenar/estirar), visible solo en SUS chats — se edita desde el
+  menú ⋮ del chat → "Fondo del chat" (`ui/chat-background.js`). "Apariencia"
+  quedó solo con skin + modo claro/oscuro (global). El resto de la app
+  sigue el fondo del skin activo. El tinte del skin Glass responde al fondo
+  del personaje mientras se ve su chat y se suelta al salir. Ver "Fondo de
+  chat por personaje" en `docs/NOTES.md`.
+- **Buscador de personajes en el hub**: ícono de lupa en la barra
+  superior que despliega el input de búsqueda (siempre disponible, ya no
+  solo con más de 6 personajes). No confundir con "buscador dentro de un
+  chat largo" (buscar entre mensajes), que sigue pendiente.
+
+144 tests automáticos a la fecha de esta edición (`node --test tests/*.test.mjs`).
 
 ## 6. Pendientes conocidos (no son bugs, son trabajo no empezado)
 
@@ -261,9 +307,10 @@ haya pedido en esa conversación puntual**.
    mano en un explorador de archivos.
 5. **Organización a escala.** Multi-chat por personaje + potencialmente
    muchos personajes van a hacer que las listas planas (hub de
-   personajes, lista de chats) se queden cortas. Buscador dentro de un
-   chat, y probablemente tags/favoritos en el hub, van a dejar de ser
-   "buena idea" y pasar a ser necesarios.
+   personajes, lista de chats) se queden cortas. El buscador de personajes
+   del hub ya está hecho (lupa en la barra superior); siguen pendientes el
+   buscador dentro de un chat largo y, probablemente, tags/favoritos en el
+   hub — van a dejar de ser "buena idea" y pasar a ser necesarios.
 6. **Creador de personajes guiado, en vez de solo importar archivos.** Ver
    `docs/CONTRACT-CHARACTER-CREATOR.md` — propuesta completa (no
    autorizada), con el análisis de por qué la card de referencia del

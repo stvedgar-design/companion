@@ -14,9 +14,12 @@ import {
 } from '../api/lorebook.js';
 import { openSettings } from './settings.js';
 import { openAppearance } from './appearance.js';
+import { openChatBackground } from './chat-background.js';
 import { formatMessage } from './format.js';
 import { makeAvatar } from '../cards/avatar.js';
 import { pickFiles, saveBlob, autoBackupBlob } from '../platform.js';
+import { averageColorFromDataUrl } from '../images.js';
+import { setGlassTint } from './shell.js';
 
 const ICON_BACK = '<svg viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>';
 const ICON_MENU = '<svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/></svg>';
@@ -105,17 +108,22 @@ export function init(rootEl, appApi) {
   els.messages.addEventListener('scroll', onMessagesScroll);
   els.scrollDown.addEventListener('click', () => scrollToBottom(true));
 
-  // La hoja de apariencia (ui/appearance.js) se abre encima de esta vista,
-  // no la reemplaza — sin este evento, un cambio de fondo no se vería hasta
-  // salir y volver a entrar al chat.
-  document.addEventListener('companion:appearancechange', (e) => {
-    settings = e.detail;
+  // La hoja de fondo de chat (ui/chat-background.js) se abre encima de esta
+  // vista, no la reemplaza — sin este evento, un cambio de fondo no se
+  // vería hasta salir y volver a entrar al chat. El fondo es por personaje
+  // (ver docs/NOTES.md, "Fondo de chat por personaje"): se ignora si llega
+  // para un personaje distinto al que está abierto ahora mismo (no debería
+  // pasar salvo alguna carrera rara, pero mejor chequearlo).
+  document.addEventListener('companion:chatbackgroundchange', (e) => {
+    if (!character || !e.detail || e.detail.id !== character.id) return;
+    character = e.detail;
     applyChatBackground();
+    updateGlassTint();
   });
 }
 
 function applyChatBackground() {
-  const bg = settings && settings.chatBackground;
+  const bg = character && character.chatBackground;
   if (!bg) {
     els.bg.hidden = true;
     els.bg.style.backgroundImage = '';
@@ -123,10 +131,24 @@ function applyChatBackground() {
   }
   els.bg.hidden = false;
   els.bg.style.backgroundImage = `url("${bg}")`;
-  els.bg.style.backgroundSize = settings.chatBackgroundFit === 'stretch' ? '100% 100%' : 'cover';
-  const brightness = Number.isFinite(settings.chatBackgroundBrightness) ? settings.chatBackgroundBrightness : 100;
+  els.bg.style.backgroundSize = character.chatBackgroundFit === 'stretch' ? '100% 100%' : 'cover';
+  const brightness = Number.isFinite(character.chatBackgroundBrightness) ? character.chatBackgroundBrightness : 100;
   els.bg.style.filter = `brightness(${brightness}%)`;
-  els.bgFade.hidden = !settings.chatBackgroundFade;
+  els.bgFade.hidden = !character.chatBackgroundFade;
+}
+
+// El tinte del skin "glass" (ver themes.css) responde al fondo del
+// personaje actual mientras se lo está viendo — y vuelve al tinte por
+// defecto del tema al salir del chat (hide()), para que el resto de la app
+// (hub, ajustes) siga el fondo del skin, no el de un personaje puntual.
+async function updateGlassTint() {
+  const bg = character && character.chatBackground;
+  if (!bg) {
+    setGlassTint(null);
+    return;
+  }
+  const rgb = await averageColorFromDataUrl(bg);
+  setGlassTint(rgb);
 }
 
 export async function show({ chatId } = {}) {
@@ -173,6 +195,7 @@ export async function show({ chatId } = {}) {
   syncSendButton();
   applyAvatarMode();
   applyChatBackground();
+  updateGlassTint();
   renderMessages();
 
   attachViewportListeners();
@@ -189,6 +212,9 @@ export function hide() {
   detachViewportListeners();
   clearSelection();
   if (app) app.closeSheet();
+  // El resto de la app (hub, ajustes) sigue el fondo del skin activo, no el
+  // fondo de un personaje puntual — ver updateGlassTint().
+  setGlassTint(null);
 }
 
 /* ---------- avatar en 3 modos ---------- */
@@ -726,6 +752,15 @@ function onMenu() {
     openAppearance(app);
   });
   wrap.appendChild(appearanceBtn);
+
+  const bgBtn = document.createElement('button');
+  bgBtn.type = 'button';
+  bgBtn.className = 'menu-item';
+  bgBtn.textContent = 'Fondo del chat';
+  bgBtn.addEventListener('click', () => {
+    openChatBackground(app, character);
+  });
+  wrap.appendChild(bgBtn);
 
   const backToChatsBtn = document.createElement('button');
   backToChatsBtn.type = 'button';

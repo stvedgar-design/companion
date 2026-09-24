@@ -88,6 +88,10 @@ Los imports son ESM relativos y siempre con extensión `.js`. Los tests importan
  * @property {number} updated       // ms; lo actualiza saveChat
  * @property {string} last          // vista previa del último mensaje (máx. 90 caracteres, sin asteriscos)
  * @property {LoreEntry[]} lorebook // adenda: memoria de largo plazo, compartida entre todos los chats de este personaje
+ * @property {string} chatBackground            // adenda: data URL JPEG del fondo de SUS chats, '' si no hay
+ * @property {number} chatBackgroundBrightness  // adenda: 20 a 180 (%), 100 = sin cambios
+ * @property {boolean} chatBackgroundFade       // adenda: fundido a negro en la mitad inferior
+ * @property {'fill'|'stretch'} chatBackgroundFit // adenda: 'fill' cubre y recorta; 'stretch' deforma sin recortar
  */
 
 /**

@@ -47,6 +47,15 @@
 }
 
 .home-search {
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  margin: 0 var(--space-4);
+  transition: max-height var(--dur) ease, opacity var(--dur) ease, margin var(--dur) ease;
+}
+.home-search--open {
+  max-height: 80px;
+  opacity: 1;
   margin: 0 var(--space-4) var(--space-3);
 }
 

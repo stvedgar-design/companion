@@ -6,7 +6,6 @@
 
 import * as shell from './ui/shell.js';
 import * as state from './state.js';
-import { averageColorFromDataUrl } from './images.js';
 import * as lockView from './ui/lock.js';
 import * as setupView from './ui/setup.js';
 import * as homeView from './ui/home.js';
@@ -185,11 +184,11 @@ async function boot() {
 
   shell.applyTheme(settings.theme);
   shell.applyThemeMode(settings.themeMode);
-  if (settings.chatBackground) {
-    // No bloquea el arranque: el tinte del skin "glass" (ver themes.css)
-    // se aplica en cuanto está listo, sin esperar a un fondo por defecto.
-    averageColorFromDataUrl(settings.chatBackground).then((rgb) => shell.setGlassTint(rgb));
-  }
+  // El tinte del skin "glass" (ver themes.css) ya no se calcula acá: el
+  // fondo de chat es por personaje (ver docs/NOTES.md, "Fondo de chat por
+  // personaje"), así que lo aplica ui/chat.js al entrar a un chat, y lo
+  // vuelve a soltar al salir — fuera de un chat no hay un personaje del que
+  // sacar un tinte.
 
   if (settings.pinHash) {
     shell.showView('lock');

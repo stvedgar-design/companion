@@ -168,20 +168,21 @@ texto libre en ninguno de los dos):
   (`onChangeAvatar` en `www/js/ui/chat.js`, que llama a `pickFiles()` +
   `makeAvatar()` de `cards/avatar.js`) como un paso más del creador. Es
   trivial de sumar, ya está resuelto en otro lado.
-- **Fondo de chat**: acá hay una tensión real que el documento debe dejar
-  explícita, no resolver en silencio. El fondo de chat (`chatBackground`,
-  ver `docs/NOTES.md` "Skins... y fondo de chat personalizado") es hoy un
-  **ajuste global de toda la app**, no por personaje. Ofrecerlo en el
-  creador de personajes implicaría una de dos cosas: (a) el fondo elegido
-  ahí simplemente pisa el ajuste global (raro si el usuario ya tiene varios
-  personajes — el fondo de uno le cambiaría el fondo a todos), o (b)
-  extender el modelo de datos para que el fondo sea por personaje (cambio
-  de arquitectura real, no chico). **Recomendación: no sumar el selector de
-  fondo al creador en la v1** — dejar el personaje recién creado usando el
-  fondo global que ya esté configurado, y que el usuario lo cambie después
-  desde Ajustes → Apariencia si quiere. Si en algún momento se decide que
-  los fondos deberían ser por personaje, es un proyecto aparte, no un
-  efecto colateral de este encargo.
+- **Fondo de chat — RESUELTO (2026-09-23), ya no es una pregunta
+  abierta.** Esta sección dejaba explícita una tensión (¿el fondo debería
+  ser por personaje o seguir siendo global?) para que el usuario la
+  resolviera antes de tocar código. Ya la resolvió: el fondo es **por
+  personaje** (`chatBackground*` vive en `Character`, no en `Settings` —
+  ver `docs/NOTES.md`, "Fondo de chat por personaje"), visible solo en los
+  chats de ESE personaje; el resto de la app sigue el fondo del skin activo
+  (`www/css/themes.css`). Esto en realidad simplifica este encargo: ahora
+  el creador **sí puede** sumar un paso de "elegir fondo" sin ninguna
+  ambigüedad de arquitectura — llamaría a `saveCharacterBackground()`
+  (`state.js`) igual que ya hace `ui/chat-background.js` (la hoja que se
+  abre desde el menú ⋮ del chat). Sigue siendo válido no incluirlo en la
+  v1 del creador por simplicidad (el usuario puede configurarlo después
+  desde ahí), pero ya no es una decisión de producto pendiente — es
+  puramente una cuestión de cuánto abarcar en la primera versión.
 
 ## 4. Cómo tiene que salir la Card final
 
@@ -207,8 +208,10 @@ separada y le pasa los datos a esa función.
 - No tocar `character.card.character_book` — sigue reservado para el
   puente al worldbook externo del usuario (`docs/CONTRACT-HANDOFF.md` §7.2).
 - No pedir `scenario` en el creador (ver §3.2).
-- No sumar selector de fondo de chat por personaje sin que el usuario
-  decida explícitamente extender el modelo de datos primero (ver §3.3).
+- No duplicar la lógica del fondo de chat: si se suma ese paso al
+  creador, reusar `saveCharacterBackground()` (`state.js`) y las utilidades
+  de `images.js`, no escribir un camino paralelo (ver §3.3 — el modelo de
+  datos por personaje ya existe).
 - No tocar el flujo de importar PNG/JSON que ya existe — el creador es
   aditivo, una segunda forma de llegar a un `Character`, no un reemplazo.
 - No inventar campos nuevos en `Card` que Tavern V2/V3 no tenga — rompería
@@ -246,10 +249,11 @@ estructura, texto libre guiado para contenido) es el punto de partida
 correcto — resuelve el riesgo real que el usuario identificó (cards
 larguísimas que gastan contexto) sin sacrificar lo que hace único a cada
 personaje, y sin comprometer ninguno de los objetivos ya establecidos en el
-roadmap. La única decisión de arquitectura real que este documento no
-resuelve a propósito es la del fondo de chat por personaje (§3.3) — esa sí
-requiere una conversación aparte con el usuario antes de tocar código, no
-es una llamada técnica que se pueda tomar sola.
+roadmap. La única decisión de arquitectura que este documento había dejado
+abierta a propósito (¿fondo de chat por personaje o global?, §3.3) ya la
+resolvió el usuario el 2026-09-23: es por personaje, y ya está
+implementado. Lo que sigue pendiente es solo confirmar el alcance de la
+v1 con el usuario antes de escribir código.
 
 ## 7. Cómo verificar (cuando se implemente)
 

@@ -36,6 +36,13 @@
  * @property {number} created
  * @property {LoreEntry[]} lorebook  // memoria de largo plazo autogenerada de ESTE personaje,
  *   compartida entre todos sus chats (ver docs/NOTES.md, "Lorebook por personaje")
+ * @property {string} chatBackground           // data URL JPEG del fondo de SUS chats, '' si no hay
+ * @property {number} chatBackgroundBrightness // 20 a 180 (%), 100 = sin cambios
+ * @property {boolean} chatBackgroundFade      // fundido a negro en la mitad inferior de la imagen
+ * @property {'fill'|'stretch'} chatBackgroundFit // 'fill' = cubre y recorta; 'stretch' = deforma sin recortar
+ *   El fondo es por personaje (no global, no por chat): ver docs/NOTES.md,
+ *   "Fondo de chat por personaje". Se ve solo dentro de sus chats — el resto
+ *   de la app sigue el fondo del skin activo (ver www/css/themes.css).
  */
 
 /**
@@ -71,10 +78,6 @@
  * @property {string} pinHash   // '' si el bloqueo con PIN está desactivado (SHA-256 salteado, ver lock.js)
  * @property {'nomi'|'glass'|'imessage'} theme // skin visual, ver www/css/themes.css
  * @property {'dark'|'light'} themeMode        // claro/oscuro, aplica a cualquier skin
- * @property {string} chatBackground           // data URL JPEG del fondo del chat, '' si no hay
- * @property {number} chatBackgroundBrightness // 20 a 180 (%), 100 = sin cambios
- * @property {boolean} chatBackgroundFade      // fundido a negro en la mitad inferior de la imagen
- * @property {'fill'|'stretch'} chatBackgroundFit // 'fill' = cubre y recorta; 'stretch' = deforma sin recortar
  */
 
 const DEFAULT_SETTINGS = Object.freeze({
@@ -91,6 +94,12 @@ const DEFAULT_SETTINGS = Object.freeze({
   pinHash: '',
   theme: 'nomi',
   themeMode: 'dark',
+});
+
+// Por defecto de los campos de fondo de chat en Character (ver
+// sanitizeCharacterExtras): mismos valores que tenía Settings antes de que
+// el fondo pasara a ser por personaje.
+const DEFAULT_CHARACTER_BACKGROUND = Object.freeze({
   chatBackground: '',
   chatBackgroundBrightness: 100,
   chatBackgroundFade: false,
@@ -129,12 +138,22 @@ function sanitizeSettings(raw) {
     pinHash: typeof merged.pinHash === 'string' ? merged.pinHash : DEFAULT_SETTINGS.pinHash,
     theme: ['nomi', 'glass', 'imessage'].includes(merged.theme) ? merged.theme : DEFAULT_SETTINGS.theme,
     themeMode: merged.themeMode === 'light' ? 'light' : DEFAULT_SETTINGS.themeMode,
-    chatBackground: typeof merged.chatBackground === 'string' ? merged.chatBackground : DEFAULT_SETTINGS.chatBackground,
+  };
+}
+
+// Valida los campos de fondo de chat de un Character (ver
+// sanitizeCharacterExtras). Mismas reglas que ya tenía Settings cuando el
+// fondo era global.
+function sanitizeCharacterBackground(raw) {
+  const src = (raw && typeof raw === 'object') ? raw : {};
+  const merged = { ...DEFAULT_CHARACTER_BACKGROUND, ...src };
+  return {
+    chatBackground: typeof merged.chatBackground === 'string' ? merged.chatBackground : DEFAULT_CHARACTER_BACKGROUND.chatBackground,
     chatBackgroundBrightness: Math.round(
-      clampNumber(merged.chatBackgroundBrightness, 20, 180, DEFAULT_SETTINGS.chatBackgroundBrightness)
+      clampNumber(merged.chatBackgroundBrightness, 20, 180, DEFAULT_CHARACTER_BACKGROUND.chatBackgroundBrightness)
     ),
     chatBackgroundFade: !!merged.chatBackgroundFade,
-    chatBackgroundFit: merged.chatBackgroundFit === 'stretch' ? 'stretch' : DEFAULT_SETTINGS.chatBackgroundFit,
+    chatBackgroundFit: merged.chatBackgroundFit === 'stretch' ? 'stretch' : DEFAULT_CHARACTER_BACKGROUND.chatBackgroundFit,
   };
 }
 
@@ -166,14 +185,15 @@ function sanitizeLoreEntry(raw) {
   };
 }
 
-// Asegura que un Character tenga un `lorebook` válido (personajes guardados
-// antes de esta feature no lo tienen todavía). No toca el resto del objeto:
-// a diferencia de sanitizeChat(), el resto de los campos de Character no se
-// validan acá (nunca se validaron, no es parte de esta feature).
-function sanitizeCharacterLorebook(raw) {
+// Asegura que un Character tenga un `lorebook` y campos de fondo de chat
+// válidos (personajes guardados antes de esas features no los tienen
+// todavía). No toca el resto del objeto: a diferencia de sanitizeChat(), el
+// resto de los campos de Character no se validan acá (nunca se validaron,
+// no es parte de ninguna de las dos features).
+function sanitizeCharacterExtras(raw) {
   if (!raw || typeof raw !== 'object') return raw;
   const lorebook = Array.isArray(raw.lorebook) ? raw.lorebook.map(sanitizeLoreEntry).filter(Boolean) : [];
-  return { ...raw, lorebook };
+  return { ...raw, lorebook, ...sanitizeCharacterBackground(raw) };
 }
 
 function sanitizeChat(raw) {
@@ -229,12 +249,12 @@ export function createState(backend) {
 
   async function listCharacters() {
     const all = await backend.getAll('characters');
-    return all.map(sanitizeCharacterLorebook).sort((a, b) => (b.updated || 0) - (a.updated || 0));
+    return all.map(sanitizeCharacterExtras).sort((a, b) => (b.updated || 0) - (a.updated || 0));
   }
 
   async function getCharacter(id) {
     const found = await backend.get('characters', id);
-    return found ? sanitizeCharacterLorebook(found) : null;
+    return found ? sanitizeCharacterExtras(found) : null;
   }
 
   async function saveCharacter(character) {
@@ -252,7 +272,19 @@ export function createState(backend) {
   async function saveCharacterLorebook(characterId, lorebook) {
     const character = await getCharacter(characterId);
     if (!character) throw new Error('El personaje no existe.');
-    const updated = sanitizeCharacterLorebook({ ...character, lorebook });
+    const updated = sanitizeCharacterExtras({ ...character, lorebook });
+    await backend.put('characters', characterId, updated);
+    return updated;
+  }
+
+  // Persiste (con merge parcial, como saveSettings) el fondo de chat de un
+  // personaje — ver `chatBackground*` en el typedef `Character`. Es por
+  // personaje, no global ni por chat: se ve solo en SUS chats.
+  async function saveCharacterBackground(characterId, patch) {
+    const character = await getCharacter(characterId);
+    if (!character) throw new Error('El personaje no existe.');
+    const merged = sanitizeCharacterBackground({ ...character, ...(patch || {}) });
+    const updated = sanitizeCharacterExtras({ ...character, ...merged });
     await backend.put('characters', characterId, updated);
     return updated;
   }
@@ -475,6 +507,7 @@ export function createState(backend) {
     getCharacter,
     saveCharacter,
     saveCharacterLorebook,
+    saveCharacterBackground,
     deleteCharacter,
     listChats,
     getChat,
@@ -597,6 +630,7 @@ export const listCharacters = (...args) => getDefaultInstance().listCharacters(.
 export const getCharacter = (...args) => getDefaultInstance().getCharacter(...args);
 export const saveCharacter = (...args) => getDefaultInstance().saveCharacter(...args);
 export const saveCharacterLorebook = (...args) => getDefaultInstance().saveCharacterLorebook(...args);
+export const saveCharacterBackground = (...args) => getDefaultInstance().saveCharacterBackground(...args);
 export const deleteCharacter = (...args) => getDefaultInstance().deleteCharacter(...args);
 export const listChats = (...args) => getDefaultInstance().listChats(...args);
 export const getChat = (...args) => getDefaultInstance().getChat(...args);

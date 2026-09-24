@@ -56,27 +56,15 @@ test('getSettings devuelve valores por defecto cuando no hay nada guardado', asy
   assert.deepEqual(settings, {
     url: '', user: '', maxLen: 220, temp: 0.85, mode: 'chat', ctx: 4096,
     pinSalt: '', pinHash: '',
-    theme: 'nomi', themeMode: 'dark', chatBackground: '', chatBackgroundBrightness: 100,
-    chatBackgroundFade: false, chatBackgroundFit: 'fill',
+    theme: 'nomi', themeMode: 'dark',
   });
 });
 
-test('saveSettings valida apariencia: skin, modo, fondo de chat y sus controles', async () => {
+test('saveSettings valida apariencia: skin y modo', async () => {
   const state = createState(createMemoryBackend());
-  const saved = await state.saveSettings({
-    theme: 'imessage',
-    themeMode: 'light',
-    chatBackground: 'data:image/jpeg;base64,AAAA',
-    chatBackgroundBrightness: 999,
-    chatBackgroundFade: true,
-    chatBackgroundFit: 'stretch',
-  });
+  const saved = await state.saveSettings({ theme: 'imessage', themeMode: 'light' });
   assert.equal(saved.theme, 'imessage');
   assert.equal(saved.themeMode, 'light');
-  assert.equal(saved.chatBackground, 'data:image/jpeg;base64,AAAA');
-  assert.equal(saved.chatBackgroundBrightness, 180); // recortado al máximo
-  assert.equal(saved.chatBackgroundFade, true);
-  assert.equal(saved.chatBackgroundFit, 'stretch');
 
   const reloaded = await state.getSettings();
   assert.deepEqual(reloaded, saved);
@@ -90,16 +78,11 @@ test('saveSettings acepta los tres skins válidos', async () => {
   }
 });
 
-test('saveSettings descarta un theme, themeMode o fit inválido y vuelve al valor por defecto', async () => {
+test('saveSettings descarta un theme o themeMode inválido y vuelve al valor por defecto', async () => {
   const state = createState(createMemoryBackend());
-  const saved = await state.saveSettings({
-    theme: 'inventado',
-    themeMode: 'inventado',
-    chatBackgroundFit: 'inventado',
-  });
+  const saved = await state.saveSettings({ theme: 'inventado', themeMode: 'inventado' });
   assert.equal(saved.theme, 'nomi');
   assert.equal(saved.themeMode, 'dark');
-  assert.equal(saved.chatBackgroundFit, 'fill');
 });
 
 test('saveSettings valida rangos y descarta valores fuera de contrato', async () => {
@@ -295,10 +278,56 @@ test('markChatLorebookProgress contra un chat inexistente lanza', async () => {
   await assert.rejects(() => state.markChatLorebookProgress('no-existe', 40));
 });
 
-test('un personaje guardado antes de esta feature (sin lorebook) sigue cargando con valores por defecto seguros', async () => {
+// ---------- fondo de chat por personaje (docs/NOTES.md) ----------
+
+test('saveCharacterBackground guarda y valida los campos, con merge parcial', async () => {
+  const state = createState(createMemoryBackend());
+  await state.saveCharacter(makeCharacter({ id: 'x' }));
+
+  const withImage = await state.saveCharacterBackground('x', {
+    chatBackground: 'data:image/jpeg;base64,AAAA',
+    chatBackgroundBrightness: 999,
+    chatBackgroundFade: true,
+    chatBackgroundFit: 'stretch',
+  });
+  assert.equal(withImage.chatBackground, 'data:image/jpeg;base64,AAAA');
+  assert.equal(withImage.chatBackgroundBrightness, 180); // recortado al máximo
+  assert.equal(withImage.chatBackgroundFade, true);
+  assert.equal(withImage.chatBackgroundFit, 'stretch');
+
+  // Merge parcial: cambiar solo el brillo no debe tocar el resto.
+  const dimmer = await state.saveCharacterBackground('x', { chatBackgroundBrightness: 60 });
+  assert.equal(dimmer.chatBackgroundBrightness, 60);
+  assert.equal(dimmer.chatBackground, 'data:image/jpeg;base64,AAAA');
+  assert.equal(dimmer.chatBackgroundFade, true);
+  assert.equal(dimmer.chatBackgroundFit, 'stretch');
+
+  const fetched = await state.getCharacter('x');
+  assert.deepEqual(fetched, dimmer);
+});
+
+test('saveCharacterBackground contra un personaje inexistente lanza', async () => {
+  const state = createState(createMemoryBackend());
+  await assert.rejects(() => state.saveCharacterBackground('no-existe', { chatBackground: 'x' }));
+});
+
+test('el fondo de un personaje no afecta a otro personaje', async () => {
+  const state = createState(createMemoryBackend());
+  await state.saveCharacter(makeCharacter({ id: 'x' }));
+  await state.saveCharacter(makeCharacter({ id: 'y' }));
+
+  await state.saveCharacterBackground('x', { chatBackground: 'data:image/jpeg;base64,X' });
+
+  const x = await state.getCharacter('x');
+  const y = await state.getCharacter('y');
+  assert.equal(x.chatBackground, 'data:image/jpeg;base64,X');
+  assert.equal(y.chatBackground, '');
+});
+
+test('un personaje guardado antes de esta feature (sin lorebook ni fondo) sigue cargando con valores por defecto seguros', async () => {
   const backend = createMemoryBackend();
   const state = createState(backend);
-  // Simula un personaje guardado por una versión anterior de la app: sin `lorebook`.
+  // Simula un personaje guardado por una versión anterior de la app: sin `lorebook` ni campos de fondo.
   backend._raw.characters.set('viejo', {
     id: 'viejo', name: 'Viejo', avatar: '',
     card: { name: 'Viejo', description: '', personality: '', scenario: '', first_mes: '', mes_example: '', system_prompt: '', post_history_instructions: '', alternate_greetings: [], character_book: null },
@@ -307,9 +336,30 @@ test('un personaje guardado antes de esta feature (sin lorebook) sigue cargando 
 
   const character = await state.getCharacter('viejo');
   assert.deepEqual(character.lorebook, []);
+  assert.equal(character.chatBackground, '');
+  assert.equal(character.chatBackgroundBrightness, 100);
+  assert.equal(character.chatBackgroundFade, false);
+  assert.equal(character.chatBackgroundFit, 'fill');
 
   const list = await state.listCharacters();
   assert.deepEqual(list[0].lorebook, []);
+});
+
+test('un personaje guardado cuando el fondo todavía era global (settings) sigue cargando bien', async () => {
+  const backend = createMemoryBackend();
+  const state = createState(backend);
+  // Simula un ajuste guardado por una versión anterior de la app, cuando
+  // chatBackground* vivía en Settings en vez de en Character.
+  backend._raw.settings.set('main', {
+    url: '', user: '', maxLen: 220, temp: 0.85, mode: 'chat', ctx: 4096,
+    pinSalt: '', pinHash: '', theme: 'glass', themeMode: 'dark',
+    chatBackground: 'data:image/jpeg;base64,VIEJO', chatBackgroundBrightness: 70,
+    chatBackgroundFade: true, chatBackgroundFit: 'stretch',
+  });
+
+  const settings = await state.getSettings();
+  assert.equal(settings.theme, 'glass'); // los campos que siguen en Settings no se pierden
+  assert.equal(settings.chatBackground, undefined); // el campo viejo simplemente no está en la Settings normalizada
 });
 
 test('un chat guardado antes de esta feature (sin lorebookMessageCount) sigue cargando con valores por defecto seguros', async () => {

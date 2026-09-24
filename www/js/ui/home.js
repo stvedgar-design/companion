@@ -9,12 +9,14 @@ import { openSettings } from './settings.js';
 
 const ICON_SETTINGS = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>';
 const ICON_TRASH = '<svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>';
+const ICON_SEARCH = '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>';
 
 let app = null;
 let els = {};
 let characters = [];
 let lastByCharacter = {};
 let searchQuery = '';
+let searchOpen = false;
 let viewToken = 0; // se incrementa en hide(); invalida cualquier comprobación de conexión pendiente
 
 export function init(root, appApi) {
@@ -23,11 +25,12 @@ export function init(root, appApi) {
   root.innerHTML = `
     <div class="topbar">
       <span class="topbar__title">Chats</span>
+      <button class="ib" id="home-search-toggle" aria-label="Buscar personaje">${ICON_SEARCH}</button>
       <button class="ib" id="home-settings" aria-label="Ajustes">${ICON_SETTINGS}</button>
     </div>
     <button class="chip home-chip" id="home-chip" type="button"></button>
     <div class="scroll">
-      <div class="field home-search" id="home-search-wrap" hidden>
+      <div class="field home-search" id="home-search-wrap">
         <input class="inp" id="home-search" type="text" placeholder="Buscar personaje" autocomplete="off">
       </div>
       <div class="home-grid" id="home-list"></div>
@@ -38,6 +41,7 @@ export function init(root, appApi) {
   `;
 
   els = {
+    searchToggle: root.querySelector('#home-search-toggle'),
     settingsBtn: root.querySelector('#home-settings'),
     chip: root.querySelector('#home-chip'),
     searchWrap: root.querySelector('#home-search-wrap'),
@@ -49,10 +53,27 @@ export function init(root, appApi) {
   els.settingsBtn.addEventListener('click', () => openSettings(app));
   els.chip.addEventListener('click', () => openSettings(app));
   els.add.addEventListener('click', onAddClick);
+  els.searchToggle.addEventListener('click', toggleSearch);
   els.search.addEventListener('input', () => {
     searchQuery = els.search.value.trim().toLowerCase();
     renderList();
   });
+}
+
+// Icono de lupa en la barra superior: minimalista a propósito, en vez de un
+// buscador siempre visible — con pocos personajes no hace falta verlo todo
+// el tiempo. Al tocarlo aparece la barra para escribir (mismo <input> de
+// siempre, ver renderList()); al cerrarla se limpia la búsqueda.
+function toggleSearch() {
+  searchOpen = !searchOpen;
+  els.searchWrap.classList.toggle('home-search--open', searchOpen);
+  if (searchOpen) {
+    els.search.focus();
+  } else {
+    els.search.value = '';
+    searchQuery = '';
+    renderList();
+  }
 }
 
 export async function show() {
@@ -61,6 +82,8 @@ export async function show() {
 
   searchQuery = '';
   els.search.value = '';
+  searchOpen = false;
+  els.searchWrap.classList.remove('home-search--open');
   els.chip.className = 'chip home-chip';
   els.chip.textContent = 'Comprobando conexión…';
 
@@ -92,7 +115,6 @@ export function hide() {
 }
 
 function renderList() {
-  els.searchWrap.hidden = characters.length <= 6;
   els.list.innerHTML = '';
 
   if (!characters.length) {
