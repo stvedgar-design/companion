@@ -1,5 +1,28 @@
 # CONTRATO — Subsistema de memoria/lorebook automático
 
+> ## ⚠ AVISO (DOC-001, 2026-09-23): partes de este contrato están SUPERADAS
+>
+> Este contrato se implementó y **después cambió de diseño**. Lo que sigue
+> abajo es el encargo original, conservado como historia. Antes de aplicar
+> cualquier punto, comprueba esta lista; el código y `docs/NOTES.md`
+> ("Estado vigente" y "Cambio de diseño: lorebook por personaje, no por chat")
+> mandan.
+>
+> | Parte de este contrato | Estado hoy |
+> |---|---|
+> | §4.1 "Por chat, no por personaje… `chat.lorebook`" (marcada DECISIÓN FIJA) | **SUPERADO.** El lorebook es **por personaje**: `Character.lorebook`, compartido entre todos sus chats, por decisión explícita del usuario. `Chat` NO tiene `lorebook`. |
+> | §3, §4.4, §4.6 "el lorebook de ese chat", "entradas ya existentes de ese chat", tope "por chat" | **SUPERADO.** Léase "del personaje". El tope de entradas (24) es por personaje. |
+> | §4.3 `chat.lorebookMessageCount` como marcador | **VIGENTE**, pero solo es un marcador de *disparo* por chat; las entradas se guardan en el personaje. |
+> | §4.4 "abortar en silencio y dejar el contador sin actualizar, o actualizarlo igual" | **RESUELTO:** si el servidor responde pero el texto no se puede parsear, el contador SÍ avanza; si falla la llamada (red/servidor), NO avanza. Ver `maybeUpdateLorebook()` en `www/js/ui/chat.js`. |
+> | §5 `saveChatLorebook` / "sumar `lorebook` al `Chat` typedef y a `sanitizeChat()`" | **SUPERADO.** Hoy: `saveCharacterLorebook(characterId, lorebook)` y `markChatLorebookProgress(chatId, count)` en `state.js`; `sanitizeCharacterExtras()` sanea el lorebook del personaje. |
+> | §6 "95 tests" | **SUPERADO.** Hoy son 144. |
+> | §4.2 (`LoreEntry`), §4.4 (parseo robusto, `completeOnce`, temperatura baja), §4.5 (inyección por keyword con tope), nunca tocar `card.character_book` | **VIGENTES.** |
+>
+> Además, la auditoría VER-001 (`docs/NOTES.md`, "Auditoría VER-001") documenta
+> comportamientos reales de la implementación que este contrato no anticipaba
+> (truncado por `maxLen`, coincidencia con la respuesta del chat). No están
+> corregidos.
+
 > Este documento es un encargo de trabajo autocontenido para una instancia
 > de Claude Code que arranca **sin memoria de conversaciones anteriores**.
 > Antes de escribir una línea de código, leé `docs/NOTES.md` completo (es

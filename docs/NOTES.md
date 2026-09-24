@@ -13,6 +13,79 @@ y el código mandan sobre `CONTRACTS.md`.
 > sistema de memoria/lorebook automático, el encargo detallado está en
 > `docs/CONTRACT-LOREBOOK.md`.
 
+## Estado vigente (verificado contra el código el 2026-09-23, contrato DOC-001)
+
+> Una página. Si otra sección de este archivo o de otro documento dice algo
+> distinto, **manda esta sección y el código**. Las secciones antiguas de
+> abajo se conservan como historia y llevan la marca "(SUPERADO por: …)"
+> cuando ya no describen la realidad.
+
+**Arquitectura.** JavaScript vanilla con módulos ES, sin bundler para el
+runtime (`www/`). Empaquetado como APK con Capacitor; el workflow
+(`.github/workflows/build-apk.yml`) corre `npm test`, `npx cap add android`
+y `assembleDebug` en cada push (`android/` NO está versionado). Persistencia
+solo en `www/js/state.js` (IndexedDB `companion`, versión 2, stores
+`settings`, `characters`, `chats` [legado], `chatMeta`, `chatMsgs`). `fetch`
+solo en `www/js/api/kobold.js`. Skins = solo tokens en `www/css/themes.css`
+(3 skins × claro/oscuro). Vistas: `lock` (solo al arrancar, fuera de la
+navegación), `setup`, `home`, `chats`, `chat`. Versión: `APP_VERSION`
+(`www/js/version.js`) y `package.json` coinciden (`1.1.0`).
+
+**Modelo de datos actual** (fuente de verdad: typedefs de `state.js`):
+- `Settings` (1 registro, clave `main`): `url`, `user`, `maxLen`, `temp`,
+  `mode` (`'chat'` por defecto | `'plain'`), `ctx`, `pinSalt`, `pinHash`,
+  `theme` (`nomi|glass|imessage`), `themeMode` (`dark|light`).
+- `Character` (store `characters`): `id`, `name`, `avatar` (data URL),
+  `card` (Card normalizada), `avatarMode`, `created`, `lorebook: LoreEntry[]`
+  (por personaje, compartido entre sus chats), `chatBackground` (data URL),
+  `chatBackgroundBrightness`, `chatBackgroundFade`, `chatBackgroundFit`.
+  Además `updated` y `last`: los escribe `cards/import.js` al importar, pero
+  **nada los mantiene** después (el hub ordena por `updated`, o sea por fecha
+  de importación, no por actividad reciente; la vista previa sale del chat).
+- `Chat` (store `chatMeta`): `id`, `characterId`, `title`, `scenario`,
+  `created`, `updated`, `last`, `lastExportAt`, `lorebookMessageCount`
+  (marcador de disparo del lorebook; ya NO guarda entradas).
+- `Message` (store `chatMsgs`, un array por `chatId`): `role` (`user|char`),
+  `text`, `ts`.
+- `LoreEntry`: `id`, `keys[]`, `content`, `updated`, `source` (`auto|manual`).
+- Backup manual: JSON `{app:'companion', version:2, exported, settings,
+  characters, chats, chatMessages}`; `importBackup` también acepta v1.
+  El respaldo automático NO tiene este formato (ver VER-001, más abajo).
+
+**Implementado:** multi-chat por personaje con escenario propio; exportar/
+importar chat y copia completa; respaldo automático silencioso a
+`Documents/Companion-backups/` (solo APK); PIN opcional; indicador de
+contexto; hub de 2 columnas con lupa de búsqueda; lorebook automático por
+personaje (cada 40 mensajes, extracción vía KoboldCpp, inyección por keyword,
+vista de solo lectura); 3 skins × claro/oscuro; fondo de chat por personaje;
+CI con gate de tests; versión visible en Ajustes; 144 tests (`node --test
+tests/*.test.mjs`).
+
+**Pendiente:** todo lo anterior **sin probar en un APK real** (el teléfono
+del usuario tiene la 4.ª APK del repositorio, muy anterior); editar/borrar
+lorebook a mano; pantalla de respaldos; firma de depuración estable (ARQ-001);
+búsqueda dentro de un chat; ajustes de IA por personaje; creador de
+personajes guiado (solo propuesta, no autorizado).
+
+**Dónde está cada decisión:** lorebook por personaje → "Cambio de diseño:
+lorebook por personaje, no por chat"; fondo por personaje → "Fondo de chat
+por personaje + buscador"; skins → "Rearquitectura del sistema de skins";
+firma del APK y reinstalación → "Portabilidad y calidad a futuro", punto C;
+fix de exportación en APK → "Bug crítico corregido…"; respaldo automático,
+PIN, default `mode` → "Segunda ronda de QoL"; hub de 2 columnas → "Hub de
+personajes: segunda iteración visual"; auditoría de recuperabilidad →
+"Auditoría VER-001"; reglas de trabajo con el usuario → `CONTRACT-HANDOFF.md`.
+
+## Registro de contratos
+
+| ID | Título | Estado | Notas |
+|---|---|---|---|
+| DOC-001 | Reconciliar la documentación con el estado real | Autorizado — ejecutado el 2026-09-23 (solo `docs/`; el commit lo confirma `git log`) | Esta sección, "Estado vigente", marcas "SUPERADO", `CONTRACTS.md` reescrito a los typedefs reales y aviso al inicio de `CONTRACT-LOREBOOK.md`. |
+| VER-001 | Auditoría de recuperabilidad y seguridad de datos | Autorizado — informe en "Auditoría VER-001" | Solo lectura: no cambia comportamiento. Los hallazgos P0/P1 requieren contratos de corrección aparte (sin autorizar). |
+| ARQ-001 | Firma estable del APK | **Borrador, sin autorización** | Causa raíz y arreglo propuesto ya descritos en "Portabilidad y calidad a futuro", punto C. Sin implementar. |
+| MEM-001 | Proteger y gestionar el lorebook | **Borrador, sin autorización** | Punto de partida: los hallazgos sobre lorebook de VER-001 (truncado por `maxLen`, colisión con la respuesta del chat, reemplazo total) y el pendiente "editar/borrar a mano". |
+| (previos) | `CONTRACT-LOREBOOK.md` (implementado, parcialmente superado), `CONTRACT-CHARACTER-CREATOR.md` (propuesta, no autorizada), `CONTRACT-HANDOFF.md` (briefing) | — | Ver los avisos al inicio de cada uno. |
+
 ## Línea de tiempo resumida
 
 1. **Ensamblado inicial** de los 6 módulos (diseño, shell/plataforma, datos,
@@ -49,6 +122,8 @@ y el código mandan sobre `CONTRACTS.md`.
      "Exportar este chat" / "Importar chat".
    - Grilla del hub de personajes: se ajustó de 2 a 3 columnas en
      `home.css` (2 columnas se veía "gigante" en celular).
+     **(SUPERADO por: "Hub de personajes: segunda iteración visual" — hoy
+     son 2 columnas de tarjetas grandes; no volver a 3.)**
 
 ## Adenda grande: varios chats por personaje
 
@@ -94,7 +169,8 @@ está totalmente implementado). Resumen de lo que cambió:
 node --test tests/*.test.mjs
 ```
 
-88 tests debería ser el número actual (22 de `state.test.mjs` cubriendo
+**(SUPERADO por: "Estado vigente" — hoy son 144 tests, no 88; el desglose de
+abajo es el de aquel momento.)** 88 tests debería ser el número actual (22 de `state.test.mjs` cubriendo
 chats/migración/backups, 24 de `prompt.test.mjs` incluyendo el escenario
 del chat, más los de `format`/`cards`/`kobold`). Si alguien toca
 `state.js`, `chat.js`, `chats.js`, `home.js` o `prompt.js`, correr esto
@@ -279,6 +355,10 @@ contrato:
   contenido, tope de cantidad), `selectLoreEntries` (keyword matching
   contra los últimos mensajes, estilo World Info, con tope de caracteres),
   `formatLoreBlock`.
+- **(SUPERADO por: "Cambio de diseño: lorebook por personaje, no por chat")
+  — este punto y el de `saveChatLorebook` describen la versión "por chat":
+  hoy `Chat` NO tiene `lorebook`, y `saveChatLorebook` se separó en
+  `saveCharacterLorebook` + `markChatLorebookProgress`.**
 - **`state.js`**: `Chat` suma `lorebook: LoreEntry[]` (`[]` por defecto) y
   `lorebookMessageCount: number` (`0` por defecto) — chats guardados antes
   de este cambio siguen cargando sin romperse (`sanitizeChat` les aplica
@@ -521,6 +601,10 @@ sesión — quedan para cuando el usuario las priorice:
 - **Editar/borrar entradas de lorebook a mano**, y más adelante "memoria
   curada" (hechos fijados a mano, ver `CONTRACT-HANDOFF.md` §7.1) — ambos
   ya anotados como pendientes del encargo de lorebook.
+- **(YA IMPLEMENTADOS, ver "Skins…" y "Rearquitectura del sistema de skins":
+  gate de tests en el CI, versión visible en Ajustes y temas/skins; el
+  mecanismo descrito en este punto —una hoja de variables alternativa— fue
+  reemplazado por `themes.css`.)** 
 - **Temas/skins alternativos**: totalmente viable con bajo costo de
   ingeniería gracias a que `tokens.css` centraliza todos los colores — un
   segundo archivo de variables (p. ej. estética "glass"/vidrio esmerilado,
@@ -538,6 +622,13 @@ sesión — quedan para cuando el usuario las priorice:
   usuario en el flujo normal.
 
 ## Skins (Nomi/Glass) y fondo de chat personalizado (2026-09-23)
+
+> **(SUPERADO en varios puntos, conservado como historia):** `chatBackground*`
+> en `Settings` → ahora viven en `Character` (ver "Fondo de chat por
+> personaje + buscador de personajes"); `theme-glass.css` (borrado) →
+> `themes.css` (ver "Rearquitectura del sistema de skins"); `Settings.theme`
+> hoy admite también `'imessage'` y existe `themeMode`; "139 tests" → 144;
+> el tinte Glass ya no se calcula al arrancar sino al entrar a un chat.
 
 El usuario pidió arrancar la lista de mejoras de la sección anterior,
 empezando por la que más ilusión le hacía: un segundo skin visual "Glass"
@@ -926,11 +1017,13 @@ que el usuario quiere preservar) y texto libre guiado con límite de
 caracteres (mismo patrón que `SCENARIO_MAX` en `chats.js`) para la capa de
 contenido (nombre, descripción, saludo — inherentemente abierta, no
 "pill-eable" sin perder lo que hace único a cada personaje). El documento
-deja explícita una tensión no resuelta a propósito: el fondo de chat es
-hoy un ajuste global, no por personaje, así que ofrecerlo en el creador
+dejaba explícita una tensión no resuelta a propósito: el fondo de chat era
+entonces un ajuste global, no por personaje, así que ofrecerlo en el creador
 implicaría o pisar el ajuste global o extender el modelo de datos — se
-recomienda no sumarlo a la v1 hasta que el usuario decida cuál de las dos
-quiere.
+recomendaba no sumarlo a la v1 hasta que el usuario decidiera cuál de las dos
+quería. **(SUPERADO por: `docs/CONTRACT-CHARACTER-CREATOR.md` §3.3 y la
+sección "Fondo de chat por personaje + buscador de personajes" — la tensión
+ya está resuelta: el fondo es por personaje.)**
 
 No se escribió ni una línea de código de la feature en sí — es
 explícitamente una propuesta para que el usuario la revise, no un encargo

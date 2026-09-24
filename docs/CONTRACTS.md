@@ -1,5 +1,13 @@
 # CONTRATOS COMPARTIDOS — Proyecto "Companion"
 
+> **Actualizado el 2026-09-23 (DOC-001) contra el código real.** Este archivo
+> nació como el contrato de los 6 módulos iniciales y quedó atrás; ahora sus
+> §3 (árbol de archivos), §4 (typedefs), §5 (firmas de `state.js`, plataforma
+> y motor), §6 (vistas) y §7 (HTML/tokens) reflejan el código actual. Las
+> partes históricas que se conservan van marcadas "(histórico)". **Si algo
+> aquí contradice al código, manda el código** y hay que corregir este
+> archivo. Estado global del proyecto: `docs/NOTES.md`, "Estado vigente".
+
 > Este bloque es idéntico en los 6 prompts del proyecto y es la única fuente de verdad. Otras instancias de IA construyen los demás módulos en paralelo, sin ver tu conversación. Si algo del contrato te parece mejorable, respétalo igual y anótalo en tus "Notas de integración". Nunca cambies nombres, firmas ni formas de datos por tu cuenta.
 
 ## 1. Qué es el proyecto
@@ -26,19 +34,32 @@ Existe un **prototipo funcional en un solo archivo, `companion.html`**, que el u
 
 Cada instancia crea SOLO sus archivos. Si necesitas algo de otro módulo, úsalo exactamente como lo define este contrato.
 
+Árbol **actual** (2026-09-23):
+
 ```
 www/
   index.html
-  css/     tokens.css  base.css  chat.css  home.css
+  css/     tokens.css  base.css  chat.css  home.css  themes.css
   js/
-    main.js   platform.js   state.js
-    api/     kobold.js  prompt.js
+    main.js   platform.js   state.js   lock.js   images.js   version.js
+    api/     kobold.js  prompt.js  lorebook.js
     cards/   parse.js  avatar.js  import.js
-    ui/      shell.js  setup.js  home.js  settings.js  chat.js  format.js
+    ui/      shell.js  setup.js  home.js  chats.js  chat.js  settings.js
+             lock.js  appearance.js  chat-background.js  format.js
   dev/       design-preview.html
-tests/       *.test.mjs   (node:test, sin dependencias)
-docs/        CONTRACTS.md  DESIGN.md
+tests/       cards  format  kobold  lock  lorebook  prompt  state  (*.test.mjs, node:test)
+docs/        CONTRACTS.md  DESIGN.md  NOTES.md  CONTRACT-*.md  examples/
+.github/workflows/build-apk.yml      capacitor.config.json      package.json
 ```
+
+Notas: `js/lock.js` (raíz, hash de PIN, puro) y `js/ui/lock.js` (pantalla) son
+dos archivos distintos aunque el contrato dice que los nombres de archivo son
+únicos — esa regla del contrato original ya no se cumple para `lock.js`.
+`android/` no está versionado (lo genera el workflow). `theme-glass.css` ya
+no existe (lo reemplazó `themes.css`).
+
+Reparto original por módulo (histórico; los archivos posteriores no tienen un
+"módulo" asignado):
 
 | Módulo | Archivos que crea |
 |---|---|
@@ -85,13 +106,32 @@ Los imports son ESM relativos y siempre con extensión `.js`. Los tests importan
  * @property {Card} card
  * @property {'none'|'mini'|'large'} avatarMode   // por defecto 'mini'
  * @property {number} created       // ms desde epoch
- * @property {number} updated       // ms; lo actualiza saveChat
- * @property {string} last          // vista previa del último mensaje (máx. 90 caracteres, sin asteriscos)
- * @property {LoreEntry[]} lorebook // adenda: memoria de largo plazo, compartida entre todos los chats de este personaje
- * @property {string} chatBackground            // adenda: data URL JPEG del fondo de SUS chats, '' si no hay
- * @property {number} chatBackgroundBrightness  // adenda: 20 a 180 (%), 100 = sin cambios
- * @property {boolean} chatBackgroundFade       // adenda: fundido a negro en la mitad inferior
- * @property {'fill'|'stretch'} chatBackgroundFit // adenda: 'fill' cubre y recorta; 'stretch' deforma sin recortar
+ * @property {LoreEntry[]} lorebook // memoria de largo plazo, compartida entre todos los chats de este personaje (por personaje, no por chat: docs/NOTES.md)
+ * @property {string} chatBackground            // data URL JPEG del fondo de SUS chats, '' si no hay
+ * @property {number} chatBackgroundBrightness  // 20 a 180 (%), 100 = sin cambios
+ * @property {boolean} chatBackgroundFade       // fundido a negro en la mitad inferior
+ * @property {'fill'|'stretch'} chatBackgroundFit // 'fill' cubre y recorta; 'stretch' deforma sin recortar
+ *
+ * Campos NO declarados en el typedef de state.js pero presentes en la práctica:
+ * `updated` (ms) y `last` (string) los escribe cards/import.js al importar una
+ * card; NADIE los mantiene después (saveChatMessages ya no toca al personaje).
+ * `listCharacters()` ordena por `updated` descendente, o sea, por fecha de
+ * importación. La vista previa del hub sale de `Chat.last`, no de `Character.last`.
+ * `sanitizeCharacterExtras()` solo valida `lorebook` y `chatBackground*`; el resto
+ * del objeto se guarda tal cual.
+ */
+
+/**
+ * @typedef {Object} Chat  Store `chatMeta` (los mensajes van aparte, en `chatMsgs`). Adenda multi-chat.
+ * @property {string} id
+ * @property {string} characterId
+ * @property {string} title         // '' => la UI muestra la fecha de creación
+ * @property {string} scenario      // se suma al scenario de la card, nunca lo reemplaza
+ * @property {number} created
+ * @property {number} updated       // lo actualiza saveChatMessages
+ * @property {string} last          // vista previa del último mensaje del chat (máx. 90 caracteres, sin asteriscos)
+ * @property {number} lastExportAt  // ms del último respaldo automático de este chat (0 = nunca)
+ * @property {number} lorebookMessageCount  // nº de mensajes de ESTE chat ya usados para actualizar el lorebook del personaje (marcador; no guarda entradas)
  */
 
 /**
@@ -102,13 +142,19 @@ Los imports son ESM relativos y siempre con extensión `.js`. Los tests importan
  */
 
 /**
- * @typedef {Object} Settings
- * @property {string} url           // origen de KoboldCpp sin barra final, ej. 'http://100.75.55.22:5001'
+ * @typedef {Object} Settings  Un único registro (store `settings`, clave 'main').
+ * @property {string} url           // origen de KoboldCpp sin barra final, ej. 'http://100.x.x.x:5001'
  * @property {string} user          // nombre del usuario en el chat ('' => se usa "User")
  * @property {number} maxLen        // tokens máximos por respuesta, 60 a 500, por defecto 220
  * @property {number} temp          // temperatura, 0.3 a 1.4, por defecto 0.85
- * @property {'plain'|'chat'} mode  // 'plain' = texto simple (por defecto); 'chat' = plantilla del modelo vía /v1/chat/completions
- * @property {number} ctx           // contexto máximo del modelo; lo rellena connect(); por defecto 4096
+ * @property {'plain'|'chat'} mode  // 'chat' = plantilla del modelo vía /v1/chat/completions (POR DEFECTO); 'plain' = texto simple
+ * @property {number} ctx           // contexto máximo del modelo; lo rellena connect(); 512 a 200000, por defecto 4096
+ * @property {string} pinSalt       // '' si el bloqueo con PIN está desactivado
+ * @property {string} pinHash       // '' si está desactivado; SHA-256 salteado (ver www/js/lock.js)
+ * @property {'nomi'|'glass'|'imessage'} theme  // skin visual (www/css/themes.css), por defecto 'nomi'
+ * @property {'dark'|'light'} themeMode         // claro/oscuro, aplica a cualquier skin, por defecto 'dark'
+ *
+ * Los antiguos `chatBackground*` YA NO están en Settings (pasaron a Character).
  */
 ```
 
@@ -116,19 +162,44 @@ Los imports son ESM relativos y siempre con extensión `.js`. Los tests importan
 
 ### `www/js/state.js` (módulo 03). Todo es asíncrono
 
+Firmas reales exportadas (2026-09-23). IndexedDB `companion` v2, stores `settings`,
+`characters`, `chats` (legado, solo lectura para migrar), `chatMeta`, `chatMsgs`.
+`createState(backend)` permite un backend en memoria para tests.
+
 ```js
-getSettings(): Promise<Settings>                    // siempre con valores por defecto aplicados
-saveSettings(patch: Partial<Settings>): Promise<Settings>
-listCharacters(): Promise<Character[]>              // ordenados por `updated` descendente
+getSettings(): Promise<Settings>                    // siempre con valores por defecto aplicados y saneados
+saveSettings(patch: Partial<Settings>): Promise<Settings>   // merge parcial
+listCharacters(): Promise<Character[]>              // ordenados por `updated` desc; carga TODOS los objetos completos (avatar y fondo incluidos)
 getCharacter(id: string): Promise<Character|null>
-saveCharacter(character: Character): Promise<Character>   // crea o actualiza; NO modifica `updated`
-deleteCharacter(id: string): Promise<void>          // borra también su chat
-getChat(id: string): Promise<Message[]|null>        // null si aún no existe chat
-saveChat(id: string, messages: Message[]): Promise<void>  // además actualiza character.last y character.updated
-exportBackup(): Promise<Blob>                       // JSON: { app:'companion', version:1, exported, settings, characters, chats }
-importBackup(file: File|Blob): Promise<{ characters: number }>  // mezcla por id; NO pisa settings.url
+saveCharacter(character: Character): Promise<Character>   // put del objeto ENTERO tal cual (sin validar más que el id); NO modifica `updated`
+saveCharacterLorebook(characterId: string, lorebook: LoreEntry[]): Promise<Character>   // relee el personaje al guardar (no pisa avatar/fondo)
+saveCharacterBackground(characterId: string, patch: Partial<Pick<Character,'chatBackground'|'chatBackgroundBrightness'|'chatBackgroundFade'|'chatBackgroundFit'>>): Promise<Character>  // merge parcial, relee al guardar
+deleteCharacter(id: string): Promise<void>          // transacción atómica: borra el personaje y TODOS sus chats (chatMeta + chatMsgs) y el chat legado
+listChats(characterId: string): Promise<Chat[]>     // por `updated` desc
+getChat(chatId: string): Promise<Chat|null>         // metadatos
+getChatMessages(chatId: string): Promise<Message[]|null>   // null si el chat aún no tiene mensajes guardados
+saveChatMessages(chatId: string, messages: Message[]): Promise<void>  // transacción atómica: mensajes + meta (last, updated)
+createChat(characterId: string, opts?: { title?: string, scenario?: string }): Promise<Chat>
+renameChat(chatId: string, title: string): Promise<Chat>
+markChatExported(chatId: string): Promise<Chat>     // fija lastExportAt = ahora (respaldo automático)
+markChatLorebookProgress(chatId: string, count: number): Promise<Chat>
+deleteChat(chatId: string): Promise<void>
+migrateLegacyChats(): Promise<void>                 // convierte el chat único viejo de cada personaje; idempotente; se llama al arrancar (main.js)
+exportBackup(): Promise<Blob>                       // JSON: { app:'companion', version:2, exported, settings, characters, chats:{[chatId]:Chat}, chatMessages:{[chatId]:Message[]} }; incluye pinSalt/pinHash dentro de settings
+importBackup(file: File|Blob): Promise<{ characters: number }>  // el ARCHIVO GANA por id (personajes, chatMeta, chatMsgs) sin comparar fechas ni avisar; NO restaura settings (ni url, ni user, ni PIN, ni tema); acepta v2 y v1; requiere `characters` como array
 newId(): string
 ```
+
+`getChat`/`saveChat` **por personaje** (contrato original, `Message[]` por `id` de
+personaje) ya no existen: se reemplazaron por el modelo `Chat` (adenda
+multi-chat, `docs/NOTES.md`). `saveChat` ya no actualiza `character.last` ni
+`character.updated`.
+
+**Otros formatos de archivo que produce la app** (no son un "backup" de
+`importBackup`): el log de un chat (`chatExportBlob()` en `ui/chat.js`) es
+`{ app:'companion', kind:'chat-log', version:2, exported, character:{id,name}, chat:{id,title,scenario}, messages }`
+y solo lo lee el menú del chat, "Importar chat" (`onImportChat`), que únicamente
+usa `messages`. Es también el formato del respaldo automático.
 
 ### `www/js/cards/*` (módulo 03)
 
@@ -156,6 +227,8 @@ buildChatMessages(card: Card, messages: Message[], settings: Settings, chatScena
    // "Lorebook por personaje" y api/lorebook.js) son desviaciones sobre la firma original de
    // este contrato — ambos opcionales, '' por defecto. `loreBlock` ya viene armado
    // (formatLoreBlock) con las entradas seleccionadas.
+scenarioGreeting(character: Character, settings: Settings, chatScenario: string): Message[]   // nota de escenario en *asteriscos* como primer mensaje de un chat con escenario propio
+estimateContextUsage(card: Card, messages: Message[], settings: Settings, chatScenario?: string, loreBlock?: string): { approxTokens: number, budgetTokens: number, ratio: number }
 cleanReply(text: string, charName: string): string
 trimPartial(text: string): string
 // kobold.js: el ÚNICO lugar con fetch
@@ -199,8 +272,19 @@ openSettings(app: AppApi): void         // abre la hoja de ajustes con app.openS
 
 ```js
 pickFiles(opts?: { multiple?: boolean }): Promise<File[]>   // [] si el usuario cancela. Usa <input type=file> SIN atributo `accept` (en Android, un accept con tipos de imagen abre la galería en vez del explorador de archivos)
-saveBlob(blob: Blob, filename: string): Promise<void>       // descarga/guardado de un archivo
+saveBlob(blob: Blob, filename: string): Promise<{ savedToDevice: boolean }>   // APK: Filesystem.writeFile en Directory.DOCUMENTS + panel Compartir opcional (savedToDevice:true); navegador: <a download> (false). Puede lanzar Error en español.
+autoBackupBlob(blob: Blob, filename: string): Promise<boolean>   // respaldo silencioso: solo APK, escribe en Documents/Companion-backups/<filename>; nunca lanza; false si no pudo o si no es APK
 ```
+
+Otros módulos sin contrato original: `www/js/lock.js` (`createPinHash(pin)`,
+`verifyPin(pin, salt, hash)`; SHA-256 salteado, una sola pasada), `www/js/images.js`
+(`resizeImageToDataUrl(blob, maxDim=1280, quality=0.82)`, `averageColorFromDataUrl(dataUrl)`),
+`www/js/version.js` (`APP_VERSION`).
+
+UI adicional: `ui/settings.js` → `openSettings(app)`; `ui/appearance.js` →
+`openAppearance(app)` (skin + modo claro/oscuro, global); `ui/chat-background.js` →
+`openChatBackground(app, character)` (fondo del personaje). `ui/shell.js` exporta
+además `applyTheme`, `applyThemeMode`, `setGlassTint`.
 
 ## 6. Contrato de vistas y de `AppApi`
 
@@ -209,7 +293,7 @@ saveBlob(blob: Blob, filename: string): Promise<void>       // descarga/guardado
 ```js
 /**
  * @typedef {Object} AppApi
- * @property {(view:'setup'|'home'|'chat', params?:object, opts?:{replace?:boolean}) => void} navigate
+ * @property {(view:'setup'|'home'|'chats'|'chat', params?:object, opts?:{replace?:boolean}) => void} navigate
  * @property {() => void} back                  // atrás del historial (el botón/gesto atrás de Android hace lo mismo)
  * @property {(text:string, ms?:number) => void} toast
  * @property {(node:HTMLElement) => void} openSheet     // muestra `node` dentro de la hoja inferior
@@ -226,16 +310,27 @@ export async function show(params?: object): Promise<void>      // se llama cada
 export function hide(): void                                    // se llama al salir de la vista (limpiar timers, abortar tareas)
 ```
 
-Parámetros de `show`: `setup` y `home` no reciben; `chat` recibe `{ characterId: string }`.
+Parámetros de `show`: `setup` y `home` no reciben; `chats` recibe `{ characterId: string }`
+(si el personaje no tiene chats, crea uno y entra directo); `chat` recibe `{ chatId: string }`
+(ya NO `{ characterId }`: ese era el contrato original, previo a la adenda multi-chat).
+Flujo: `home` → `chats` → `chat`.
+
+Vista `lock` (PIN): existe como sección `#view-lock` y en `VIEW_NAMES` de `shell.js`, pero
+**no es una vista navegable**: `main.js` no la registra en `views` ni la acepta `navigate`.
+`ui/lock.js` exporta `init(root)` y `show({ salt, hash }): Promise<void>` (no resuelve hasta
+que se ingresa el PIN correcto; no tiene `hide`) y se muestra una sola vez al arrancar, antes
+de elegir la vista inicial (`setup` si no hay `settings.url`, si no `home`).
 
 ## 7. Contrato de HTML y CSS
 
-**Esqueleto de `index.html`** (exacto; lo escribe el módulo 02 y lo estilizan 01, 05 y 06):
+**Esqueleto de `index.html`** (actual):
 
 ```html
 <div id="app" class="app">
+  <section id="view-lock"  class="view"></section>
   <section id="view-setup" class="view"></section>
   <section id="view-home"  class="view"></section>
+  <section id="view-chats" class="view"></section>
   <section id="view-chat"  class="view"></section>
   <div id="sheet" class="sheet"><div id="sheet-card" class="sheet__card"></div></div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -243,7 +338,10 @@ Parámetros de `show`: `setup` y `home` no reciben; `chat` recibe `{ characterId
 ```
 
 Clases de estado: `.view.is-active`, `.sheet.is-open`, `.toast.is-visible`.
-Orden de hojas de estilo: `tokens.css`, `base.css`, `chat.css`, `home.css`.
+Orden de hojas de estilo: `tokens.css`, `base.css`, `chat.css`, `home.css`, `themes.css`.
+`<html>` lleva `data-theme` y `data-mode` (los pone `ui/shell.js`); `themes.css` define
+un bloque completo por cada combinación skin+modo. Los componentes no conocen los skins:
+solo leen tokens (ver `docs/NOTES.md`, "Rearquitectura del sistema de skins").
 El módulo 02 mantiene actualizadas en `:root` las variables `--vh` (alto visible real, se reduce cuando aparece el teclado) y `--vt` (desplazamiento superior del viewport visual). `.app` las usa para que el cuadro de texto nunca quede tapado por el teclado. No uses `100vh` en ningún lado.
 
 **Variables de `tokens.css`** (el módulo 01 puede afinar los valores, no los nombres):
@@ -251,7 +349,8 @@ El módulo 02 mantiene actualizadas en `:root` las variables `--vh` (alto visibl
 ```
 --color-bg  --color-surface  --color-surface-2  --color-line  --color-text  --color-muted
 --color-accent  --color-accent-2  --color-accent-soft  --color-danger  --color-ok  --color-overlay
---grad-user  --grad-avatar
+--grad-user  --grad-avatar  --color-muted-on-accent
+--surface-blur  --app-bg  --glass-tint-rgb     (materiales de skin; ver docs/DESIGN.md)
 --font
 --fs-xs --fs-sm --fs-md --fs-lg --fs-xl --fs-2xl --fs-3xl
 --radius-sm --radius-md --radius-lg --radius-pill
@@ -270,7 +369,7 @@ Valores de partida (del prototipo): fondo `#181924`, superficie `#20222f`, burbu
 - Capas: `.sheet`, `.sheet__card`, `.sheet__title`, `.menu-item` (+ `.menu-item--danger`), `.toast`.
 - Además, `input[type=range]` y `select` con estilo propio sin necesidad de clase.
 
-**Prefijos:** el CSS de cada módulo usa su propio prefijo y no redefine nada de `base.css`: `chat-` (en `chat.css`), `home-`, `setup-` y `settings-` (en `home.css`). Solo puede usar variables de `tokens.css` y clases de `base.css` listadas aquí.
+**Prefijos:** el CSS de cada módulo usa su propio prefijo y no redefine nada de `base.css`: `chat-` (en `chat.css`), `home-`, `setup-`, `settings-` y `appearance-` (en `home.css`). Solo puede usar variables de `tokens.css` y clases de `base.css` listadas aquí.
 
 ## 8. Entrega
 
