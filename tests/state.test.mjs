@@ -590,3 +590,75 @@ test('importBackup rechaza un archivo que no es una copia de seguridad válida',
   const badFile = { async text() { return JSON.stringify({ foo: 'bar' }); } };
   await assert.rejects(() => state.importBackup(badFile));
 });
+
+// ---------- MEM-001 v2: lorebookPrevious (un nivel de "Deshacer") ----------
+
+test('un personaje sin lorebookPrevious carga con [] y lorebookPreviousAt 0', async () => {
+  const backend = createMemoryBackend();
+  const state = createState(backend);
+  backend._raw.characters.set('viejo', {
+    id: 'viejo', name: 'Viejo', avatar: '',
+    card: { name: 'Viejo', description: '', personality: '', scenario: '', first_mes: '', mes_example: '', system_prompt: '', post_history_instructions: '', alternate_greetings: [], character_book: null },
+    avatarMode: 'mini', created: 1,
+    lorebook: [{ id: 'l1', keys: ['a'], content: 'Un recuerdo.', updated: 1, source: 'auto' }],
+  });
+  const character = await state.getCharacter('viejo');
+  assert.deepEqual(character.lorebookPrevious, []);
+  assert.equal(character.lorebookPreviousAt, 0);
+  assert.equal(character.lorebook.length, 1); // lo existente no cambia
+  assert.deepEqual((await state.listCharacters())[0].lorebookPrevious, []);
+});
+
+test('saveCharacterLorebook con `previous` guarda la copia para deshacer; sin él la deja como estaba; con null la borra', async () => {
+  const state = createState(createMemoryBackend());
+  await state.saveCharacter(makeCharacter({ id: 'x' }));
+  const before = [{ id: 'l1', keys: ['a'], content: 'Antes.', updated: 1, source: 'auto' }];
+  const after = [...before, { id: 'l2', keys: ['b'], content: 'Después.', updated: 2, source: 'auto' }];
+
+  await state.saveCharacterLorebook('x', before);
+  const withPrev = await state.saveCharacterLorebook('x', after, before);
+  assert.deepEqual(withPrev.lorebook, after);
+  assert.deepEqual(withPrev.lorebookPrevious, before);
+  assert.ok(withPrev.lorebookPreviousAt > 0);
+
+  // Una edición manual posterior (sin `previous`) no pisa la copia de deshacer.
+  const edited = await state.saveCharacterLorebook('x', [after[1]]);
+  assert.deepEqual(edited.lorebookPrevious, before);
+  assert.equal(edited.lorebookPreviousAt, withPrev.lorebookPreviousAt);
+
+  // Deshacer: se restaura la copia y se consume.
+  const undone = await state.saveCharacterLorebook('x', before, null);
+  assert.deepEqual(undone.lorebook, before);
+  assert.deepEqual(undone.lorebookPrevious, []);
+  assert.equal(undone.lorebookPreviousAt, 0);
+});
+
+test('una copia de deshacer con el lorebook anterior VACÍO se distingue de "no hay copia"', async () => {
+  const state = createState(createMemoryBackend());
+  await state.saveCharacter(makeCharacter({ id: 'x' }));
+  const entry = { id: 'l1', keys: ['a'], content: 'Primera actualización.', updated: 1, source: 'auto' };
+  const saved = await state.saveCharacterLorebook('x', [entry], []);
+  assert.deepEqual(saved.lorebookPrevious, []);
+  assert.ok(saved.lorebookPreviousAt > 0);
+});
+
+test('guardar el lorebook no pisa un chatBackground* ni un avatar cambiados entretanto', async () => {
+  const state = createState(createMemoryBackend());
+  await state.saveCharacter(makeCharacter({ id: 'x' }));
+
+  // La extracción "empezó" con una copia vieja del personaje en memoria…
+  const stale = await state.getCharacter('x');
+  // …y mientras tanto el usuario cambió el fondo y el avatar.
+  await state.saveCharacterBackground('x', { chatBackground: 'data:image/jpeg;base64,NUEVO', chatBackgroundBrightness: 60 });
+  const withAvatar = await state.getCharacter('x');
+  await state.saveCharacter({ ...withAvatar, avatar: 'data:image/png;base64,AVATAR' });
+
+  const entry = { id: 'l1', keys: ['a'], content: 'Un recuerdo.', updated: 1, source: 'auto' };
+  await state.saveCharacterLorebook(stale.id, [entry], []);
+
+  const after = await state.getCharacter('x');
+  assert.deepEqual(after.lorebook, [entry]);
+  assert.equal(after.chatBackground, 'data:image/jpeg;base64,NUEVO');
+  assert.equal(after.chatBackgroundBrightness, 60);
+  assert.equal(after.avatar, 'data:image/png;base64,AVATAR');
+});

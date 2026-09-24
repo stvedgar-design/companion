@@ -40,7 +40,10 @@ navegación), `setup`, `home`, `chats`, `chat`. Versión: `APP_VERSION`
   `theme` (`nomi|glass|imessage`), `themeMode` (`dark|light`).
 - `Character` (store `characters`): `id`, `name`, `avatar` (data URL),
   `card` (Card normalizada), `avatarMode`, `created`, `lorebook: LoreEntry[]`
-  (por personaje, compartido entre sus chats), `chatBackground` (data URL),
+  (por personaje, compartido entre sus chats), `lorebookPrevious: LoreEntry[]` y
+  `lorebookPreviousAt` (MEM-001 v2: copia del lorebook antes de la última
+  actualización de memoria, un nivel de "Deshacer"; `[]`/`0` = nada que
+  deshacer), `chatBackground` (data URL),
   `chatBackgroundBrightness`, `chatBackgroundFade`, `chatBackgroundFit`.
   Además `updated` y `last`: los escribe `cards/import.js` al importar, pero
   **nada los mantiene** después (el hub ordena por `updated`, o sea por fecha
@@ -59,14 +62,14 @@ navegación), `setup`, `home`, `chats`, `chat`. Versión: `APP_VERSION`
 importar chat y copia completa; respaldo automático silencioso a
 `Documents/Companion-backups/` (solo APK); PIN opcional; indicador de
 contexto; hub de 2 columnas con lupa de búsqueda; lorebook automático por
-personaje (cada 40 mensajes, extracción vía KoboldCpp, inyección por keyword,
-vista de solo lectura); 3 skins × claro/oscuro; fondo de chat por personaje;
-CI con gate de tests; versión visible en Ajustes; 144 tests (`node --test
-tests/*.test.mjs`).
+personaje (MEM-001 v2: cada 20 mensajes, extracción aditiva de una línea vía
+KoboldCpp, inyección por keyword, hoja "Ver lorebook" con editar/borrar/deshacer
+y "Actualizar memoria ahora"); 3 skins × claro/oscuro; fondo de chat por
+personaje; CI con gate de tests; versión visible en Ajustes; 174 tests (`node
+--test tests/*.test.mjs`).
 
 **Pendiente:** todo lo anterior **sin probar en un APK real** (el teléfono
-del usuario tiene la 4.ª APK del repositorio, muy anterior); editar/borrar
-lorebook a mano; pantalla de respaldos; búsqueda dentro de un chat; ajustes de IA por personaje; creador de
+del usuario tiene la 4.ª APK del repositorio, muy anterior); pantalla de respaldos; búsqueda dentro de un chat; ajustes de IA por personaje; creador de
 personajes guiado (solo propuesta, no autorizado). Añadido por DOC-002
 (2026-09-24), a raíz de VER-001 y de las decisiones del arquitecto:
 - Respaldo automático completo: un archivo por `chatId` (hoy NO es así, ver
@@ -77,7 +80,16 @@ personajes guiado (solo propuesta, no autorizado). Añadido por DOC-002
   hallazgo 20).
 - Imágenes (avatar, fondo) fuera del registro del personaje (VER-001
   hallazgo 18).
-- Prueba de la memoria (lorebook) contra el servidor real (MEM-001 v2, Paso 0).
+- ~~Prueba de la memoria (lorebook) contra el servidor real~~: hecha desde el PC
+  en MEM-001 v2 (Paso 0 y prueba de la hoja en el navegador integrado);
+  **sigue pendiente la prueba desde el teléfono con el APK.**
+- Latencia de la memoria: cada actualización de memoria hace que la SIGUIENTE
+  respuesta del chat tarde ~15–25 s más (invalida la caché de prompt del
+  servidor). Ver "MEM-001 v2 → Informe de latencia"; decisión pendiente del
+  arquitecto y del usuario.
+- El modo "plantilla del modelo" (`/v1/chat/completions`) no corta en `\n`, por lo
+  que puede devolver dos párrafos (formato Nomi = un párrafo). Causa medida y
+  arreglo sugerido en "MEM-001 v2 → Observación del tester"; sin contrato aún.
 
 ## Perfil del servidor y principios de producto (contrato DOC-002, 2026-09-24)
 
@@ -102,18 +114,29 @@ personajes guiado (solo propuesta, no autorizado). Añadido por DOC-002
   servidor (`jugar.sh`, `config.env`, …) están fuera del proyecto y NO se
   modifican desde aquí.
 
-**Supuesto — a verificar en MEM-001 v2, Paso 0:** que `--genlimit 160` limite
-cada respuesta a 160 tokens sin importar el `max_length` que pida el cliente, y
-que `--gendefaultsoverwrite` haga que esos valores (incluido cortar en el
-primer salto de línea) prevalezcan sobre los de la petición. Las banderas
-existen en KoboldCpp; su comportamiento exacto en esta versión no está medido.
-Consecuencias esperadas si es cierto:
-- `Settings.maxLen` y `Settings.temp` de la app podrían estar limitados o
-  sobrescritos por el servidor (el control de la app no tendría el efecto que
-  aparenta).
-- Las respuestas salen en un solo párrafo (una línea).
-- Una extracción larga o multilínea (como la lista completa del lorebook actual)
-  no cabe.
+**Hecho (MEDIDO en MEM-001 v2, Paso 0, 2026-09-24, contra ese mismo servidor,
+KoboldCpp 1.121, contexto 6144):** el supuesto original resultó cierto en lo
+esencial, con un matiz importante por endpoint. Detalle y números en "MEM-001
+v2 → Paso 0". Resumen:
+- El servidor corta CADA respuesta a **160 tokens**, sin importar el
+  `max_length`/`max_tokens` pedido (200, 400 y 1024 dieron 160). Vale para todos
+  los endpoints probados. Por tanto `Settings.maxLen` por encima de 160 no tiene
+  efecto real.
+- Los parámetros de muestreo de la petición (`temperature`, `top_k`) **se
+  ignoran** (`--gendefaultsoverwrite`): con `temperature:0, top_k:1` la salida
+  siguió variando.
+- **El corte en el primer `\n` depende del endpoint:** en `/api/v1/generate` y
+  `/api/extra/generate/stream` (modo "texto simple") se aplica SIEMPRE, incluso
+  si la petición manda otro `stop_sequence`; en `/v1/chat/completions` (modo
+  "plantilla del modelo") solo se aplica si la petición NO envía `stop`, y la
+  app sí lo envía (`["\n<usuario>:"]`), así que ahí NO se corta y salen párrafos.
+- Dos peticiones simultáneas se **encolan** (ambas responden 200; la segunda
+  espera a la primera); no hay error de "ocupado".
+- `POST /api/extra/abort` con el `genkey` de la petición SÍ corta la generación
+  en el servidor; cerrar la conexión del cliente NO (el servidor sigue
+  generando y bloquea la petición siguiente).
+- Una respuesta que empieza con `\n` llega VACÍA (se corta antes del primer
+  carácter). Consecuencia: el prompt de extracción usa un "prefill" (ver MEM-001 v2).
 
 **Principios de producto (decisiones del usuario; no las cambies sin él):**
 1. **Latencia primero.** "Un chat de 20 minutos no debería ocupar 1 hora."
@@ -153,7 +176,7 @@ personajes: segunda iteración visual"; auditoría de recuperabilidad →
 | ARQ-001 | Firma estable del APK | Implementado el 2026-09-24; **la verificación falló en el CI** (build #14: la huella del APK no coincidió con la esperada); **corregido por ARQ-002** | Ver "ARQ-001" y "ARQ-002" (al final de este archivo). Llave en `signing/`, workflow actualizado. |
 | ARQ-002 | Corregir la firma del APK: firmar explícitamente con la llave fija | Autorizado — implementado el 2026-09-24 (este lote); **pendiente de verificar en el CI y en un teléfono real** | El workflow re-firma con `apksigner sign` y verifica la huella. Ver "ARQ-002". |
 | DOC-002 | Registrar perfil del servidor, principios de producto y estado real de los contratos | Autorizado — ejecutado el 2026-09-24 (este lote; solo `docs/`) | Sección "Perfil del servidor y principios de producto", este Registro, pendientes de "Estado vigente" y rutas con marcadores. |
-| MEM-001 v2 | Lorebook: actualizaciones aditivas compatibles con el servidor real, protección contra pérdida y gestión manual | **Autorizado; reemplaza al MEM-001 anterior; sin implementar** (siguiente sesión, solo cuando el usuario lo pida) | Incluye el Paso 0 (medir el servidor real). Punto de partida: hallazgos 11, 12, 13, 14 de VER-001. |
+| MEM-001 v2 | Lorebook: actualizaciones aditivas compatibles con el servidor real, protección contra pérdida y gestión manual | Autorizado — **implementado el 2026-09-24** (sesión B); Paso 0 ejecutado contra el servidor real; **pendiente de probar en el teléfono** | Ver "MEM-001 v2" (al final de este archivo). Reporta un problema de latencia que requiere decisión. Reemplaza al MEM-001 anterior. |
 | BKP-001 | Importación de copias segura: confirmar, no pisar datos nuevos, todo o nada | **Autorizado; sin implementar** (sesión posterior a MEM-001 v2, solo cuando el usuario lo pida) | Punto de partida: hallazgos 2 y 10 de VER-001. |
 | MEM-001 (v1) | (Anulado) versión anterior de MEM-001 | **ANULADO**, reemplazado por MEM-001 v2 | Asumía que el servidor podía devolver una lista larga con saltos de línea. |
 | (previos) | `CONTRACT-LOREBOOK.md` (implementado, parcialmente superado), `CONTRACT-CHARACTER-CREATOR.md` (propuesta, no autorizada), `CONTRACT-HANDOFF.md` (briefing) | — | Ver los avisos al inicio de cada uno. |
@@ -414,6 +437,13 @@ pueda retomar sin perder el hilo:
   acotada en el prompt.
 
 ## Subsistema de memoria/lorebook automático (2026-09-23)
+
+**(SUPERADO en parte por MEM-001 v2, 2026-09-24 — ver "MEM-001 v2" al final: hoy
+dispara cada 20 mensajes, no 40; la extracción es aditiva, de una línea y de
+hasta 3 entradas, no "la lista completa"; la vista ya NO es de solo lectura
+(editar, borrar, deshacer y "Actualizar memoria ahora"). Lo demás de esta
+sección —inyección por keyword y sus topes, lorebook por personaje— sigue
+vigente.)**
 
 Implementado completo según `docs/CONTRACT-LOREBOOK.md`. Resumen de qué se
 hizo y las decisiones tomadas en los puntos marcados `[TU CRITERIO]` en ese
@@ -1135,10 +1165,10 @@ sin un APK real u otro entorno). Severidad P0 (pérdida de datos clara) a P3.
 | 8 | Si la red se corta con texto ya recibido, la respuesta parcial se guarda (`truncated:true`) pero `chat.js` ignora ese indicador: no avisa al usuario. Si no hubo nada de texto, aparece un aviso y el botón "Reintentar respuesta". | `api/kobold.js: generateReply` (catch); `ui/chat.js: generate()` | H | P3 |
 | 9 | Un fallo al guardar (`saveChatMessages`) sí llega a un aviso visible ("No se pudo guardar la conversación."), pero es un toast de ~4 s: sin indicador persistente, sin reintento, y la generación continúa. Si además falla la creación inicial del chat, otro toast. | `ui/chat.js: persistChat()`, `show()`; `ui/shell.js: toast` | H | P3 |
 | 10 | `importBackup`: **gana el archivo** sin comparar fechas y sin avisar. Ejecutado (C2): un respaldo viejo importado sobre un chat de 5 mensajes lo dejó en 1, borró el lorebook (0 entradas) y vació el avatar. `ui/settings.js` no pide confirmación y solo muestra "Se restauraron N personajes". No es transaccional (`put` uno a uno). No restaura `Settings` (ni URL, ni nombre de usuario, ni PIN, ni tema). | `state.js: importBackup`; `ui/settings.js` (botón importar); ejecutado (C2) | H | P1 |
-| 11 | Lorebook: la extracción pide "la lista completa actualizada" con `maxLen` = el de chat (220 por defecto, 60–500), pero una lista de hasta 24 entradas × 320 caracteres necesita mucho más. Si el modelo se queda sin tokens, el parser cae al primer `{…}` completo y **el lorebook se reemplaza por 1 entrada**. Ejecutado (A): 8 entradas → 1. También borra todo si el modelo devuelve `[]` o envuelve la lista en un objeto (`{"entries":[…]}`): 8 → 0. Solo se salva si el texto no es JSON (parse = `null`). | `ui/chat.js: maybeUpdateLorebook()` (`completeOnce` sin `maxLen`); `api/lorebook.js: parseExtractionResponse`, `sanitizeLoreEntries`; ejecutado (A) y comprobación extra | H | P1 |
-| 12 | Lorebook y chat compiten por el servidor: `maybeUpdateLorebook()` se dispara dentro de `persistChat()`, sin `await`, justo antes de `generate()`; en el mensaje que cruza el umbral (cada 40) salen dos peticiones casi a la vez. No hay cola ni bloqueo entre `completeOnce` y `generateReply`. Qué pasa depende del servidor (cola, o "ocupado"). Además `completeOnce` no envía `genkey` ni llama a `/api/extra/abort`: si el cliente se rinde a los 2 min, el servidor sigue generando. Si la llamada falla por HTTP (p. ej. "ocupado"), el contador no avanza y se reintenta en cada guardado siguiente. | `ui/chat.js: persistChat()`, `onSendClick`; `api/kobold.js: completeOnce`, `generateReply` | H (código) / S (comportamiento del servidor) | P1 |
+| 11 | Lorebook: la extracción pide "la lista completa actualizada" con `maxLen` = el de chat (220 por defecto, 60–500), pero una lista de hasta 24 entradas × 320 caracteres necesita mucho más. Si el modelo se queda sin tokens, el parser cae al primer `{…}` completo y **el lorebook se reemplaza por 1 entrada**. Ejecutado (A): 8 entradas → 1. También borra todo si el modelo devuelve `[]` o envuelve la lista en un objeto (`{"entries":[…]}`): 8 → 0. Solo se salva si el texto no es JSON (parse = `null`). | `ui/chat.js: maybeUpdateLorebook()` (`completeOnce` sin `maxLen`); `api/lorebook.js: parseExtractionResponse`, `sanitizeLoreEntries`; ejecutado (A) y comprobación extra | H | P1 — **CORREGIDO por MEM-001 v2 (2026-09-24)**: la extracción es aditiva (nunca reemplaza la lista), pide ≤3 entradas en una línea, rescata arreglos truncados y una respuesta vacía/`[]`/no entendida no reduce nada (tests). |
+| 12 | Lorebook y chat compiten por el servidor: `maybeUpdateLorebook()` se dispara dentro de `persistChat()`, sin `await`, justo antes de `generate()`; en el mensaje que cruza el umbral (cada 40) salen dos peticiones casi a la vez. No hay cola ni bloqueo entre `completeOnce` y `generateReply`. Qué pasa depende del servidor (cola, o "ocupado"). Además `completeOnce` no envía `genkey` ni llama a `/api/extra/abort`: si el cliente se rinde a los 2 min, el servidor sigue generando. Si la llamada falla por HTTP (p. ej. "ocupado"), el contador no avanza y se reintenta en cada guardado siguiente. | `ui/chat.js: persistChat()`, `onSendClick`; `api/kobold.js: completeOnce`, `generateReply` | H (código) / S (comportamiento del servidor) | P1 — **CORREGIDO por MEM-001 v2**: la extracción no arranca con el chat ocupado, se cancela al enviar (con `genkey` + `/api/extra/abort`, medido) y el servidor encola (medido). Queda el costo de caché (ver "Informe de latencia"). |
 | 13 | Con el PC apagado (uso fuera de casa), `completeOnce` espera hasta 2 min por intento (timeout, no rechazo inmediato) y no hay más de uno a la vez (`lorebookUpdateInFlight`). No pierde datos; solo reintenta. | `ui/chat.js`, `api/kobold.js: COMPLETE_ONCE_TIMEOUT_MS` | H (código) / I (efecto) | P3 |
-| 14 | `saveCharacterLorebook` y `saveCharacterBackground` releen el personaje al guardar, así que la extracción larga NO pisa avatar ni fondo. Lo que queda pisable es lo contrario: `onCycleAvatarMode` y `onChangeAvatar` guardan el objeto entero en memoria; la copia en memoria se refresca al terminar la extracción del mismo chat, por lo que no encontré un camino realista, solo una ventana de milisegundos. Con "editar lorebook a mano" (MEM-001) este patrón de reemplazo total sí pasará a ser un riesgo real. | `state.js: saveCharacterLorebook`, `saveCharacterBackground`; `ui/chat.js: maybeUpdateLorebook`, `onCycleAvatarMode`, `onChangeAvatar` | H / I | P3 (hoy) |
+| 14 | `saveCharacterLorebook` y `saveCharacterBackground` releen el personaje al guardar, así que la extracción larga NO pisa avatar ni fondo. Lo que queda pisable es lo contrario: `onCycleAvatarMode` y `onChangeAvatar` guardan el objeto entero en memoria; la copia en memoria se refresca al terminar la extracción del mismo chat, por lo que no encontré un camino realista, solo una ventana de milisegundos. Con "editar lorebook a mano" (MEM-001) este patrón de reemplazo total sí pasará a ser un riesgo real. | `state.js: saveCharacterLorebook`, `saveCharacterBackground`; `ui/chat.js: maybeUpdateLorebook`, `onCycleAvatarMode`, `onChangeAvatar` | H / I | P3 (hoy) — **MITIGADO parcialmente por MEM-001 v2**: las ediciones manuales y la extracción releen el lorebook justo antes de guardar y `saveCharacterLorebook` solo toca los campos de lorebook; `character` en memoria se refresca tras cada guardado. `onCycleAvatarMode`/`onChangeAvatar` siguen guardando el objeto entero (sin cambio). |
 | 15 | Datos personales en texto plano fuera del almacenamiento privado: ver pregunta 8. La copia manual incluye `pinSalt`/`pinHash`; el PIN (≥4 dígitos, sin máximo) usa SHA-256 con sal y una sola pasada, así que un PIN corto se rompe por fuerza bruta. El PIN es un bloqueo de pantalla: los datos de IndexedDB no están cifrados. | `state.js: exportBackup`; `lock.js: hashPin`; `platform.js` | H | P2 |
 | 16 | Proyecto Android: `allowBackup="true"` (plantilla de Capacitor), sin `debuggable` explícito (el APK de `assembleDebug` es depurable), y `usesCleartextTraffic` no aparece en la plantilla. Ver pregunta 7. | plantilla oficial de Capacitor 6.x; `build-apk.yml`; `capacitor.config.json` | H (plantilla) / I (APK generado) / S (Auto Backup real) | P2 |
 | 17 | Cada APK se firma con un keystore distinto (causa ya documentada): actualizar exige desinstalar. La copia manual completa (v2) es entonces la única vía real de conservar personajes, chats y lorebook al actualizar, y es manual. | `build-apk.yml` (sin `android/` ni keystore versionados); sección "Portabilidad…", punto C | H | P1 (para futuras versiones) — **Corregido, pendiente de verificar en teléfono**: ARQ-001 (2026-09-24) falló la verificación en el CI (build #14) y ARQ-002 lo corrige con firma explícita |
@@ -1468,3 +1498,180 @@ Corrige el fallo de ARQ-001 (ver arriba).
 
 **Aviso operativo (igual que ARQ-001).** El primer APK con la firma estable
 exige desinstalar la versión anterior una vez.
+
+## MEM-001 v2: lorebook aditivo, compatible con el servidor real, con gestión manual (2026-09-24)
+
+**Estado:** implementado y probado en el PC (tests + navegador integrado a
+375×812 contra el servidor real del usuario). **NO probado en un APK/teléfono.**
+Reemplaza al MEM-001 anterior (anulado). Leyenda: **Hecho** = medido o ejecutado
+aquí; **Inferencia**; **Supuesto** = no verificado.
+
+### Paso 0 — mediciones contra el servidor real (Hecho)
+
+Servidor: KoboldCpp 1.121, `Mahou-1.5-mistral-nemo-12B.IQ4_XS`, contexto 6144,
+en el PC del usuario (`http://localhost:5001`). Método: scripts de Node
+desechables (no versionados) que llaman a `/api/v1/generate`,
+`/v1/chat/completions` y `/api/extra/generate/stream`, incluidas las funciones
+reales de la app (`generateReply`, `completeOnce`, builders de prompt) con la
+card de Mia. No se cambió ninguna bandera ni script del servidor.
+
+| # | Pregunta | Medición | Resultado |
+|---|---|---|---|
+| a | ¿`max_length` > 160 se recorta? | `/api/v1/generate` con prompt de continuación numérica sin saltos de línea, `max_length` 200 / 400 / 1024 | **Sí: 160 tokens** en los tres (161 según `/api/extra/tokencount`, que cuenta +1). Con `max_length` 100 → 100. En `/v1/chat/completions`, `max_tokens` 400 → `completion_tokens` máximo 160. |
+| b1 | ¿Se ignora el `stop_sequence` de la petición? | Continuación `A\nB\nC…`; peticiones sin `stop_sequence`, con `[]` y con `["Z"]` | **Sí, en el endpoint nativo:** las tres cortan en el primer `\n` (respuesta `"Q"`). Igual en `/api/extra/generate/stream`. |
+| b2 | ¿Se ignora la temperatura/`top_k`? | `temperature:0, top_k:1` ×4 en nativo → 3 salidas distintas; en chat completions ×4 → 2 distintas | **Sí**: los `gendefaults` sobrescriben el muestreo de la petición. |
+| b3 | Modo "plantilla" (tester: salió con líneas en blanco) | `/v1/chat/completions` con el `stop` real de la app (`["\nEdgar:"]`): 6/6 respuestas con `\n` (prompt genérico), 4/8 (Mia, no streaming), 6/8 (`generateReply`, streaming). Sin `stop`: **0/6**. Con `stop:["\n","\nEdgar:"]`: **0/6**. `stop:[]`: 1/6. | **El corte en `\n` NO se aplica en ese endpoint cuando la petición trae su propio `stop`** (el de la app). |
+| b4 | Modo "texto simple" | `generateReply` con `mode:'plain'` (endpoint `/api/extra/generate/stream`), 8 respuestas forzando párrafos: 0/8 con `\n`; nativo `/api/v1/generate`: 0/8. Efecto secundario: respuestas de 2 eventos (casi vacías) cuando el modelo empieza con `\n`. | El corte SÍ se aplica siempre. |
+| c1 | Latencia normal | Historial de 61 mensajes (~2400 tokens), respuestas cortas: primer token **0,5–0,6 s**, total 1,3–1,8 s. Primera petición en frío: 13,6–16,7 s (≈145 tokens/s de procesamiento de prompt). | — |
+| c2 | Efecto de una extracción sobre la SIGUIENTE respuesta del chat | Extracción con ventana de 40 mensajes (prompt actual, 5,1k caracteres): siguiente respuesta con primer token en **20,1 s** (3 medidas: 19,3 / 20,0 / 21,0 s) frente a 0,5 s. Extracción con ventana de 12 mensajes (2,4k caracteres): **23,1 s** (22,1 / 23,1 / 24,2). | **La caché de prompt del servidor se invalida** y el chat reprocesa todo el historial. El costo NO baja con un prompt de extracción más corto. Crece con el historial. |
+| c3 | Alternativa: extracción como continuación del MISMO prefijo del chat (`/v1/chat/completions` con el historial + un mensaje de instrucción) | 3 ciclos | Primer token de la respuesta siguiente **0,47 s** (baseline 0,60 s): **sin penalización**; la extracción tardó 1,3 s. **Pero** no se validó como extractor: sin `stop` el servidor cortó en `\n` y devolvió solo "```json" / "[" (habría que usar prefill/`stop`). |
+| c4 | Duración de la extracción (prompt nuevo, ventana de 10 mensajes) | 6 ciclos | ~2,7 s de media; con charla sin contenido, 0,3 s. |
+| c5 | Prompt ANTERIOR (terminaba en `JSON:`) | 6 ciclos | **5 de 6 salidas inservibles** (`" "` o `" ["`): el modelo empezaba con `\n` y el servidor cortaba. En la práctica la extracción anterior casi nunca producía nada (fallaba en silencio, avanzando el marcador). |
+| d | Dos peticiones simultáneas | Dos generaciones de 160 tokens con 300 ms de diferencia | **Se encolan**: A terminó a los 15,0 s, B a los 21,5 s; ambas 200, sin "ocupado". |
+| e | Cancelación | `genkey` + `POST /api/extra/abort` a los 2,5 s | Respondió `{"success":"true"}` y la petición devolvió lo generado hasta entonces (62 caracteres) a los 2,5 s. **Solo cerrar la conexión del cliente** (AbortController): la siguiente petición pequeña tardó 5,3 s (esperó a que el servidor terminara). |
+
+**No medido / Supuesto:** el timeout de 2 min con el servidor APAGADO real (se
+probó un puerto cerrado, que falla al instante, no el timeout; el timeout está
+cubierto solo por el código y los tests con dobles); nada desde el teléfono
+(Tailscale, WebView, Android en segundo plano); el efecto de la caché con
+historiales de ~4–5k tokens (se midió con ~2,4k; por la proporcionalidad se
+espera ~35–40 s, **Inferencia**).
+
+### Qué se implementó
+
+- **Extracción aditiva de una línea** (`api/lorebook.js`): pide como máximo
+  **3 entradas** nuevas/actualizadas como arreglo compacto `[{"k":[…],"c":"…"}]`,
+  `c` ≤ 140 caracteres, en el idioma de la conversación, con las **keys**
+  existentes (no el contenido) para evitar duplicados. El prompt termina en un
+  **prefill** (`[`) para que el modelo siga en la misma línea (sin él, ver c5).
+  Ventana: solo los últimos ≤ 20 mensajes desde el marcador, recortados desde el
+  más antiguo con una estimación conservadora de **3 caracteres por token**
+  (prompt.js usa 3,3) reservando 160 tokens de salida y 64 de margen.
+  `LOREBOOK_EXTRACT_MAX_TOKENS = 160` (lo medido); no se pide nada por encima.
+- **Parseo tolerante**: arreglo de una línea, `{"entries":[…]}`, objeto suelto,
+  campos `k`/`c` y `keys`/`content`, texto alrededor, keys sin comillas (error
+  observado con el modelo real: `"k":[Laura, sister]`), y **rescate de los objetos
+  completos de un arreglo truncado**. `[]` = sin novedades; irreconocible = sin
+  cambios.
+- **`applyExtraction()`** (pura): agrega; actualiza una entrada `auto` que
+  comparte al menos una key normalizada **y** habla de lo mismo (≥ 50 % de
+  palabras de contenido en común); nunca elimina ni modifica `manual`; respeta
+  `LOREBOOK_MAX_ENTRIES` descartando primero las `auto` más antiguas por
+  `updated` (nunca las recién tocadas ni las manuales); quita de las keys nuevas
+  el nombre del usuario y del personaje. *Desviación deliberada del contrato:* con
+  solo "comparte una key" una key genérica ("work") habría reemplazado un
+  recuerdo distinto (panadería → hospital de la hermana) y eso es pérdida
+  silenciosa; por eso se exige además similitud de contenido. Si no se cumple,
+  se agrega como entrada aparte.
+- **Marcador**: sin cambio de regla (avanza si el servidor respondió aunque el
+  texto no se entienda; NO avanza con fallo de red, abort o timeout).
+  `LOREBOOK_UPDATE_EVERY_MESSAGES`: **40 → 20**.
+- **Deshacer** (un nivel): `Character.lorebookPrevious` (+ `lorebookPreviousAt`,
+  campo extra necesario para distinguir "no hay copia" de "el lorebook estaba
+  vacío"). Se guarda el estado anterior antes de aplicar una actualización que
+  cambie algo. Personajes/copias sin esos campos cargan con `[]`/`0`.
+  `saveCharacterLorebook(id, lorebook, previous?)` relee el personaje y solo toca
+  los campos de lorebook.
+- **Prioridad al chat** (`createLoreUpdater`, probado con dobles): no arranca
+  mientras hay una generación (`busy`) ni un envío en curso (`sendInFlight`); si
+  el umbral se cruza entonces, se difiere y se reintenta al terminar
+  (`finally` de `onSendClick`, o el `persistChat()` final de `generate()`). Si el
+  usuario envía (o regenera) con una extracción en curso, se **aborta** (sin
+  guardar ni avanzar el marcador) y se envía `POST /api/extra/abort` con el
+  `genkey` (Hecho: funciona). `completeOnce` ganó `opts.signal` y `opts.genkey`
+  (código `ABORTED`). Se conserva `lorebookUpdateInFlight` (ahora `running`) y el
+  timeout de 2 min. El commit **relee** el lorebook antes de guardar, así una
+  edición manual hecha durante la extracción no se pisa.
+- **Hoja "Ver lorebook"** (`ui/chat.js`): lista con origen (automática / escrita
+  o editada por ti); **Editar** (una entrada editada pasa a `manual`; se valida
+  contenido y ≥ 1 key, sin `alert`); **Borrar** con confirmación; **Deshacer
+  última actualización** (con confirmación; avisa si no hay nada); estado de la
+  última actualización (solo en memoria); **Actualizar memoria ahora**
+  (deshabilitado si hay respuesta/extracción en curso, avisa "Aún hay poca
+  conversación para recordar" con < 4 mensajes, muestra progreso y termina siempre
+  con un mensaje comprensible, incl. servidor apagado). Las confirmaciones son
+  pantallas DENTRO de la misma hoja (`app.openSheet` reemplaza contenido) en vez
+  de `app.confirmDialog`: este último CIERRA la hoja y reabrir otra enseguida es
+  justo la carrera con el historial documentada en "Bugs reales…". Los fallos de
+  la extracción automática no muestran errores en el chat. Todo el texto se
+  inserta con `textContent`.
+
+### Verificación (Hecho)
+
+- `node --check` en cada archivo tocado; `node --test tests/*.test.mjs`:
+  **174 de 174** en verde (antes 144). Nuevos: parseo (una línea, envoltorio,
+  campos cortos/largos, truncado con rescate, keys sin comillas, `[]`, basura),
+  `applyExtraction` (agrega, actualiza sin duplicar, no reemplaza recuerdos
+  distintos, respeta el tope, no toca `manual`, entradas inválidas), ventana por
+  presupuesto, edición/borrado, actualizador (no arranca con el chat ocupado, abort
+  sin guardar ni avanzar marcador, servidor caído, respuestas vacías/truncadas
+  nunca reducen, releer antes de guardar, `runNow`), y en `state.test.mjs`
+  `lorebookPrevious` por defecto, deshacer y que guardar el lorebook no pisa un
+  `chatBackground*`/avatar cambiados entretanto.
+- Navegador integrado 375×812 contra el servidor real: "Actualizar memoria
+  ahora" (3 recuerdos nuevos en inglés, ~5 s), editar (incluida la validación),
+  borrar (cancelar y confirmar), deshacer (y el aviso al repetir), servidor
+  apagado simulado con un puerto cerrado (mensaje comprensible, lorebook
+  intacto), "poca conversación", botones deshabilitados durante una respuesta, y
+  la prioridad al chat: con 20 mensajes nuevos la extracción **esperó** a que
+  terminara la respuesta y, al enviar un segundo mensaje mientras corría, se
+  **abortó** (`/api/extra/abort` con su `genkey`) y la respuesta del chat salió
+  enseguida; después se reintentó sola. Sin errores de JavaScript en consola.
+- **No probado en un APK real**: nada de esto se ha visto en el teléfono.
+
+### Informe de latencia (requiere decisión del arquitecto y del usuario)
+
+**Medido:** cada extracción, automática (cada 20 mensajes) o manual, hace que la
+SIGUIENTE respuesta del chat tarde **~20 s más** en un chat de ~2400 tokens
+(frente a 0,5 s de primer token normal), porque el servidor tiene una sola caché
+de prompt y la extracción la reemplaza. No depende de lo corto que sea el prompt
+de extracción, y crece con el largo del chat. Es incompatible con "ninguna
+función puede empeorar de forma perceptible la latencia del chat" **si se aplica
+tal cual**, aunque el contrato lo prevé (informar, no resolver). No se cambió la
+configuración del servidor. Opciones (sin implementar):
+1. **Aceptarlo** (~1 pico de +20 s cada 20 mensajes). Es lo implementado.
+2. **Hacer la extracción como continuación del mismo prefijo del chat** (medido
+   en c3: 0 penalización y 1,3 s). Falta validar la calidad del extractor por ese
+   endpoint (requiere `stop`/prefill propios) y cambia el diseño de este
+   contrato (la ventana pasaría a ser el propio prompt del chat). Es la opción
+   que más protege la latencia.
+3. **Solo manual** (quitar el disparo automático): el usuario elige cuándo pagar
+   la espera, por ejemplo al final de una sesión.
+4. Espaciar el disparo automático (p. ej. cada 60–80 mensajes) o dispararlo al
+   salir del chat.
+
+### Observación del tester: párrafos en modo "plantilla del modelo" (Hecho)
+
+Explicación medida (Paso 0, b3/b4): el modo "plantilla del modelo" usa
+`/v1/chat/completions`; ahí el corte en `\n` de los `gendefaults` solo se aplica
+si la petición NO envía `stop`, y la app envía `["\n<usuario>:"]`
+(`prompt.js: buildChatMessages`). El modo "texto simple" usa
+`/api/extra/generate/stream` (respaldo `/api/v1/generate`), donde el corte SÍ se
+aplica siempre. **Arreglo mínimo sugerido (no hecho: fuera del alcance de
+MEM-001 v2, toca el flujo de respuesta):** añadir `"\n"` a la lista `stop` de
+`buildChatMessages()` (medido: `["\n","\nEdgar:"]` → 0/6 respuestas con salto).
+Efecto secundario a vigilar: si el modelo empieza con `\n`, la respuesta queda
+vacía (ya ocurre en "texto simple"). `Settings.maxLen` > 160 no tiene efecto
+real en ningún modo, y `Settings.temp` tampoco (el servidor impone 0,8).
+
+### Hallazgos de VER-001
+
+- **11** (reemplazo total por truncado): corregido.
+- **12** (compite con el chat): corregido (diferir, abortar con `genkey`,
+  servidor encola: medido). **Queda** el costo de caché de arriba.
+- **13** (PC apagado, espera de 2 min): **sin cambio** (no pierde datos; el
+  botón manual muestra el mensaje de "servidor no disponible" al terminar).
+- **14** (reemplazo total al guardar): mitigado (ver la tabla de VER-001).
+- Sigue como **Supuesto**: comportamiento en el teléfono (Tailscale, segundo
+  plano), timeout real con el servidor apagado, historiales largos.
+
+### Límites conocidos de la calidad de la memoria (Hecho, observado)
+
+El modelo (12B, muestreo impuesto por el servidor) a veces devuelve frases de una
+sola palabra ("Laura") o keys que son frases ("edgar's sister") que casi nunca
+coincidirán en la inyección por keyword. El prompt exige frases completas con
+sujeto y keys entre comillas, y el usuario puede corregir con "Editar". Sobre
+una conversación de 18 mensajes con hechos, antes de añadir la reparación de keys
+sin comillas el parseo funcionó 7 de 8 veces (el fallo fue justo ese error); con
+el prompt y la reparación finales, 8 de 8. Son muestras chicas: la tasa real con
+el modelo del usuario se conocerá usando la app.

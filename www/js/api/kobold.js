@@ -52,14 +52,35 @@ export function normUrl(raw) {
   }
 }
 
-async function fetchWithTimeout(url, opts, ms) {
+// `externalSignal` (opcional): cancelación pedida por quien llama, además del
+// timeout propio.
+async function fetchWithTimeout(url, opts, ms, externalSignal) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), ms);
+  const relay = () => ctrl.abort();
+  if (externalSignal) {
+    if (externalSignal.aborted) ctrl.abort();
+    else externalSignal.addEventListener('abort', relay, { once: true });
+  }
   try {
     return await fetch(url, { ...opts, signal: ctrl.signal });
   } finally {
     clearTimeout(timer);
+    if (externalSignal) externalSignal.removeEventListener('abort', relay);
   }
+}
+
+// Le pide al servidor que corte una generación en curso. Medido contra el
+// KoboldCpp real (docs/NOTES.md, Paso 0 de MEM-001 v2): cerrar la conexión
+// del cliente NO detiene la generación del servidor, pero POST /api/extra/abort
+// con el `genkey` de la petición sí. Mejor esfuerzo: nunca lanza.
+function notifyServerAbort(base, genkey) {
+  if (!genkey) return;
+  fetch(base + '/api/extra/abort', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ genkey })
+  }).catch(() => {});
 }
 
 /**
@@ -121,12 +142,32 @@ const COMPLETE_ONCE_TIMEOUT_MS = 120000;
  * con una temperatura baja propia, independiente de `settings.temp`.
  * @param {string} prompt
  * @param {import('../state.js').Settings} settings
- * @param {{ temp?: number, maxLen?: number }} [opts]
+ * @param {{ temp?: number, maxLen?: number, signal?: AbortSignal, genkey?: string }} [opts]
+ *   `signal` cancela la llamada (lanza un error con `code: 'ABORTED'` y, si
+ *   hay `genkey`, le pide al servidor que corte la generación); `genkey` se
+ *   envía al servidor para poder cancelarla con /api/extra/abort.
  * @returns {Promise<string>}
  */
 export async function completeOnce(prompt, settings, opts = {}) {
   const base = normUrl(settings && settings.url);
   if (!base) throw makeError(INVALID_URL_MSG, 'INVALID_URL');
+
+  const signal = opts.signal;
+  const aborted = () => !!(signal && signal.aborted);
+  if (aborted()) throw makeError('Cancelado.', 'ABORTED');
+
+  const body = {
+    prompt,
+    max_context_length: settings.ctx,
+    max_length: opts.maxLen || settings.maxLen,
+    temperature: typeof opts.temp === 'number' ? opts.temp : settings.temp,
+    top_p: TOP_P,
+    top_k: TOP_K,
+    min_p: MIN_P,
+    rep_pen: REP_PEN,
+    rep_pen_range: REP_PEN_RANGE
+  };
+  if (opts.genkey) body.genkey = opts.genkey;
 
   let res;
   try {
@@ -135,21 +176,15 @@ export async function completeOnce(prompt, settings, opts = {}) {
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt,
-          max_context_length: settings.ctx,
-          max_length: opts.maxLen || settings.maxLen,
-          temperature: typeof opts.temp === 'number' ? opts.temp : settings.temp,
-          top_p: TOP_P,
-          top_k: TOP_K,
-          min_p: MIN_P,
-          rep_pen: REP_PEN,
-          rep_pen_range: REP_PEN_RANGE
-        })
+        body: JSON.stringify(body)
       },
-      COMPLETE_ONCE_TIMEOUT_MS
+      COMPLETE_ONCE_TIMEOUT_MS,
+      signal
     );
   } catch {
+    // Cancelación del llamador o timeout: el servidor seguiría generando.
+    notifyServerAbort(base, opts.genkey);
+    if (aborted()) throw makeError('Cancelado.', 'ABORTED');
     throw makeError(STREAM_NETWORK_MSG, 'NETWORK');
   }
   if (!res.ok) {
@@ -159,6 +194,7 @@ export async function completeOnce(prompt, settings, opts = {}) {
   try {
     data = await res.json();
   } catch {
+    if (aborted()) throw makeError('Cancelado.', 'ABORTED');
     throw makeError(SERVER_MSG, 'SERVER');
   }
   const text = data && data.results && data.results[0] && data.results[0].text;

@@ -5,12 +5,12 @@ import { getChat, getChatMessages, saveChatMessages, getCharacter, saveCharacter
 import { generateReply, completeOnce } from '../api/kobold.js';
 import { initialMessages, scenarioGreeting, estimateContextUsage } from '../api/prompt.js';
 import {
-  shouldUpdateLorebook,
-  buildExtractionPrompt,
-  parseExtractionResponse,
-  sanitizeLoreEntries,
+  createLoreUpdater,
+  editLoreEntry,
+  removeLoreEntry,
+  parseKeysInput,
   LOREBOOK_UPDATE_EVERY_MESSAGES,
-  LOREBOOK_EXTRACT_TEMP,
+  LOREBOOK_MAX_ENTRY_CHARS,
 } from '../api/lorebook.js';
 import { openSettings } from './settings.js';
 import { openAppearance } from './appearance.js';
@@ -511,16 +511,29 @@ async function onSendClick() {
   autosizeInput();
   syncSendButton();
 
-  messages.push({ role: 'user', text, ts: Date.now() });
-  renderMessages();
-  await persistChat();
-  await generate();
+  // Prioridad absoluta al chat: si hay una extracción de memoria en curso se
+  // cancela ya, y `sendInFlight` impide que arranque otra entre el guardado
+  // del mensaje y el inicio de la respuesta (ver "lorebook automático").
+  loreUpdater.abort();
+  sendInFlight = true;
+  try {
+    messages.push({ role: 'user', text, ts: Date.now() });
+    renderMessages();
+    await persistChat();
+    await generate();
+  } finally {
+    sendInFlight = false;
+    // Si el umbral de memoria se cruzó durante el envío o la respuesta, se
+    // difirió hasta aquí: ahora el chat está libre.
+    maybeUpdateLorebook();
+  }
 }
 
 /* ---------- generación ---------- */
 
 async function generate() {
   if (busy || !character) return;
+  loreUpdater.abort(); // también al regenerar: el chat tiene prioridad sobre la memoria
   busy = true;
   syncSendButton();
 
@@ -598,98 +611,321 @@ async function persistChat() {
   maybeUpdateLorebook();
 }
 
-/* ---------- lorebook automático (docs/NOTES.md, "Lorebook por personaje") ---------- */
+/* ---------- lorebook automático (docs/NOTES.md, "Lorebook por personaje" y "MEM-001 v2") ---------- */
 
-// Evita disparar dos actualizaciones de lorebook superpuestas (p. ej. dos
-// mensajes seguidos que cruzan el umbral antes de que termine la primera).
-let lorebookUpdateInFlight = false;
-
-// Cada LOREBOOK_UPDATE_EVERY_MESSAGES mensajes nuevos de ESTE chat, le pide
-// al propio servidor del usuario (mismo KoboldCpp de siempre, una llamada
-// de una sola vez sin streaming) que actualice el lorebook del PERSONAJE a
-// partir de los mensajes nuevos. El lorebook es del personaje, no del chat:
-// se comparte entre todos sus chats (así el personaje "recuerda" lo mismo
-// sin importar en cuál chat se estableció), pero el progreso de disparo
-// (`chat.lorebookMessageCount`) es por chat, porque cada chat recibe
-// mensajes nuevos por su cuenta. Mejor esfuerzo total, como
-// `maybeAutoBackup()`: nunca bloquea el chat, nunca lanza, nunca le muestra
-// nada al usuario si falla.
+// La lógica (qué se pide, cómo se parsea, cómo se aplica de forma aditiva y
+// cuándo NO se debe extraer) vive en api/lorebook.js (`createLoreUpdater`),
+// pura y probada sin DOM. Aquí solo se conecta con el estado del chat.
 //
-// Decisión de diseño (los modelos locales chicos generan JSON poco
-// confiable, ver api/lorebook.js): si el servidor responde pero el texto no
-// se puede parsear como lorebook, igual se avanza `lorebookMessageCount` al
-// tamaño actual del chat. La alternativa (dejarlo sin avanzar) reintentaría
-// en cada mensaje siguiente reenviando una ventana de mensajes cada vez más
-// grande contra un modelo que ya mostró que no sabe seguir el formato
-// pedido — así, en cambio, se pierde esa ventana puntual de memoria pero no
-// se entra en un reintento sin fin. Si en cambio falla la llamada en sí
-// (red, servidor caído), no se avanza el contador: ahí sí vale la pena
-// reintentar pronto, apenas el servidor vuelva a responder.
-async function maybeUpdateLorebook() {
-  if (lorebookUpdateInFlight) return;
-  if (!character || !chat || !settings) return;
-  if (!shouldUpdateLorebook(chat, messages.length)) return;
+// Reglas de prioridad (latencia primero): la extracción NO arranca mientras
+// haya una respuesta del chat en curso ni mientras se está enviando un
+// mensaje (`busy`/`sendInFlight`); si el umbral se cruza en esos momentos se
+// difiere y se reintenta apenas termina la respuesta (finally de
+// `onSendClick()`/`generate()`). Si el usuario envía un mensaje con una
+// extracción en curso, se cancela (`loreUpdater.abort()`, que también le pide
+// al servidor cortar la generación) sin guardar nada ni avanzar el marcador.
+// Mejor esfuerzo: los fallos de la extracción automática nunca muestran
+// errores en el flujo normal del chat.
+let sendInFlight = false;
 
-  const targetChatId = chat.id;
-  const targetCharacterId = character.id;
-  const targetCount = messages.length;
-  const baseLorebook = character.lorebook || [];
-  const newMessages = messages.slice(chat.lorebookMessageCount || 0);
+const loreUpdater = createLoreUpdater({
+  getContext: () => (character && chat && settings ? { character, chat, messages, settings } : null),
+  isChatBusy: () => busy || sendInFlight,
+  complete: (prompt, opts) => completeOnce(prompt, settings, opts),
+  loadLorebook: async (characterId) => {
+    const fresh = await getCharacter(characterId);
+    return (fresh && fresh.lorebook) || [];
+  },
+  saveLorebook: async (characterId, entries, previous) => {
+    const updated = await saveCharacterLorebook(characterId, entries, previous);
+    if (character && character.id === characterId) character = updated;
+  },
+  markProgress: async (chatId, count) => {
+    const updated = await markChatLorebookProgress(chatId, count);
+    if (chat && chat.id === chatId) chat = updated;
+  },
+});
 
-  lorebookUpdateInFlight = true;
+function maybeUpdateLorebook() {
+  loreUpdater.maybeRun().catch(() => {});
+}
+
+/* ---------- hoja "Ver lorebook": ver, editar, borrar, deshacer, actualizar ---------- */
+
+function loreEl(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function loreClock(at) {
   try {
-    const prompt = buildExtractionPrompt(character, settings, newMessages, baseLorebook);
-    const raw = await completeOnce(prompt, settings, { temp: LOREBOOK_EXTRACT_TEMP });
-    const parsed = parseExtractionResponse(raw);
-    const lorebook = parsed ? sanitizeLoreEntries(parsed, baseLorebook) : baseLorebook;
-    const updatedCharacter = await saveCharacterLorebook(targetCharacterId, lorebook);
-    const updatedChat = await markChatLorebookProgress(targetChatId, targetCount);
-    if (character && character.id === targetCharacterId) character = updatedCharacter;
-    if (chat && chat.id === targetChatId) chat = updatedChat;
-  } catch (err) {
-    // Mejor esfuerzo: se reintenta solo cuando el umbral se vuelva a cumplir.
-  } finally {
-    lorebookUpdateInFlight = false;
+    return new Date(at).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return '';
   }
 }
 
-function openLorebookSheet() {
-  const wrap = document.createElement('div');
-  const title = document.createElement('h3');
-  title.className = 'sheet__title';
-  title.textContent = character ? `Lorebook de ${character.name}` : 'Lorebook';
-  wrap.appendChild(title);
-
-  const entries = (character && character.lorebook) || [];
-  if (!entries.length) {
-    const hint = document.createElement('div');
-    hint.className = 'field__hint';
-    hint.textContent = `Todavía no hay entradas. Se generan solas a medida que avanza la conversación ` +
-      `en cualquiera de tus chats con este personaje (cada ~${LOREBOOK_UPDATE_EVERY_MESSAGES} mensajes).`;
-    wrap.appendChild(hint);
-  } else {
-    entries
-      .slice()
-      .sort((a, b) => (b.updated || 0) - (a.updated || 0))
-      .forEach((entry) => {
-        const field = document.createElement('div');
-        field.className = 'field';
-
-        const label = document.createElement('div');
-        label.className = 'field__label';
-        label.textContent = entry.content;
-        field.appendChild(label);
-
-        const hint = document.createElement('div');
-        hint.className = 'field__hint';
-        hint.textContent = (entry.keys || []).join(', ');
-        field.appendChild(hint);
-
-        wrap.appendChild(field);
-      });
+function loreStatusText() {
+  const s = loreUpdater.getStatus();
+  const when = s.at ? ` (${loreClock(s.at)})` : '';
+  switch (s.kind) {
+    case 'ok': {
+      const parts = [];
+      if (s.added) parts.push(`${s.added} nueva${s.added === 1 ? '' : 's'}`);
+      if (s.updated) parts.push(`${s.updated} actualizada${s.updated === 1 ? '' : 's'}`);
+      return `Última actualización: correcta, ${parts.join(' y ')}${when}.`;
+    }
+    case 'nochange':
+      return `Última actualización: correcta, sin novedades que recordar${when}.`;
+    case 'unparsed':
+      return `Última actualización: el modelo respondió algo que no se pudo entender; no se cambió nada${when}.`;
+    case 'unavailable':
+      return `Última actualización: el servidor no estaba disponible; no se cambió nada${when}.`;
+    case 'aborted':
+      return `Última actualización: se interrumpió porque enviaste un mensaje; no se cambió nada${when}.`;
+    case 'error':
+      return `Última actualización: no se pudo guardar; no se cambió nada${when}.`;
+    default:
+      return 'Última actualización: aún no se ha intentado desde que abriste la app.';
   }
+}
+
+function loreResultMessage(result) {
+  switch (result.kind) {
+    case 'ok': {
+      const parts = [];
+      if (result.added) parts.push(`${result.added} nueva${result.added === 1 ? '' : 's'}`);
+      if (result.updated) parts.push(`${result.updated} actualizada${result.updated === 1 ? '' : 's'}`);
+      return `Listo: memoria actualizada (${parts.join(' y ')}).`;
+    }
+    case 'nochange':
+      return 'Listo: no había nada nuevo que recordar.';
+    case 'unparsed':
+      return 'El modelo respondió algo que no se pudo entender. No se cambió nada; puedes intentar de nuevo.';
+    case 'unavailable':
+      return 'No se pudo conectar con el servidor (¿está encendido?). No se cambió nada.';
+    case 'aborted':
+      return 'Se interrumpió la actualización. No se cambió nada.';
+    case 'toolittle':
+      return 'Aún hay poca conversación para recordar.';
+    case 'busy':
+      return 'Ya hay una respuesta o una actualización en curso. Prueba de nuevo en unos segundos.';
+    default:
+      return 'No se pudo actualizar la memoria. No se cambió nada.';
+  }
+}
+
+async function freshLorebook() {
+  const fresh = await getCharacter(character.id);
+  return (fresh && fresh.lorebook) || [];
+}
+
+// Cada pantalla de la hoja reemplaza a la anterior con `app.openSheet` (sin
+// cerrar la hoja, así no se toca el historial: ver shell.js / main.js).
+function openLorebookSheet(note = '') {
+  if (!character) return;
+  const wrap = loreEl('div');
+  wrap.appendChild(loreEl('h3', 'sheet__title', `Lorebook de ${character.name}`));
+
+  const status = loreEl('div', 'field');
+  status.appendChild(loreEl('div', 'field__hint', loreStatusText()));
+  if (note) status.appendChild(loreEl('div', 'field__label', note));
+  wrap.appendChild(status);
+
+  const inFlight = loreUpdater.isRunning() || busy || sendInFlight;
+  const progress = loreEl(
+    'div',
+    'field__hint',
+    inFlight ? 'Hay una respuesta o una actualización de memoria en curso; espera a que termine.' : ''
+  );
+  progress.style.marginBottom = 'var(--space-3, 12px)';
+
+  const refreshBtn = loreEl('button', 'btn', 'Actualizar memoria ahora');
+  refreshBtn.type = 'button';
+  refreshBtn.disabled = inFlight;
+  const undoBtn = loreEl('button', 'btn btn--ghost', 'Deshacer última actualización');
+  undoBtn.type = 'button';
+  undoBtn.style.marginTop = 'var(--space-2, 8px)';
+  undoBtn.disabled = inFlight;
+
+  refreshBtn.addEventListener('click', async () => {
+    refreshBtn.disabled = true;
+    undoBtn.disabled = true;
+    progress.textContent =
+      'Actualizando memoria… puede tardar unos segundos (si tu servidor está apagado, hasta 2 minutos).';
+    const result = await loreUpdater.runNow();
+    const message = loreResultMessage(result);
+    if (wrap.isConnected) openLorebookSheet(message);
+    else app.toast(message);
+  });
+  undoBtn.addEventListener('click', () => {
+    if (!character.lorebookPreviousAt) {
+      openLorebookSheet('No hay ninguna actualización reciente que deshacer.');
+    } else {
+      openLoreUndoConfirm();
+    }
+  });
+
+  wrap.append(progress, refreshBtn, undoBtn);
+
+  const entries = (character.lorebook || []).slice().sort((a, b) => (b.updated || 0) - (a.updated || 0));
+  const list = loreEl('div');
+  list.style.marginTop = 'var(--space-4, 16px)';
+  if (!entries.length) {
+    list.appendChild(
+      loreEl(
+        'div',
+        'field__hint',
+        'Todavía no hay recuerdos. Se generan solos a medida que avanza la conversación en cualquiera de tus ' +
+          `chats con este personaje (cada ~${LOREBOOK_UPDATE_EVERY_MESSAGES} mensajes), o con el botón de arriba.`
+      )
+    );
+  }
+  entries.forEach((entry) => {
+    const field = loreEl('div', 'field');
+    field.appendChild(loreEl('div', 'field__label', entry.content));
+    const origin = entry.source === 'manual' ? 'escrita o editada por ti' : 'automática';
+    field.appendChild(loreEl('div', 'field__hint', `${(entry.keys || []).join(', ')} · ${origin}`));
+
+    const actions = loreEl('div');
+    actions.style.display = 'flex';
+    actions.style.gap = 'var(--space-2, 8px)';
+    actions.style.marginTop = 'var(--space-2, 8px)';
+    const editBtn = loreEl('button', 'btn btn--sm btn--ghost', 'Editar');
+    editBtn.type = 'button';
+    editBtn.addEventListener('click', () => openLoreEdit(entry.id));
+    const delBtn = loreEl('button', 'btn btn--sm btn--ghost', 'Borrar');
+    delBtn.type = 'button';
+    delBtn.addEventListener('click', () => openLoreDeleteConfirm(entry.id));
+    actions.append(editBtn, delBtn);
+    field.appendChild(actions);
+    list.appendChild(field);
+  });
+  wrap.appendChild(list);
 
   app.openSheet(wrap);
+}
+
+function openLoreEdit(entryId) {
+  const entry = ((character && character.lorebook) || []).find((e) => e.id === entryId);
+  if (!entry) {
+    openLorebookSheet('Ese recuerdo ya no existe.');
+    return;
+  }
+  const wrap = loreEl('div');
+  wrap.appendChild(loreEl('h3', 'sheet__title', 'Editar recuerdo'));
+
+  const content = loreEl('textarea', 'inp');
+  content.value = entry.content;
+  content.maxLength = LOREBOOK_MAX_ENTRY_CHARS;
+  content.rows = 3;
+  content.setAttribute('aria-label', 'Recuerdo');
+  const keys = loreEl('input', 'inp');
+  keys.type = 'text';
+  keys.value = (entry.keys || []).join(', ');
+  keys.placeholder = 'Palabras clave, separadas por comas';
+  keys.setAttribute('aria-label', 'Palabras clave');
+  keys.style.marginTop = 'var(--space-2, 8px)';
+  const hint = loreEl(
+    'div',
+    'field__hint',
+    'El recuerdo entra en la conversación cuando aparece alguna de estas palabras. ' +
+      'Al guardar, queda como escrita por ti y la memoria automática ya no la toca.'
+  );
+  hint.style.margin = 'var(--space-2, 8px) 0';
+  const error = loreEl('div', 'field__label', '');
+
+  const saveBtn = loreEl('button', 'btn', 'Guardar');
+  saveBtn.type = 'button';
+  saveBtn.addEventListener('click', async () => {
+    try {
+      const next = editLoreEntry(await freshLorebook(), entryId, {
+        content: content.value,
+        keys: parseKeysInput(keys.value),
+      });
+      if (!next) {
+        error.textContent = 'Escribe el recuerdo y al menos una palabra clave.';
+        return;
+      }
+      character = await saveCharacterLorebook(character.id, next);
+      openLorebookSheet('Recuerdo guardado.');
+    } catch {
+      error.textContent = 'No se pudo guardar el cambio.';
+    }
+  });
+  const cancelBtn = loreEl('button', 'btn btn--ghost', 'Cancelar');
+  cancelBtn.type = 'button';
+  cancelBtn.style.marginTop = 'var(--space-2, 8px)';
+  cancelBtn.addEventListener('click', () => openLorebookSheet());
+
+  wrap.append(content, keys, hint, error, saveBtn, cancelBtn);
+  app.openSheet(wrap);
+}
+
+// Confirmaciones dentro de la propia hoja (en vez de `app.confirmDialog`, que
+// CIERRA la hoja al responder y obligaría a reabrirla: esa secuencia
+// cerrar+abrir es justo la carrera con el historial que ya dio un bug real,
+// ver docs/NOTES.md, "Bugs reales encontrados usando la app").
+function openLoreConfirm(message, confirmText, onConfirm, danger) {
+  const wrap = loreEl('div');
+  wrap.appendChild(loreEl('p', 'sheet__title', message));
+  const actions = loreEl('div');
+  actions.style.display = 'flex';
+  actions.style.gap = 'var(--space-3, 12px)';
+  actions.style.marginTop = 'var(--space-4, 16px)';
+  const cancelBtn = loreEl('button', 'btn btn--ghost', 'Cancelar');
+  cancelBtn.type = 'button';
+  cancelBtn.style.flex = '1';
+  cancelBtn.addEventListener('click', () => openLorebookSheet());
+  const okBtn = loreEl('button', danger ? 'btn btn--danger' : 'btn', confirmText);
+  okBtn.type = 'button';
+  okBtn.style.flex = '1';
+  okBtn.addEventListener('click', async () => {
+    okBtn.disabled = true;
+    try {
+      openLorebookSheet(await onConfirm());
+    } catch {
+      openLorebookSheet('No se pudo guardar el cambio.');
+    }
+  });
+  actions.append(cancelBtn, okBtn);
+  wrap.appendChild(actions);
+  app.openSheet(wrap);
+}
+
+function openLoreDeleteConfirm(entryId) {
+  const entry = ((character && character.lorebook) || []).find((e) => e.id === entryId);
+  if (!entry) {
+    openLorebookSheet('Ese recuerdo ya no existe.');
+    return;
+  }
+  const preview = entry.content.length > 120 ? entry.content.slice(0, 120) + '…' : entry.content;
+  openLoreConfirm(
+    `¿Borrar este recuerdo? «${preview}»`,
+    'Borrar',
+    async () => {
+      character = await saveCharacterLorebook(character.id, removeLoreEntry(await freshLorebook(), entryId));
+      return 'Recuerdo borrado.';
+    },
+    true
+  );
+}
+
+function openLoreUndoConfirm() {
+  openLoreConfirm(
+    '¿Volver al estado que tenía la memoria antes de la última actualización? ' +
+      'Se perderán los cambios hechos desde entonces (también tus ediciones).',
+    'Deshacer',
+    async () => {
+      const fresh = await getCharacter(character.id);
+      if (!fresh || !fresh.lorebookPreviousAt) return 'No hay ninguna actualización reciente que deshacer.';
+      character = await saveCharacterLorebook(character.id, fresh.lorebookPrevious, null);
+      return 'Listo: se volvió al estado anterior de la memoria.';
+    },
+    false
+  );
 }
 
 /* ---------- barra superior ---------- */

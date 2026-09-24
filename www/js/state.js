@@ -36,6 +36,11 @@
  * @property {number} created
  * @property {LoreEntry[]} lorebook  // memoria de largo plazo autogenerada de ESTE personaje,
  *   compartida entre todos sus chats (ver docs/NOTES.md, "Lorebook por personaje")
+ * @property {LoreEntry[]} lorebookPrevious  // copia del lorebook justo ANTES de la última
+ *   actualización automática/manual de memoria (un solo nivel de "Deshacer"); [] por defecto
+ * @property {number} lorebookPreviousAt  // cuándo se guardó esa copia (ms); 0 = no hay nada que
+ *   deshacer. Existe porque `lorebookPrevious: []` no distingue "no hay copia" de "el lorebook
+ *   estaba vacío antes de la primera actualización".
  * @property {string} chatBackground           // data URL JPEG del fondo de SUS chats, '' si no hay
  * @property {number} chatBackgroundBrightness // 20 a 180 (%), 100 = sin cambios
  * @property {boolean} chatBackgroundFade      // fundido a negro en la mitad inferior de la imagen
@@ -193,7 +198,11 @@ function sanitizeLoreEntry(raw) {
 function sanitizeCharacterExtras(raw) {
   if (!raw || typeof raw !== 'object') return raw;
   const lorebook = Array.isArray(raw.lorebook) ? raw.lorebook.map(sanitizeLoreEntry).filter(Boolean) : [];
-  return { ...raw, lorebook, ...sanitizeCharacterBackground(raw) };
+  const lorebookPrevious = Array.isArray(raw.lorebookPrevious)
+    ? raw.lorebookPrevious.map(sanitizeLoreEntry).filter(Boolean)
+    : [];
+  const lorebookPreviousAt = Number.isFinite(raw.lorebookPreviousAt) ? raw.lorebookPreviousAt : 0;
+  return { ...raw, lorebook, lorebookPrevious, lorebookPreviousAt, ...sanitizeCharacterBackground(raw) };
 }
 
 function sanitizeChat(raw) {
@@ -269,10 +278,25 @@ export function createState(backend) {
   // "Lorebook por personaje", y www/js/api/lorebook.js). Es compartido por
   // todos los chats de ese personaje — a diferencia del progreso de disparo
   // (`chat.lorebookMessageCount`), que es por chat.
-  async function saveCharacterLorebook(characterId, lorebook) {
+  //
+  // Relee el personaje al guardar y modifica SOLO los campos de lorebook
+  // (`lorebook`, `lorebookPrevious`, `lorebookPreviousAt`): así no pisa, por
+  // ejemplo, un fondo de chat o un avatar cambiados mientras tanto.
+  // `previous` (opcional) controla el "Deshacer" de un nivel: un arreglo
+  // guarda esa copia (con la hora actual); `null` la borra; `undefined` la
+  // deja como estaba.
+  async function saveCharacterLorebook(characterId, lorebook, previous) {
     const character = await getCharacter(characterId);
     if (!character) throw new Error('El personaje no existe.');
-    const updated = sanitizeCharacterExtras({ ...character, lorebook });
+    const patch = { lorebook };
+    if (Array.isArray(previous)) {
+      patch.lorebookPrevious = previous;
+      patch.lorebookPreviousAt = Date.now();
+    } else if (previous === null) {
+      patch.lorebookPrevious = [];
+      patch.lorebookPreviousAt = 0;
+    }
+    const updated = sanitizeCharacterExtras({ ...character, ...patch });
     await backend.put('characters', characterId, updated);
     return updated;
   }

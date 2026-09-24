@@ -107,6 +107,8 @@ Los imports son ESM relativos y siempre con extensión `.js`. Los tests importan
  * @property {'none'|'mini'|'large'} avatarMode   // por defecto 'mini'
  * @property {number} created       // ms desde epoch
  * @property {LoreEntry[]} lorebook // memoria de largo plazo, compartida entre todos los chats de este personaje (por personaje, no por chat: docs/NOTES.md)
+ * @property {LoreEntry[]} lorebookPrevious   // MEM-001 v2: copia del lorebook justo antes de la última actualización de memoria (un solo nivel de "Deshacer"); [] por defecto
+ * @property {number} lorebookPreviousAt      // MEM-001 v2: cuándo se guardó esa copia (ms); 0 = no hay nada que deshacer (distingue "sin copia" de "el lorebook estaba vacío")
  * @property {string} chatBackground            // data URL JPEG del fondo de SUS chats, '' si no hay
  * @property {number} chatBackgroundBrightness  // 20 a 180 (%), 100 = sin cambios
  * @property {boolean} chatBackgroundFade       // fundido a negro en la mitad inferior
@@ -172,7 +174,9 @@ saveSettings(patch: Partial<Settings>): Promise<Settings>   // merge parcial
 listCharacters(): Promise<Character[]>              // ordenados por `updated` desc; carga TODOS los objetos completos (avatar y fondo incluidos)
 getCharacter(id: string): Promise<Character|null>
 saveCharacter(character: Character): Promise<Character>   // put del objeto ENTERO tal cual (sin validar más que el id); NO modifica `updated`
-saveCharacterLorebook(characterId: string, lorebook: LoreEntry[]): Promise<Character>   // relee el personaje al guardar (no pisa avatar/fondo)
+saveCharacterLorebook(characterId: string, lorebook: LoreEntry[], previous?: LoreEntry[]|null): Promise<Character>
+   // Relee el personaje al guardar y modifica SOLO `lorebook`, `lorebookPrevious` y `lorebookPreviousAt` (no pisa avatar/fondo).
+   // `previous`: arreglo = guarda esa copia para "Deshacer" (con la hora actual); null = la borra; undefined = la deja como estaba.
 saveCharacterBackground(characterId: string, patch: Partial<Pick<Character,'chatBackground'|'chatBackgroundBrightness'|'chatBackgroundFade'|'chatBackgroundFit'>>): Promise<Character>  // merge parcial, relee al guardar
 deleteCharacter(id: string): Promise<void>          // transacción atómica: borra el personaje y TODOS sus chats (chatMeta + chatMsgs) y el chat legado
 listChats(characterId: string): Promise<Chat[]>     // por `updated` desc
@@ -244,16 +248,32 @@ generateReply(opts: {
 }): Promise<{ text: string, truncated: boolean, aborted: boolean }>
    // Si `signal` aborta: pide al servidor detener la generación y RESUELVE con lo recibido (aborted:true). Nunca lanza por abort.
    // Otros fallos: lanza Error con `message` en español apto para mostrar tal cual y `code` ('INVALID_URL'|'NETWORK'|'MIXED_CONTENT'|'HTTP'|'SERVER').
-completeOnce(prompt: string, settings: Settings, opts?: { temp?: number, maxLen?: number }): Promise<string>
+completeOnce(prompt: string, settings: Settings, opts?: { temp?: number, maxLen?: number, signal?: AbortSignal, genkey?: string }): Promise<string>
    // Adenda lorebook (docs/NOTES.md "Lorebook por personaje"): completado de una sola vez sin
    // streaming contra /api/v1/generate, para la extracción de lorebook. Mismos códigos de error
-   // que generateReply().
+   // que generateReply(), más `'ABORTED'` (MEM-001 v2) cuando `signal` cancela la llamada; con `genkey`
+   // además se le pide al servidor cortar la generación (POST /api/extra/abort).
 
 // lorebook.js (adenda, ver docs/NOTES.md "Lorebook por personaje"): puro, sin DOM ni fetch
-shouldUpdateLorebook(chat: Chat, messageCount: number): boolean   // dispara por chat; el lorebook resultante se guarda en el personaje
-buildExtractionPrompt(character: Character, settings: Settings, newMessages: Message[], existingEntries?: LoreEntry[]): string
-parseExtractionResponse(rawText: string): object[]|null
-sanitizeLoreEntries(rawEntries: object[], existingEntries?: LoreEntry[], now?: number): LoreEntry[]
+// MEM-001 v2: extracción ADITIVA, una línea, hasta 3 entradas, compatible con el servidor real (docs/NOTES.md, "MEM-001 v2").
+shouldUpdateLorebook(chat: Chat, messageCount: number): boolean   // dispara por chat (cada LOREBOOK_UPDATE_EVERY_MESSAGES = 20); el lorebook resultante se guarda en el personaje
+buildExtractionPrompt(character: Character, settings: Settings, windowMessages: Message[], existingEntries?: LoreEntry[]): string
+   // Ventana = últimos ≤20 mensajes, recortados desde el más antiguo para caber en settings.ctx; solo lleva las KEYS existentes;
+   // termina en LOREBOOK_EXTRACT_PREFILL ('['): quien llama debe anteponerlo a la respuesta antes de parsear.
+fitExtractionWindow(lines: string[], budgetChars: number): string[]
+parseExtractionResponse(rawText: string): { keys: any, content: any }[]|null
+   // Acepta arreglo en una línea, {"entries":[…]}, objeto suelto, campos k/c o keys/content, keys sin comillas, y RESCATA los
+   // objetos completos de un arreglo truncado. [] = "sin novedades" (devuelve []); no reconocible = null. Nunca lanza.
+applyExtraction(previousEntries: LoreEntry[], incomingEntries: object[], opts?: { now?: number, ignoreKeys?: string[] }): { entries: LoreEntry[], added: number, updated: number, changed: boolean }
+   // Pura y aditiva: agrega; actualiza una `auto` que comparte key Y habla de lo mismo (≥50 % de palabras); NUNCA elimina ni
+   // modifica `manual`; solo descarta `auto` antiguas al pasar LOREBOOK_MAX_ENTRIES.
+parseKeysInput(text: string): string[]
+editLoreEntry(entries: LoreEntry[], id: string, patch: { content: string, keys: string[] }, now?: number): LoreEntry[]|null   // la entrada pasa a source:'manual'
+removeLoreEntry(entries: LoreEntry[], id: string): LoreEntry[]
+createLoreUpdater(deps): { maybeRun(), runNow(), abort(), isRunning(), getStatus() }
+   // Actualizador con dependencias inyectables (probado sin DOM ni red). maybeRun() = automático (no arranca con el chat ocupado);
+   // runNow() = "Actualizar memoria ahora"; abort() = el usuario envió un mensaje. Resultado: { kind: ok|nochange|unparsed|unavailable|
+   // aborted|error|skipped|busy|toolittle, added?, updated? }.
 selectLoreEntries(entries: LoreEntry[], recentMessages: Message[], opts?: { scanCount?: number, charBudget?: number }): LoreEntry[]
 formatLoreBlock(entries: LoreEntry[]): string
 ```
