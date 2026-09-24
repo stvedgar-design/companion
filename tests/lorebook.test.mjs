@@ -22,7 +22,17 @@ import {
   removeLoreEntry,
   createLoreUpdater,
   selectLoreEntries,
-  formatLoreBlock
+  formatLoreBlock,
+  LOREBOOK_KEYS_MAX,
+  LOREBOOK_MERGE_OVERLAP,
+  LOREBOOK_MERGE_MIN_SHARED,
+  LORE_GENERIC_KEYWORDS,
+  normalizeLoreKeys,
+  isUnnamedPronounFact,
+  areNearDuplicates,
+  mergeNearDuplicates,
+  cleanupLorebook,
+  cleanStoredLorebook
 } from '../www/js/api/lorebook.js';
 
 function makeCharacter(overrides = {}) {
@@ -287,12 +297,20 @@ test('applyExtraction: si todo son manual y no hay lugar, las nuevas no caben pe
 });
 
 test('applyExtraction acota: máx. 3 entradas nuevas por llamada, contenido y keys saneados', () => {
-  const raw = Array.from({ length: 6 }, (_, i) => ({ keys: [`k${i}`], content: `Hecho distinto número ${i}.` }));
+  // (MEM-003: hechos realistas y distintos entre sí; con relleno tipo "Hecho número 1" se fusionarían.)
+  const raw = [
+    { keys: ['perro'], content: 'Edgar tiene un perro llamado Bruno.' },
+    { keys: ['hospital'], content: 'La hermana de Edgar trabaja en un hospital.' },
+    { keys: ['guitarra'], content: 'Edgar toca la guitarra los domingos.' },
+    { keys: ['viaje'], content: 'Planean un viaje a la montaña en verano.' },
+    { keys: ['pastel'], content: 'Mia horneó un pastel de zanahoria.' },
+    { keys: ['bicicleta'], content: 'Edgar compró una bicicleta roja.' }
+  ];
   assert.equal(applyExtraction([], raw, { now: NOW }).entries.length, LOREBOOK_EXTRACT_MAX_NEW_ENTRIES);
 
-  const long = applyExtraction([], [{ keys: 'una, sola', content: 'y'.repeat(LOREBOOK_MAX_ENTRY_CHARS + 100) }]);
+  const long = applyExtraction([], [{ keys: 'cocina', content: 'y '.repeat(LOREBOOK_MAX_ENTRY_CHARS) }]);
   assert.equal(long.entries[0].content.length, LOREBOOK_MAX_ENTRY_CHARS);
-  assert.deepEqual(long.entries[0].keys, ['una, sola']); // un string es UNA key
+  assert.deepEqual(long.entries[0].keys, ['cocina']); // un string es UNA key (aquí, ya normalizada)
 });
 
 test('applyExtraction descarta entradas inválidas y NUNCA reduce el lorebook (basura, [] o null)', () => {
@@ -444,7 +462,7 @@ test('createLoreUpdater: si el usuario envía (abort) la extracción se cancela 
   assert.equal(state.lorebook.length, 1);
   assert.equal(updater.getStatus().kind, 'aborted');
   // No queda nada colgado: otra extracción posterior funciona.
-  state.reply = '{"k":["x"],"c":"Un hecho."}]';
+  state.reply = '{"k":["cocina"],"c":"Edgar cocina pasta los domingos."}]';
   assert.equal((await updater.maybeRun()).kind, 'ok');
 });
 
@@ -474,7 +492,7 @@ test('createLoreUpdater: respuesta vacía, "[]" o no entendida NO reduce el lore
 
 test('createLoreUpdater: un arreglo truncado por el servidor se rescata (las entradas completas se guardan)', async () => {
   const { updater, state } = makeUpdaterHarness();
-  state.reply = '{"k":["a"],"c":"Primero."},{"k":["b"],"c":"Segundo."},{"k":["c"],"c":"Terc';
+  state.reply = '{"k":["guitarra"],"c":"Edgar toca la guitarra."},{"k":["bicicleta"],"c":"Edgar compró una bicicleta roja."},{"k":["viaje"],"c":"Planean un via';
   const result = await updater.maybeRun();
   assert.deepEqual([result.kind, result.added], ['ok', 2]);
   assert.equal(state.lorebook.length, 3);
@@ -584,4 +602,240 @@ test('formatLoreBlock arma un bloque legible con guiones', () => {
 test('formatLoreBlock devuelve "" sin entradas', () => {
   assert.equal(formatLoreBlock([]), '');
   assert.equal(formatLoreBlock(null), '');
+});
+
+// ---------- MEM-003: higiene de keys ----------
+
+const NAMES = ['U', 'C'];
+
+test('normalizeLoreKeys: una frase pasa a palabras sueltas útiles, sin genéricas', () => {
+  assert.deepEqual(normalizeLoreKeys(['person who loves physical touch'], 'U loves physical touch', { names: NAMES }),
+    ['physical', 'touch']);
+  assert.deepEqual(normalizeLoreKeys(['factory scent'], "C smells like 'a clean, modern factory' to U", { names: NAMES }),
+    ['factory', 'scent']);
+});
+
+test('normalizeLoreKeys: una key genérica se reemplaza por palabras del contenido (2 como máximo)', () => {
+  const keys = normalizeLoreKeys(['personality'], 'U is a clumsy person with technology.', { names: NAMES });
+  assert.deepEqual(keys, ['clumsy', 'technology']);
+  for (const generic of ['fact', 'person', 'characteristics', 'emotions', 'likes', 'feelings']) {
+    const out = normalizeLoreKeys([generic], 'Edgar adopted a stray cat named Bruno.', { names: ['Edgar', 'Mia'] });
+    assert.ok(out.length >= 1 && out.length <= 2, generic);
+    assert.ok(!out.includes(generic), generic);
+    assert.ok(!out.includes('edgar'), generic); // nunca el nombre
+  }
+});
+
+test('normalizeLoreKeys: quita los nombres de los personajes, stopwords y palabras de menos de 3 letras', () => {
+  assert.deepEqual(normalizeLoreKeys(['Edgar', 'Mia', 'la', 'perro', "edgar's"], 'x', { names: ['Edgar', 'Mia'] }), ['perro']);
+  assert.deepEqual(normalizeLoreKeys(['the big dog', 'an ox'], 'x', { names: [] }), ['big', 'dog']);
+});
+
+test('normalizeLoreKeys: máximo LOREBOOK_KEYS_MAX, sin duplicados (ni por mayúsculas ni por acentos)', () => {
+  const out = normalizeLoreKeys(['Café', 'cafe', 'pastel de zanahoria', 'playa', 'montaña', 'viaje'], 'x', { names: [] });
+  assert.equal(out.length, LOREBOOK_KEYS_MAX);
+  assert.deepEqual(out, ['café', 'pastel', 'zanahoria', 'playa']);
+});
+
+test('normalizeLoreKeys: las palabras genéricas se reconocen también en plural y conjugadas', () => {
+  assert.deepEqual(normalizeLoreKeys(['loves', 'loved', 'enjoys', 'traits', 'things', 'kites'], 'x', { names: [] }), ['kites']);
+  assert.ok(LORE_GENERIC_KEYWORDS.includes('personality') && LORE_GENERIC_KEYWORDS.includes('fact'));
+});
+
+test('normalizeLoreKeys: claves con escritura no latina se dejan tal cual y no rompen nada', () => {
+  assert.deepEqual(normalizeLoreKeys(['猫', 'кошка'], 'x', { names: [] }), ['猫', 'кошка']);
+  assert.deepEqual(normalizeLoreKeys('猫が好き', '猫が好き', { names: [] }), ['猫が好き']);
+  assert.deepEqual(normalizeLoreKeys(null, '', {}), []);
+  assert.deepEqual(normalizeLoreKeys([], 'the of and', {}), []);
+});
+
+// ---------- MEM-003: hechos sin nombre ----------
+
+test('isUnnamedPronounFact: solo un pronombre de sujeto sin ningún nombre en la frase', () => {
+  assert.equal(isUnnamedPronounFact('He loves physical touch.', NAMES), true);
+  assert.equal(isUnnamedPronounFact('She works at a hospital', ['Edgar']), true);
+  assert.equal(isUnnamedPronounFact('Ella tiene un perro.', ['Edgar']), true);
+  assert.equal(isUnnamedPronounFact('Él vive en el norte.', ['Edgar']), true);
+  assert.equal(isUnnamedPronounFact('My neighbor Marta lent me her ladder.', NAMES), true); // 1.ª persona, sin nombre
+  assert.equal(isUnnamedPronounFact("I'm terrified of heights.", NAMES), true);
+  assert.equal(isUnnamedPronounFact('Mi madre vive en Valencia.', ['Edgar']), true);
+  assert.equal(isUnnamedPronounFact('My neighbor lent Edgar a ladder.', ['Edgar']), false); // hay un nombre
+  assert.equal(isUnnamedPronounFact('He told Edgar about the trip.', ['Edgar']), false); // hay un nombre
+  assert.equal(isUnnamedPronounFact('Edgar loves physical touch.', ['Edgar']), false);
+  assert.equal(isUnnamedPronounFact('El perro se llama Bruno.', ['Edgar']), false); // "El" sin acento es artículo
+});
+
+test('applyExtraction NO guarda un hecho cuyo sujeto es un pronombre, ni uno de menos de 3 palabras', () => {
+  const out = applyExtraction([], [
+    { keys: ['touch'], content: 'He loves physical touch.' },
+    { keys: ['laura'], content: 'Laura' },
+    { keys: ['touch'], content: 'Edgar loves physical touch.' }
+  ], { now: NOW, ignoreKeys: ['Edgar', 'Mia'] });
+  assert.equal(out.entries.length, 1);
+  assert.equal(out.entries[0].content, 'Edgar loves physical touch.');
+});
+
+test('applyExtraction: las keys nuevas se normalizan (palabras sueltas, sin genéricas ni nombres)', () => {
+  const out = applyExtraction([], [{ keys: ['personality', 'edgar'], content: 'Edgar is afraid of thunderstorms at night.' }],
+    { now: NOW, ignoreKeys: ['Edgar', 'Mia'] });
+  assert.equal(out.entries.length, 1);
+  assert.ok(out.entries[0].keys.length >= 1 && out.entries[0].keys.length <= 2);
+  assert.ok(!out.entries[0].keys.includes('personality') && !out.entries[0].keys.includes('edgar'));
+});
+
+// ---------- MEM-003: coincidencia por palabra completa en la inyección ----------
+
+function matchesAny(key, text) {
+  return selectLoreEntries([makeEntry({ keys: [key], content: 'x' })], [{ role: 'user', text, ts: 1 }]).length === 1;
+}
+
+test('selectLoreEntries compara por PALABRA completa: "art" no coincide con "start"; "hand" sí con "hands"', () => {
+  assert.equal(matchesAny('art', 'Let us start the walk'), false);
+  assert.equal(matchesAny('art', 'I love art and music'), true);
+  assert.equal(matchesAny('hand', 'She holds my hands'), true);
+  assert.equal(matchesAny('hands', 'give me your hand'), true);
+  assert.equal(matchesAny('box', 'two boxes arrived'), true);
+  assert.equal(matchesAny('cat', 'the category is closed'), false);
+  assert.equal(matchesAny('cat', 'a Cat sat here'), true);
+});
+
+test('selectLoreEntries no distingue acentos ni mayúsculas, y admite keys de varias palabras', () => {
+  assert.equal(matchesAny('cancion', 'Esa CANCIÓN me gusta'), true);
+  assert.equal(matchesAny('canción', 'esa cancion me gusta'), true);
+  assert.equal(matchesAny('ice cream', 'we ate ice-cream today'), true);
+  assert.equal(matchesAny('ice cream', 'the ice was cold, the cream too'), false);
+});
+
+test('selectLoreEntries: una key no latina se sigue buscando como subcadena y no rompe nada', () => {
+  assert.equal(matchesAny('猫', '我的猫很可爱'), true);
+  assert.equal(matchesAny('猫', 'hello'), false);
+  // Caracteres especiales de expresiones regulares: no se usan regex, así que no lanzan ni coinciden por error.
+  assert.equal(matchesAny('(a+b*[', 'nada que ver'), false);
+  assert.equal(matchesAny('.*', 'cualquier texto'), false);
+});
+
+// ---------- MEM-003: fusión de casi-duplicados ----------
+
+test('areNearDuplicates: el caso obligatorio de "physical touch" se fusiona; hechos distintos no', () => {
+  assert.ok(LOREBOOK_MERGE_OVERLAP > 0 && LOREBOOK_MERGE_MIN_SHARED >= 2);
+  assert.equal(areNearDuplicates('U loves physical touch and is clumsy with technology', 'U likes physical touch.', NAMES), true);
+  assert.equal(areNearDuplicates('Edgar tiene un perro llamado Bruno.', 'La hermana de Edgar trabaja en un hospital.', ['Edgar']), false);
+  // Una sola palabra en común no basta, aunque la frase corta sea casi toda esa palabra.
+  assert.equal(areNearDuplicates('Bruno barks loudly', 'Bruno sleeps all day', []), false);
+});
+
+test('mergeNearDuplicates: fusiona auto casi-duplicadas y NUNCA toca ni absorbe una manual', () => {
+  const list = [
+    makeEntry({ id: 'a', keys: ['touch'], content: 'U loves physical touch and is clumsy with technology', updated: 1 }),
+    makeEntry({ id: 'm', keys: ['touch'], content: 'U likes physical touch.', source: 'manual', updated: 2 }),
+    makeEntry({ id: 'b', keys: ['physical'], content: 'U likes physical touch.', updated: 3 })
+  ];
+  const out = mergeNearDuplicates(list, { names: NAMES, now: 9 });
+  assert.equal(out.merged, 1);
+  assert.deepEqual(out.entries.map((e) => e.id), ['a', 'm']);
+  assert.deepEqual(out.entries[1], list[1]); // la manual, idéntica
+  assert.equal(out.entries[0].content, 'U loves physical touch and is clumsy with technology'); // el más informativo
+  assert.equal(out.entries[0].updated, 9);
+  assert.deepEqual(out.entries[0].keys, ['touch', 'physical']);
+  assert.equal(list.length, 3); // no muta
+});
+
+test('applyExtraction fusiona con una auto existente aunque NO compartan keys; con una manual nunca', () => {
+  const prev = [makeEntry({ id: 'a', keys: ['closeness'], content: 'U loves physical touch and is clumsy with technology', updated: 1 })];
+  const out = applyExtraction(prev, [{ keys: ['hugs'], content: 'U likes physical touch.' }], { now: NOW, ignoreKeys: NAMES });
+  assert.equal(out.entries.length, 1);
+  assert.deepEqual([out.added, out.updated], [0, 1]);
+  assert.equal(out.entries[0].content, 'U loves physical touch and is clumsy with technology');
+  assert.ok(out.entries[0].keys.includes('closeness') && out.entries[0].keys.includes('hugs'));
+
+  const manual = [makeEntry({ id: 'm', keys: ['closeness'], content: 'U loves physical touch and is clumsy with technology', source: 'manual' })];
+  const out2 = applyExtraction(manual, [{ keys: ['hugs'], content: 'U likes physical touch.' }], { now: NOW, ignoreKeys: NAMES });
+  assert.equal(out2.entries.length, 2);
+  assert.deepEqual(out2.entries[0], manual[0]);
+});
+
+// ---------- MEM-003: "Limpiar recuerdos" con las 7 entradas reales del tester (U = usuario, C = personaje) ----------
+
+function realSeven() {
+  const e = (id, keys, content, updated) => ({ id, keys, content, updated, source: 'auto' });
+  return [
+    e('r1', ['fact'], 'U loves physical touch and enjoys the closeness with C', 1),
+    e('r2', ['personality'], 'U loves physical touch and enjoys the presence of others.', 2),
+    e('r3', ['factory scent'], "C smells like 'a clean, modern factory' to U", 3),
+    e('r4', ['person who loves physical touch'], 'U loves physical touch', 4),
+    e('r5', ['person'], 'U is a clumsy person with technology.', 5),
+    e('r6', ['characteristics'], 'He loves physical touch.', 6),
+    e('r7', ['emotions'], "C feels comforted by U's kindness and embraces.", 7)
+  ];
+}
+
+test('cleanupLorebook con las 7 entradas reales: quedan 4 o menos, con keys de palabras sueltas útiles', () => {
+  const before = realSeven();
+  const out = cleanupLorebook(before, { names: NAMES, now: 100 });
+  assert.ok(out.entries.length <= 4, `quedaron ${out.entries.length}`);
+  assert.equal(out.changed, true);
+  assert.equal(out.merged, 7 - out.entries.length);
+
+  // Las de "physical touch" (incluida la que empezaba con "He") quedan en una sola.
+  assert.equal(out.entries.filter((e) => /physical touch/.test(e.content)).length, 1);
+  const factory = out.entries.find((e) => /factory/.test(e.content));
+  assert.deepEqual(factory.keys, ['factory', 'scent']);
+  const clumsy = out.entries.find((e) => /clumsy/.test(e.content));
+  assert.deepEqual(clumsy.keys, ['clumsy', 'technology']);
+  const comforted = out.entries.find((e) => /comforted/.test(e.content));
+  assert.ok(comforted.keys.includes('comforted'));
+
+  const generic = new Set(LORE_GENERIC_KEYWORDS);
+  for (const entry of out.entries) {
+    assert.ok(entry.keys.length >= 1 && entry.keys.length <= LOREBOOK_KEYS_MAX);
+    for (const key of entry.keys) {
+      assert.match(key, /^\p{L}+$/u); // una sola palabra
+      assert.ok(!generic.has(key) && !NAMES.map((n) => n.toLowerCase()).includes(key), key);
+    }
+  }
+  assert.equal(before.length, 7); // no muta lo recibido
+});
+
+test('cleanupLorebook no toca las manuales, ni borra nada que no se fusione, y es idempotente', () => {
+  const manual = { id: 'm', keys: ['Persona Especial'], content: 'He loves physical touch.', updated: 5, source: 'manual' };
+  const list = [...realSeven(), manual];
+  const once = cleanupLorebook(list, { names: NAMES, now: 100 });
+  assert.deepEqual(once.entries.find((e) => e.id === 'm'), manual);
+  const again = cleanupLorebook(once.entries, { names: NAMES, now: 200 });
+  assert.equal(again.changed, false);
+  assert.deepEqual(again.entries, once.entries);
+
+  // Una entrada con pronombre que NO se parece a ninguna otra se conserva (solo la fusión reduce).
+  const lone = cleanupLorebook([makeEntry({ id: 'x', keys: ['personality'], content: 'He collects vintage stamps.' })], { names: NAMES });
+  assert.equal(lone.entries.length, 1);
+});
+
+test('cleanStoredLorebook guarda el estado anterior como copia; sin cambios no escribe nada', async () => {
+  let stored = realSeven();
+  const saves = [];
+  const deps = {
+    load: async () => stored,
+    save: async (entries, previous) => { saves.push({ entries, previous }); stored = entries; },
+    names: NAMES,
+    now: 100
+  };
+  const result = await cleanStoredLorebook(deps);
+  assert.equal(result.changed, true);
+  assert.equal(saves.length, 1);
+  assert.equal(saves[0].previous.length, 7);
+  assert.deepEqual(saves[0].previous, realSeven());
+
+  const second = await cleanStoredLorebook(deps);
+  assert.equal(second.changed, false);
+  assert.equal(saves.length, 1); // no volvió a escribir
+});
+
+test('cleanStoredLorebook: si el guardado falla, lanza y no cambia nada', async () => {
+  let stored = realSeven();
+  await assert.rejects(() => cleanStoredLorebook({
+    load: async () => stored,
+    save: async () => { throw new Error('disco lleno'); },
+    names: NAMES
+  }));
+  assert.deepEqual(stored, realSeven());
 });

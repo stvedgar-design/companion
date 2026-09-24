@@ -1654,3 +1654,72 @@ real en el teléfono.
 **Pendiente de evaluación (sin contrato):** opción 2 (extraer sobre el prefijo del
 chat; medir calidad, VER-004) y opción 4 (espaciar el disparo o dispararlo al salir
 del chat).
+
+## MEM-003: recuerdos concretos, con keys útiles y sin duplicados (2026-09-24)
+
+**Estado:** implementado; 207 tests en verde (187 + 20); probado contra el servidor real y
+en el navegador integrado (375×812). **NO probado en el teléfono/APK.** **Hecho** = medido
+aquí; **Inferencia**; **Supuesto**.
+
+### Qué se hizo (`www/js/api/lorebook.js`, `www/js/ui/chat.js`)
+1. **Prompt de extracción:** hechos concretos en tercera persona que nombren a AMBOS
+   ("Sam told Mia that the dog Bruno is afraid of thunder", ejemplo sintético), sin
+   "I/my/he/she/they/the user"; 1 a 3 keys de UNA palabra, sin nombres ni genéricas. Se
+   conservan: una línea, ≤3 entradas, ≤140 caracteres, idioma de la charla, prefill `[`.
+2. **`normalizeLoreKeys(keys, content, {names})`** (pura; solo `auto`, nunca lo escrito a
+   mano): divide frases en palabras, quita stopwords (en/es), nombres, genéricas y <3 letras;
+   sin duplicados (sin acentos, se guarda con ellos); máx. 4; si no queda ninguna, deriva 2
+   del contenido (las más largas). Escrituras no latinas se dejan tal cual.
+   **Genéricas** (forma base; también `s/es/d/ed/ing`): personality, person, people, user,
+   character, characteristic, trait, fact, emotion, feeling, feel, thing, like, love,
+   enjoy, memory, note, info, information; personalidad, persona, usuario, personaje,
+   caracteristica, rasgo, hecho, emocion, sentimiento, cosa, gusta(n), encanta(n), disfruta, quiere.
+3. **Hechos sin nombre:** `isUnnamedPronounFact` descarta un hecho `auto` cuyo sujeto es
+   he/she/they/él/ella/ellos/ellas y no menciona ningún nombre. **Decisión mía, medida:**
+   añadí la primera persona (I, we, my, yo, mi…) porque en la 1.ª ronda con el servidor 3 de
+   39 salieron como "My neighbor Marta lent me her ladder". "El" sin acento es artículo y
+   NO cuenta. También se descartan hechos de <3 palabras.
+4. **Inyección — hallado:** `selectLoreEntries` comparaba por SUBCADENA ("art" coincidía con
+   "start"). Ahora es por palabra completa, sin mayúsculas ni acentos, plurales `s/es`
+   ("hand"~"hands"), keys de varias palabras contiguas, keys no latinas como subcadena.
+   No se cambió nada más (tope, orden).
+5. **Fusión** (`areNearDuplicates`, `mergeNearDuplicates`): solapamiento sobre palabras de
+   contenido **≥ 0,6 y ≥ 2 compartidas** (valor sugerido, sin cambios: los 4 recuerdos reales
+   de "physical touch" dan 0,67 y 1,0; hechos distintos, 0–0,25). Se conserva el contenido
+   con más palabras, se unen las keys. Nunca interviene una `manual`. `applyExtraction`
+   conserva su ruta de siempre (misma key y ≥50 % → el nuevo reemplaza) y añade la
+   fusión sin key en común. **Límite (Inferencia):** dos hechos cortos sobre el mismo
+   sujeto ("Bruno loves the park" / "Bruno fears thunder") solapan 0,67 y se fusionarían,
+   perdiendo uno; subir el umbral rompe el caso obligatorio. Es deshacible.
+6. **"Limpiar recuerdos"** (`cleanupLorebook`, `cleanStoredLorebook`, botón en la hoja):
+   normaliza keys y fusiona SOLO las `auto`; guarda antes el estado en `lorebookPrevious`
+   (se deshace); sin cambios NO escribe; no usa el servidor; "Limpié N recuerdos y fusioné
+   M". Nunca borra nada que no se fusione (una entrada con pronombre sin parecido se conserva).
+
+### Medición contra el servidor real (Hecho; KoboldCpp 1.121, Mahou 12B)
+3 conversaciones SINTÉTICAS de 12 mensajes (usuario "Sam", personaje "Mia"), 15 corridas por
+prompt, sin entradas previas, todas juzgadas con la misma higiene nueva. Scripts desechables.
+
+| | Anterior | Nuevo (1.ª ronda) | Final |
+|---|---|---|---|
+| Corridas sin parsear | 0/15 | 0/15 | 0/15 |
+| Entradas guardadas / nombran a Sam o Mia | 40 / 29 (73 %) | 39 / 36 (92 %) | 39 / **39 (100 %)** |
+| Con ≥1 key que aparece en la charla | 34 (85 %) | 37 (95 %) | **38 (97 %)** |
+| Keys que eran frases | 34 de 70 | 2 de 90 | **0 de 95** |
+
+Con el prompt anterior salían fragmentos sin sujeto ("a golden retriever"); con el nuevo no.
+**Residual:** 2–3 keys pegadas ("plumjam"), un error de tecleo ("bruino") y algún hecho
+vago. Extracción media 5,4 s (antes) y 5,6 s (ahora). **No medido:** efecto en la latencia
+del chat (no cambió el número ni el lugar de las llamadas; la automática sigue apagada).
+
+### Verificación
+- Tests: `normalizeLoreKeys`, pronombres, palabra completa, fusión (caso obligatorio, hechos
+  distintos, `manual` intacta), las **7 entradas reales** del tester (U y C) → 4 o menos con
+  `["factory","scent"]` y `["clumsy","technology"]`, y `cleanStoredLorebook` con el estado
+  real (copia en `lorebookPrevious`, el deshacer restaura). Tres tests antiguos usaban datos
+  artificiales que hoy incumplen el contrato a propósito (hechos de 1–2 palabras, keys de 2
+  letras, 6 "hechos" casi idénticos): se cambiaron por contenido realista.
+- Navegador (375×812): 7 automáticas + 1 manual → "Limpié 4 recuerdos y fusioné 3"; la manual
+  intacta; "Deshacer" devolvió las 8 originales. Sin errores de consola; datos borrados.
+- **No probado:** teléfono/APK; disparo automático; el efecto sobre lo que Mia responde.
+**Sugerencia para la card:** ninguna. **Pendiente:** "siempre presente" (MEM-004).

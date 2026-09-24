@@ -277,6 +277,19 @@ parseExtractionResponse(rawText: string): { keys: any, content: any }[]|null
 applyExtraction(previousEntries: LoreEntry[], incomingEntries: object[], opts?: { now?: number, ignoreKeys?: string[] }): { entries: LoreEntry[], added: number, updated: number, changed: boolean }
    // Pura y aditiva: agrega; actualiza una `auto` que comparte key Y habla de lo mismo (≥50 % de palabras); NUNCA elimina ni
    // modifica `manual`; solo descarta `auto` antiguas al pasar LOREBOOK_MAX_ENTRIES.
+   // MEM-003: las keys nuevas pasan por normalizeLoreKeys; no guarda hechos sin nombre (isUnnamedPronounFact) ni de <3 palabras;
+   // y fusiona con una `auto` existente que hable de lo mismo (areNearDuplicates) aunque NO compartan keys.
+normalizeLoreKeys(keys: string[]|string, content: string, opts?: { names?: string[] }): string[]
+   // MEM-003. Higiene determinista para entradas `auto`: palabras sueltas en minúsculas, sin stopwords (en/es), sin nombres, sin
+   // LORE_GENERIC_KEYWORDS, ≥3 letras, sin duplicados, máx. LOREBOOK_KEYS_MAX (4). Si no queda ninguna, deriva 2 del `content`.
+   // Escrituras no latinas se dejan tal cual. NO se aplica a lo que escribe el usuario a mano.
+isUnnamedPronounFact(content: string, names?: string[]): boolean   // MEM-003: "He loves…", "My neighbor…" sin ningún nombre en la frase
+areNearDuplicates(a: string, b: string, names?: string[]): boolean // MEM-003: solapamiento ≥ LOREBOOK_MERGE_OVERLAP (0,6) y ≥ LOREBOOK_MERGE_MIN_SHARED (2) palabras
+mergeNearDuplicates(entries: LoreEntry[], opts?: { names?: string[], now?: number }): { entries: LoreEntry[], merged: number }   // MEM-003; nunca toca `manual`
+cleanupLorebook(entries: LoreEntry[], opts?: { names?: string[], now?: number }): { entries: LoreEntry[], cleaned: number, merged: number, changed: boolean }
+   // MEM-003. "Limpiar recuerdos" sobre las `auto` existentes: higiene de keys + fusión. Nunca borra salvo al fusionar. Pura.
+cleanStoredLorebook(deps: { load(), save(entries, previous), names?, now? }): Promise<{ cleaned: number, merged: number, changed: boolean }>
+   // MEM-003. Lee → limpia → guarda pasando el estado anterior como `previous` (deshacible). Sin cambios, no escribe nada.
 parseKeysInput(text: string): string[]
 editLoreEntry(entries: LoreEntry[], id: string, patch: { content: string, keys: string[] }, now?: number): LoreEntry[]|null   // la entrada pasa a source:'manual'
 removeLoreEntry(entries: LoreEntry[], id: string): LoreEntry[]
@@ -286,6 +299,8 @@ createLoreUpdater(deps): { maybeRun(), runNow(), abort(), isRunning(), getStatus
    // runNow() = "Actualizar memoria ahora"; abort() = el usuario envió un mensaje. Resultado: { kind: ok|nochange|unparsed|unavailable|
    // aborted|error|skipped|busy|toolittle, added?, updated? }.
 selectLoreEntries(entries: LoreEntry[], recentMessages: Message[], opts?: { scanCount?: number, charBudget?: number }): LoreEntry[]
+   // MEM-003: la coincidencia de keys es por PALABRA completa (antes, por subcadena), sin distinguir mayúsculas ni acentos,
+   // tolerando plurales `s`/`es`; keys de varias palabras = secuencia contigua; keys no latinas = subcadena.
 formatLoreBlock(entries: LoreEntry[]): string
 ```
 

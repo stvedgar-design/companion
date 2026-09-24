@@ -9,6 +9,7 @@ import {
   editLoreEntry,
   removeLoreEntry,
   parseKeysInput,
+  cleanStoredLorebook,
   LOREBOOK_UPDATE_EVERY_MESSAGES,
   LOREBOOK_MAX_ENTRY_CHARS,
 } from '../api/lorebook.js';
@@ -722,6 +723,15 @@ function loreResultMessage(result) {
   }
 }
 
+// MEM-003: mensaje llano del resultado de "Limpiar recuerdos".
+function loreCleanMessage(result) {
+  if (!result.changed) return 'No había nada que limpiar: tus recuerdos ya están en orden.';
+  const parts = [];
+  if (result.cleaned) parts.push(`Limpié ${result.cleaned} recuerdo${result.cleaned === 1 ? '' : 's'}`);
+  if (result.merged) parts.push(`${parts.length ? 'fusioné' : 'Fusioné'} ${result.merged}`);
+  return `${parts.join(' y ')}. Si no te gusta el resultado, usa «Deshacer última actualización».`;
+}
+
 async function freshLorebook() {
   const fresh = await getCharacter(character.id);
   return (fresh && fresh.lorebook) || [];
@@ -808,7 +818,35 @@ function openLorebookSheet(note = '') {
   const costHint = loreEl('div', 'field__hint', 'La siguiente respuesta puede tardar más. Conviene usarlo al terminar de chatear.');
   costHint.style.marginTop = 'var(--space-2, 8px)';
 
-  wrap.append(autoRow, autoHint, progress, refreshBtn, costHint, undoBtn);
+  // MEM-003: "Limpiar recuerdos" trabaja solo con lo ya guardado (no usa el
+  // servidor, no afecta la velocidad del chat) y solo con las automáticas.
+  const cleanBtn = loreEl('button', 'btn btn--ghost', 'Limpiar recuerdos');
+  cleanBtn.type = 'button';
+  cleanBtn.style.marginTop = 'var(--space-2, 8px)';
+  cleanBtn.disabled = inFlight;
+  const cleanHint = loreEl(
+    'div',
+    'field__hint',
+    'Ordena las palabras clave y junta los recuerdos repetidos. No toca los que escribiste o editaste tú, y se puede deshacer.'
+  );
+  cleanHint.style.marginTop = 'var(--space-1, 4px)';
+  cleanBtn.addEventListener('click', async () => {
+    cleanBtn.disabled = true;
+    try {
+      const result = await cleanStoredLorebook({
+        load: freshLorebook,
+        save: async (entries, previous) => {
+          character = await saveCharacterLorebook(character.id, entries, previous);
+        },
+        names: [character.card.name || character.name, settings && settings.user],
+      });
+      openLorebookSheet(loreCleanMessage(result));
+    } catch {
+      openLorebookSheet('No se pudo limpiar. No se cambió nada.');
+    }
+  });
+
+  wrap.append(autoRow, autoHint, progress, refreshBtn, costHint, undoBtn, cleanBtn, cleanHint);
 
   const entries = (character.lorebook || []).slice().sort((a, b) => (b.updated || 0) - (a.updated || 0));
   const list = loreEl('div');

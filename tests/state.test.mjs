@@ -2,6 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createState } from '../www/js/state.js';
+import { cleanStoredLorebook } from '../www/js/api/lorebook.js';
 
 // ---------- backend en memoria, implementa el mismo contrato que el backend de IndexedDB ----------
 
@@ -693,4 +694,49 @@ test('MEM-002: una copia v2 sin lorebookAuto (Settings antiguos) sigue importand
   await state.importBackup({ text: async () => JSON.stringify(backup) });
   assert.equal((await state.listCharacters()).length, 1);
   assert.equal((await state.getSettings()).lorebookAuto, false);
+});
+
+// ---------- MEM-003: "Limpiar recuerdos" guarda copia y el deshacer restaura ----------
+
+test('Limpiar recuerdos: guarda lorebookPrevious con el estado anterior y "deshacer" lo restaura', async () => {
+  const state = createState(createMemoryBackend());
+  await state.saveCharacter(makeCharacter({ id: 'x' }));
+  const e = (id, keys, content, source = 'auto') => ({ id, keys, content, updated: 1, source });
+  const original = [
+    e('a', ['fact'], 'U loves physical touch and enjoys the closeness with C'),
+    e('b', ['person who loves physical touch'], 'U loves physical touch'),
+    e('c', ['factory scent'], "C smells like 'a clean, modern factory' to U"),
+    e('m', ['Cosa Mía'], 'Texto escrito a mano por el usuario.', 'manual'),
+  ];
+  await state.saveCharacterLorebook('x', original);
+
+  const result = await cleanStoredLorebook({
+    load: async () => (await state.getCharacter('x')).lorebook,
+    save: (entries, previous) => state.saveCharacterLorebook('x', entries, previous),
+    names: ['U', 'C'],
+  });
+  assert.equal(result.changed, true);
+  assert.equal(result.merged, 1);
+
+  const cleaned = await state.getCharacter('x');
+  assert.equal(cleaned.lorebook.length, 3);
+  assert.deepEqual(cleaned.lorebook.find((x) => x.id === 'm'), original[3]); // la manual, intacta
+  assert.deepEqual(cleaned.lorebook.find((x) => /factory/.test(x.content)).keys, ['factory', 'scent']);
+  assert.deepEqual(cleaned.lorebookPrevious, original);
+  assert.ok(cleaned.lorebookPreviousAt > 0);
+
+  // "Deshacer última actualización" (misma llamada que usa chat.js).
+  const undone = await state.saveCharacterLorebook('x', cleaned.lorebookPrevious, null);
+  assert.deepEqual(undone.lorebook, original);
+  assert.equal(undone.lorebookPreviousAt, 0);
+
+  // Sin nada que limpiar no se escribe nada: la copia anterior no se pisa.
+  await state.saveCharacterLorebook('x', cleaned.lorebook, original);
+  const again = await cleanStoredLorebook({
+    load: async () => (await state.getCharacter('x')).lorebook,
+    save: (entries, previous) => state.saveCharacterLorebook('x', entries, previous),
+    names: ['U', 'C'],
+  });
+  assert.equal(again.changed, false);
+  assert.deepEqual((await state.getCharacter('x')).lorebookPrevious, original);
 });

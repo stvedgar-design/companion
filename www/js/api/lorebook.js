@@ -162,14 +162,20 @@ export function buildExtractionPrompt(character, settings, windowMessages, exist
 
   const head = [
     `You extract long-term memory notes from a roleplay chat between ${N} and ${U}.`,
-    `From the excerpt below, write up to ${LOREBOOK_EXTRACT_MAX_NEW_ENTRIES} NEW durable facts worth remembering: ` +
-      `${U}'s real details, tastes, people, pets, places, dates, plans, or how the relationship between ${U} and ${N} changed. ` +
-      `Skip small talk, fleeting moments and anything already known.`,
-    `Do not use the names "${N}" or "${U}" as keywords. Write each fact in the same language as the conversation, ` +
-      `as a complete third-person sentence that names who or what it is about (no pronouns, never a single word), ` +
-      `at most ${LOREBOOK_EXTRACT_ENTRY_CHARS} characters. Put every keyword in double quotes.`,
+    `From the excerpt below, write up to ${LOREBOOK_EXTRACT_MAX_NEW_ENTRIES} NEW concrete facts worth remembering: ` +
+      `specific things that happened or that ${U} said about ${U}'s real life (details, tastes, people, pets, places, dates, plans), ` +
+      `or a specific moment that changed how ${U} and ${N} relate. ` +
+      `Skip small talk, fleeting moments, vague personality traits and anything already known.`,
+    `Write each fact as one complete third-person sentence that names BOTH who does or feels something and who or what it is about, ` +
+      `using the real names "${U}" and "${N}" (never "I", "my", "he", "she", "they" or "the user", never a single word), ` +
+      `with the concrete detail, like "${U} told ${N} that the dog Bruno is afraid of thunder". ` +
+      `At most ${LOREBOOK_EXTRACT_ENTRY_CHARS} characters, in the same language as the conversation.`,
+    `For each fact give 1 to 3 keywords: single lowercase words, never two words joined together (concrete nouns or topics likely to come up again in the chat). ` +
+      `Never use the names "${N}" or "${U}" as keywords, nor generic words like "personality", "person", "likes" or "feelings". ` +
+      `Put every keyword in double quotes.`,
     `Reply with ONE line only: a compact JSON array with no line breaks and no markdown, like ` +
-      `[{"k":["keyword1","keyword2"],"c":"short fact"}], one fact per object. If there is nothing new worth remembering, reply [].`,
+      `[{"k":["bruno","thunder"],"c":"${U} told ${N} that the dog Bruno is afraid of thunder"}], one fact per object. ` +
+      `If there is nothing new worth remembering, reply [].`,
     known ? `Already known (keywords only, do not repeat these facts): ${known}` : '',
     'Excerpt:',
   ].filter(Boolean).join('\n\n');
@@ -319,43 +325,338 @@ export function parseExtractionResponse(rawText) {
 const MAX_KEYS_PER_ENTRY = 6;
 const MAX_KEY_CHARS = 40;
 const MERGE_MIN_OVERLAP = 0.5;
+
+/* ---------- MEM-003: higiene de keys, comparación de contenido y fusión ---------- */
+
+// Máximo de keys de una entrada AUTOMÁTICA tras la higiene (las manuales no se tocan).
+export const LOREBOOK_KEYS_MAX = 4;
+
+// Fusión de casi-duplicados: dos entradas `auto` se fusionan si comparten al
+// menos LOREBOOK_MERGE_MIN_SHARED palabras de contenido Y esas palabras son al
+// menos LOREBOOK_MERGE_OVERLAP de las de la entrada más corta (coeficiente de
+// solapamiento). Valor final 0,6 (el sugerido): con los 4 recuerdos reales de
+// "physical touch" da 0,67 y 1,0; con hechos distintos, 0 a 0,25. Ver HISTORIAL.
+export const LOREBOOK_MERGE_OVERLAP = 0.6;
+export const LOREBOOK_MERGE_MIN_SHARED = 2;
+
+// Un hecho automático con menos palabras que esto ("Laura") no es un recuerdo.
+export const LOREBOOK_MIN_CONTENT_WORDS = 3;
+
+// Palabras que NO sirven como keys: aparecen en casi cualquier conversación
+// (o describen "tipo de dato" en vez de un tema). Se escriben en forma base,
+// en minúsculas y sin acentos; `isGenericWord` también reconoce sus plurales y
+// conjugaciones simples (loves, loved, enjoys, traits…).
+export const LORE_GENERIC_KEYWORDS = Object.freeze([
+  'personality', 'person', 'people', 'user', 'character', 'characteristic', 'trait', 'fact', 'emotion',
+  'feeling', 'feel', 'thing', 'like', 'love', 'enjoy', 'memory', 'note', 'info', 'information',
+  'personalidad', 'persona', 'usuario', 'personaje', 'caracteristica', 'rasgo', 'hecho', 'emocion',
+  'sentimiento', 'cosa', 'gusta', 'gustan', 'encanta', 'encantan', 'disfruta', 'quiere',
+]);
+const GENERIC_WORDS = new Set(LORE_GENERIC_KEYWORDS);
+
+// Stopwords básicas (inglés y español), sin acentos. Solo importan las de 3+
+// letras: las más cortas ya se descartan por longitud.
 const STOPWORDS = new Set([
   'the', 'and', 'for', 'with', 'that', 'this', 'his', 'her', 'has', 'have', 'was', 'were', 'are', 'from',
-  'their', 'they', 'about', 'into', 'who', 'which', 'been', 'also', 'los', 'las', 'una', 'uno', 'por', 'con',
-  'que', 'del', 'sus', 'para', 'como', 'está', 'esta', 'este', 'son',
+  'their', 'they', 'about', 'into', 'who', 'which', 'been', 'also', 'when', 'what', 'where', 'while', 'than',
+  'then', 'them', 'its', 'but', 'not', 'can', 'will', 'would', 'could', 'should', 'does', 'did', 'how', 'why',
+  'our', 'your', 'you', 'she', 'him', 'other', 'others', 'some', 'any', 'each', 'very', 'more', 'most', 'over',
+  'under', 'after', 'before', 'because', 'too', 'out', 'off', 'again', 'once', 'him', 'himself', 'herself',
+  'los', 'las', 'una', 'uno', 'unos', 'unas', 'por', 'con', 'que', 'del', 'sus', 'para', 'como', 'esta', 'este',
+  'son', 'sobre', 'entre', 'desde', 'hasta', 'pero', 'muy', 'mas', 'cuando', 'donde', 'todo', 'todos', 'todas',
+  'tiene', 'tienen', 'ser', 'fue', 'era', 'ese', 'esa', 'eso', 'les', 'nos', 'algo', 'otro', 'otra', 'otros',
+  'otras', 'cada', 'tambien', 'porque', 'sin', 'ella', 'ellos', 'ellas', 'mis', 'tus', 'suyo', 'suya',
 ]);
 
-function contentWords(text, ignoreWords) {
-  const words = String(text || '').toLowerCase().match(/[\p{L}\p{N}]+/gu) || [];
-  return new Set(words.filter((w) => w.length >= 3 && !STOPWORDS.has(w) && !ignoreWords.has(w)));
+// Sujetos que, solos y sin ningún nombre propio en la frase, no dicen de quién se habla.
+// La primera persona (I, my, yo, mi…) se añadió tras medirla contra el servidor real:
+// el modelo a veces copia la frase del usuario ("My neighbor lent me her ladder").
+const SUBJECT_PRONOUNS = new Set([
+  'he', 'she', 'they', 'él', 'ella', 'ellos', 'ellas',
+  'i', 'we', 'my', 'our', 'yo', 'mi', 'mis', 'nosotros', 'nosotras',
+]);
+
+const WORD_SPLIT = /[^\p{L}\p{N}\p{M}]+/u;
+
+// Minúsculas y sin acentos, solo para COMPARAR (lo guardado conserva sus acentos).
+function foldText(text) {
+  return String(text == null ? '' : text).toLowerCase().normalize('NFD').replace(/\p{M}/gu, '').normalize('NFC');
 }
 
-function wordOverlap(a, b, ignoreWords) {
-  const A = contentWords(a, ignoreWords);
-  const B = contentWords(b, ignoreWords);
+function isLatinWord(word) {
+  return /^[\p{Script=Latin}\p{N}\p{M}]+$/u.test(word);
+}
+
+function hasNonLatinLetter(text) {
+  for (const ch of String(text || '')) {
+    if (/\p{L}/u.test(ch) && !/\p{Script=Latin}/u.test(ch)) return true;
+  }
+  return false;
+}
+
+function baseForms(word) {
+  const forms = [word];
+  for (const suffix of ['s', 'es', 'd', 'ed', 'ing']) {
+    if (word.length - suffix.length >= 3 && word.endsWith(suffix)) forms.push(word.slice(0, -suffix.length));
+  }
+  return forms;
+}
+
+/**
+ * ¿Es una palabra demasiado genérica para servir de key? (`word` ya sin
+ * acentos y en minúsculas; reconoce plurales y conjugaciones simples).
+ * @param {string} word
+ * @returns {boolean}
+ */
+export function isGenericWord(word) {
+  return baseForms(word).some((f) => GENERIC_WORDS.has(f));
+}
+
+function nameWordSet(names) {
+  const set = new Set();
+  for (const name of names || []) {
+    for (const w of foldText(name).split(WORD_SPLIT)) if (w) set.add(w);
+  }
+  return set;
+}
+
+// Palabras "usables" de un texto (para keys o para comparar contenido): sin
+// stopwords, nombres ni genéricas y con 3+ letras. Las palabras de escrituras
+// no latinas (japonés, coreano…) no se pueden filtrar así y se dejan tal cual.
+// Devuelve [{ text (minúsculas, con acentos), folded, pos }] en orden de aparición.
+function usableWords(text, nameWords) {
+  const out = [];
+  const seen = new Set();
+  const lower = String(text || '').toLowerCase().normalize('NFC');
+  let pos = 0;
+  for (const token of lower.split(WORD_SPLIT)) {
+    if (!token) continue;
+    pos++;
+    let folded = token;
+    if (isLatinWord(token)) {
+      folded = foldText(token);
+      if (folded.length < 3 || STOPWORDS.has(folded) || nameWords.has(folded) || isGenericWord(folded)) continue;
+    }
+    if (seen.has(folded)) continue;
+    seen.add(folded);
+    out.push({ text: token, folded, pos });
+  }
+  return out;
+}
+
+// Deriva hasta 2 keys de las palabras de contenido más distintivas (las más
+// largas; a igual largo, las más tardías, que en una frase suelen ser el
+// sustantivo), devueltas en su orden de aparición.
+function deriveKeys(content, nameWords) {
+  return usableWords(content, nameWords)
+    .sort((a, b) => b.folded.length - a.folded.length || b.pos - a.pos)
+    .slice(0, 2)
+    .sort((a, b) => a.pos - b.pos)
+    .map((w) => w.text.slice(0, MAX_KEY_CHARS));
+}
+
+/**
+ * Higiene DETERMINISTA de las keys de una entrada AUTOMÁTICA (no se aplica a
+ * lo que el usuario escribe a mano). Divide las frases en palabras sueltas,
+ * minúsculas, y quita stopwords (inglés/español), los nombres de los personajes
+ * (`opts.names`), las palabras genéricas (`LORE_GENERIC_KEYWORDS`) y todo lo de
+ * menos de 3 letras. Sin duplicados (sin distinguir acentos) y como máximo
+ * LOREBOOK_KEYS_MAX. Si no queda ninguna, deriva 2 keys del propio `content`.
+ * Las palabras de escrituras no latinas se dejan tal cual. Pura; nunca lanza.
+ * @param {string[]|string} keys
+ * @param {string} content
+ * @param {{ names?: string[] }} [opts]
+ * @returns {string[]}  [] solo si ni las keys ni el contenido aportan palabras útiles.
+ */
+export function normalizeLoreKeys(keys, content, opts = {}) {
+  const nameWords = nameWordSet(opts.names);
+  const list = Array.isArray(keys) ? keys : keys == null ? [] : [keys];
+  const out = [];
+  const seen = new Set();
+  for (const raw of list) {
+    for (const w of usableWords(raw, nameWords)) {
+      if (seen.has(w.folded)) continue;
+      seen.add(w.folded);
+      out.push(w.text.slice(0, MAX_KEY_CHARS));
+      if (out.length >= LOREBOOK_KEYS_MAX) return out;
+    }
+  }
+  return out.length ? out : deriveKeys(content, nameWords);
+}
+
+/**
+ * ¿El hecho arranca con un sujeto que es solo un pronombre ("He loves…",
+ * "Ella dice…", "My neighbor…") y no nombra a nadie en toda la frase? Un recuerdo así no dice
+ * de quién habla y no se guarda. ("él" con acento es pronombre; "el" sin
+ * acento puede ser artículo y NO cuenta.)
+ * @param {string} content
+ * @param {string[]} [names]  Nombres del usuario y del personaje.
+ * @returns {boolean}
+ */
+export function isUnnamedPronounFact(content, names = []) {
+  const text = collapse(content).toLowerCase().normalize('NFC');
+  const first = (text.match(/\p{L}+/u) || [''])[0];
+  if (!SUBJECT_PRONOUNS.has(first)) return false;
+  const nameWords = nameWordSet(names);
+  const words = foldText(text).split(WORD_SPLIT);
+  return !words.some((w) => nameWords.has(w));
+}
+
+// Quita una `s` final (no la de "ss"), y "ies" → "y": solo para comparar.
+function stemLite(word) {
+  if (word.length > 4 && word.endsWith('ies')) return word.slice(0, -3) + 'y';
+  if (word.length > 3 && word.endsWith('s') && !word.endsWith('ss')) return word.slice(0, -1);
+  return word;
+}
+
+function contentWords(text, nameWords) {
+  return new Set(usableWords(text, nameWords).map((w) => (isLatinWord(w.text) ? stemLite(w.folded) : w.folded)));
+}
+
+function overlapStats(a, b, nameWords) {
+  const A = contentWords(a, nameWords);
+  const B = contentWords(b, nameWords);
   const smaller = Math.min(A.size, B.size);
-  if (!smaller) return 0;
   let shared = 0;
   for (const w of A) if (B.has(w)) shared++;
-  return shared / smaller;
+  return { shared, ratio: smaller ? shared / smaller : 0, sizeA: A.size, sizeB: B.size };
 }
 
-// Valida y acota UNA entrada cruda del modelo. null si no sirve.
-function normalizeIncoming(raw, ignoreKeys) {
+function wordOverlap(a, b, nameWords) {
+  return overlapStats(a, b, nameWords).ratio;
+}
+
+/**
+ * ¿Dos contenidos hablan de lo mismo? (coeficiente de solapamiento sobre
+ * palabras de contenido ≥ LOREBOOK_MERGE_OVERLAP y al menos
+ * LOREBOOK_MERGE_MIN_SHARED palabras compartidas.)
+ * @param {string} a
+ * @param {string} b
+ * @param {string[]} [names]
+ * @returns {boolean}
+ */
+export function areNearDuplicates(a, b, names = []) {
+  const stats = overlapStats(a, b, nameWordSet(names));
+  return stats.shared >= LOREBOOK_MERGE_MIN_SHARED && stats.ratio >= LOREBOOK_MERGE_OVERLAP;
+}
+
+// Cuál de dos contenidos se conserva al fusionar: el de más palabras de
+// contenido; a igualdad, el más largo; a igualdad, `a`.
+function moreInformative(a, b, nameWords) {
+  const wa = contentWords(a, nameWords).size;
+  const wb = contentWords(b, nameWords).size;
+  if (wa !== wb) return wa > wb ? a : b;
+  return b.length > a.length ? b : a;
+}
+
+function sameKeys(a, b) {
+  return a.length === b.length && a.every((k, i) => k === b[i]);
+}
+
+/**
+ * Fusiona casi-duplicados entre las entradas `auto` de `entries` (las `manual`
+ * NUNCA se tocan ni absorben a otras). La entrada que queda conserva el `id`
+ * de la primera, el contenido más informativo, la unión de keys (normalizadas)
+ * y `updated` = `now`. Pura; no muta lo recibido.
+ * @param {LoreEntry[]} entries
+ * @param {{ names?: string[], now?: number }} [opts]
+ * @returns {{ entries: LoreEntry[], merged: number }}
+ */
+export function mergeNearDuplicates(entries, opts = {}) {
+  const now = typeof opts.now === 'number' ? opts.now : Date.now();
+  const names = opts.names || [];
+  const nameWords = nameWordSet(names);
+  const out = (Array.isArray(entries) ? entries : [])
+    .filter((e) => e && typeof e === 'object')
+    .map((e) => ({ ...e, keys: Array.isArray(e.keys) ? e.keys.slice() : [] }));
+  let merged = 0;
+  let again = true;
+  while (again) {
+    again = false;
+    outer: for (let i = 0; i < out.length; i++) {
+      if (out[i].source === 'manual') continue;
+      for (let j = i + 1; j < out.length; j++) {
+        if (out[j].source === 'manual') continue;
+        if (!areNearDuplicates(out[i].content, out[j].content, names)) continue;
+        const content = moreInformative(out[i].content, out[j].content, nameWords);
+        const keys = normalizeLoreKeys([...out[i].keys, ...out[j].keys], content, { names });
+        out[i] = { ...out[i], content, keys: keys.length ? keys : out[i].keys, updated: now };
+        out.splice(j, 1);
+        merged++;
+        again = true;
+        break outer;
+      }
+    }
+  }
+  return { entries: out, merged };
+}
+
+/**
+ * "Limpiar recuerdos": aplica la higiene de keys y la fusión de casi-duplicados
+ * a las entradas `auto` EXISTENTES (las `manual` no se tocan). NUNCA borra
+ * un recuerdo salvo al fusionarlo con otro. Pura.
+ * @param {LoreEntry[]} entries
+ * @param {{ names?: string[], now?: number }} [opts]
+ * @returns {{ entries: LoreEntry[], cleaned: number, merged: number, changed: boolean }}
+ *   `cleaned` = recuerdos que quedan con keys distintas; `merged` = recuerdos absorbidos por otro.
+ */
+export function cleanupLorebook(entries, opts = {}) {
+  const now = typeof opts.now === 'number' ? opts.now : Date.now();
+  const names = opts.names || [];
+  const original = (Array.isArray(entries) ? entries : []).filter((e) => e && typeof e === 'object');
+  const before = new Map(original.map((e) => [e.id, Array.isArray(e.keys) ? e.keys : []]));
+
+  const normalized = original.map((e) => {
+    if (e.source === 'manual') return e;
+    const keys = normalizeLoreKeys(e.keys, e.content, { names });
+    return keys.length ? { ...e, keys } : e;
+  });
+  const result = mergeNearDuplicates(normalized, { names, now });
+
+  let cleaned = 0;
+  for (const e of result.entries) {
+    if (e.source === 'manual') continue;
+    if (!sameKeys(e.keys, before.get(e.id) || [])) cleaned++;
+  }
+  return { entries: result.entries, cleaned, merged: result.merged, changed: cleaned + result.merged > 0 };
+}
+
+/**
+ * Ejecuta "Limpiar recuerdos" sobre el lorebook GUARDADO: lo lee, lo limpia
+ * (`cleanupLorebook`) y, SOLO si algo cambió, lo guarda pasando el estado de
+ * antes como copia (`previous`), de modo que "Deshacer última actualización"
+ * lo restaura. Si no hay nada que limpiar no escribe nada (así tampoco pisa la
+ * copia de una actualización anterior). Si `save` falla, lanza y no queda
+ * nada a medias (un solo guardado).
+ * @param {{
+ *   load: () => Promise<LoreEntry[]>,
+ *   save: (entries: LoreEntry[], previous: LoreEntry[]) => Promise<void>,
+ *   names?: string[],
+ *   now?: number,
+ * }} deps
+ * @returns {Promise<{ cleaned: number, merged: number, changed: boolean }>}
+ */
+export async function cleanStoredLorebook(deps) {
+  const before = await deps.load();
+  const result = cleanupLorebook(before, { names: deps.names, now: deps.now });
+  if (result.changed) await deps.save(result.entries, before);
+  return { cleaned: result.cleaned, merged: result.merged, changed: result.changed };
+}
+
+// Valida y acota UNA entrada cruda del modelo. null si no sirve (incluye los
+// hechos sin nombre y los de menos de LOREBOOK_MIN_CONTENT_WORDS palabras).
+function normalizeIncoming(raw, names) {
   if (!raw || typeof raw !== 'object') return null;
   const rawContent = pickField(raw, CONTENT_FIELDS);
   const content = typeof rawContent === 'string' ? collapse(rawContent).slice(0, LOREBOOK_MAX_ENTRY_CHARS) : '';
   if (!content) return null;
+  if (content.split(/\s+/).length < LOREBOOK_MIN_CONTENT_WORDS) return null;
+  if (isUnnamedPronounFact(content, names)) return null;
 
   let rawKeys = pickField(raw, KEYS_FIELDS);
   if (typeof rawKeys === 'string') rawKeys = [rawKeys];
   if (!Array.isArray(rawKeys)) return null;
-  const keys = [];
-  for (const k of rawKeys) {
-    const key = normKey(k).slice(0, MAX_KEY_CHARS);
-    if (key && !ignoreKeys.has(key) && !keys.includes(key)) keys.push(key);
-    if (keys.length >= MAX_KEYS_PER_ENTRY) break;
-  }
+  const keys = normalizeLoreKeys(rawKeys, content, { names });
   return keys.length ? { keys, content } : null;
 }
 
@@ -376,6 +677,11 @@ function normalizeIncoming(raw, ignoreKeys) {
  *  - las entradas `manual` NUNCA se modifican ni eliminan.
  * Los nombres en `opts.ignoreKeys` (usuario y personaje) se quitan de las keys
  * nuevas y no cuentan para decidir si dos entradas coinciden.
+ * MEM-003: las entradas nuevas pasan por `normalizeLoreKeys`; un hecho cuyo
+ * sujeto es solo un pronombre ("He loves…") o de menos de 3 palabras no se
+ * guarda; y una nueva que hable de lo mismo que una `auto` existente (ver
+ * `areNearDuplicates`) se fusiona con ella AUNQUE no compartan keys (se
+ * conserva el contenido más informativo).
  * @param {LoreEntry[]} previousEntries
  * @param {object[]} incomingEntries  Salida de `parseExtractionResponse`.
  * @param {{ now?: number, ignoreKeys?: string[] }} [opts]
@@ -383,9 +689,9 @@ function normalizeIncoming(raw, ignoreKeys) {
  */
 export function applyExtraction(previousEntries, incomingEntries, opts = {}) {
   const now = typeof opts.now === 'number' ? opts.now : Date.now();
-  const ignoreKeys = new Set((opts.ignoreKeys || []).map(normKey).filter(Boolean));
-  const ignoreWords = new Set();
-  for (const k of ignoreKeys) for (const w of k.split(/\s+/)) ignoreWords.add(w);
+  const names = (opts.ignoreKeys || []).map(collapse).filter(Boolean);
+  const nameWords = nameWordSet(names);
+  const ignoreKeys = new Set(names.map(normKey));
 
   const entries = (Array.isArray(previousEntries) ? previousEntries : [])
     .filter((e) => e && typeof e === 'object')
@@ -395,7 +701,7 @@ export function applyExtraction(previousEntries, incomingEntries, opts = {}) {
   let updated = 0;
 
   const incoming = (Array.isArray(incomingEntries) ? incomingEntries : [])
-    .map((raw) => normalizeIncoming(raw, ignoreKeys))
+    .map((raw) => normalizeIncoming(raw, names))
     .filter(Boolean)
     .slice(0, LOREBOOK_EXTRACT_MAX_NEW_ENTRIES);
 
@@ -403,17 +709,17 @@ export function applyExtraction(previousEntries, incomingEntries, opts = {}) {
     const incKey = dedupeKey(inc.content);
     if (entries.some((e) => dedupeKey(e.content) === incKey)) continue;
 
-    const match = entries.find(
-      (e) =>
-        e.source !== 'manual' &&
-        e.keys.some((k) => !ignoreKeys.has(normKey(k)) && inc.keys.includes(normKey(k))) &&
-        wordOverlap(e.content, inc.content, ignoreWords) >= MERGE_MIN_OVERLAP
+    const sharesKey = (e) => e.keys.some((k) => !ignoreKeys.has(normKey(k)) && inc.keys.includes(normKey(k)));
+    const byKey = entries.find(
+      (e) => e.source !== 'manual' && sharesKey(e) && wordOverlap(e.content, inc.content, nameWords) >= MERGE_MIN_OVERLAP
     );
+    const match = byKey || entries.find((e) => e.source !== 'manual' && areNearDuplicates(e.content, inc.content, names));
     if (match) {
-      match.content = inc.content;
-      const union = match.keys.slice();
-      for (const k of inc.keys) if (!union.map(normKey).includes(k)) union.push(k);
-      match.keys = union.slice(0, MAX_KEYS_PER_ENTRY + 2);
+      // Misma key y mismo tema: el hecho nuevo reemplaza al viejo (p. ej. una
+      // fecha corregida). Sin key en común: se conserva el más informativo.
+      match.content = byKey ? inc.content : moreInformative(match.content, inc.content, nameWords);
+      const keys = normalizeLoreKeys([...match.keys, ...inc.keys], match.content, { names });
+      if (keys.length) match.keys = keys;
       match.updated = now;
       touched.add(match);
       updated++;
@@ -637,11 +943,56 @@ export function createLoreUpdater(deps) {
   };
 }
 
+// Dos palabras coinciden si son iguales o solo difieren en una `s`/`es` final
+// (plural simple), siempre que la más corta tenga 3+ letras: "hand" ~ "hands".
+function sameWord(a, b) {
+  if (a === b) return true;
+  const [short, long] = a.length <= b.length ? [a, b] : [b, a];
+  return short.length >= 3 && (long === short + 's' || long === short + 'es');
+}
+
+// ¿La key (ya sin acentos ni mayúsculas, en palabras) aparece como secuencia
+// contigua de palabras COMPLETAS en `tokens`?
+function keyInTokens(keyWords, tokens) {
+  if (!keyWords.length) return false;
+  for (let i = 0; i + keyWords.length <= tokens.length; i++) {
+    if (keyWords.every((w, j) => sameWord(w, tokens[i + j]))) return true;
+  }
+  return false;
+}
+
+/**
+ * ¿Alguna key de la entrada aparece en el texto? Comparación por PALABRA
+ * COMPLETA (MEM-003; antes era por subcadena, y "art" coincidía con "start"),
+ * sin distinguir mayúsculas ni acentos y tolerando plurales simples (`s`/`es`).
+ * Una key con letras de escrituras no latinas (sin espacios entre palabras) se
+ * sigue buscando como subcadena. `text` puede ser el texto de varios mensajes.
+ * @param {LoreEntry} entry
+ * @param {{ raw: string, folded: string, tokens: string[] }} haystack  Ver `prepareHaystack`.
+ * @returns {boolean}
+ */
+function entryMatches(entry, haystack) {
+  if (!Array.isArray(entry.keys)) return false;
+  return entry.keys.some((k) => {
+    const key = String(k == null ? '' : k).toLowerCase().trim();
+    if (!key) return false;
+    if (hasNonLatinLetter(key)) return haystack.raw.includes(key);
+    return keyInTokens(foldText(key).split(WORD_SPLIT).filter(Boolean), haystack.tokens);
+  });
+}
+
+function prepareHaystack(text) {
+  const raw = String(text || '').toLowerCase();
+  const folded = foldText(raw);
+  return { raw, folded, tokens: folded.split(WORD_SPLIT).filter(Boolean) };
+}
+
 /**
  * Selecciona, de `entries`, las que matchean por palabra clave contra el
  * texto de los últimos mensajes (estilo World Info de Tavern/SillyTavern),
  * hasta un tope de caracteres. Nunca mete todo siempre: eso desbordaría el
- * presupuesto de contexto ya ajustado del usuario.
+ * presupuesto de contexto ya ajustado del usuario. La coincidencia es por
+ * palabra completa (ver `entryMatches`).
  * @param {LoreEntry[]} entries
  * @param {import('../state.js').Message[]} recentMessages
  * @param {{ scanCount?: number, charBudget?: number }} [opts]
@@ -654,14 +1005,15 @@ export function selectLoreEntries(entries, recentMessages, opts = {}) {
   const scanCount = opts.scanCount || LOREBOOK_SCAN_LAST_MESSAGES;
   const budget = opts.charBudget || LOREBOOK_INJECT_CHAR_BUDGET;
 
-  const haystack = (recentMessages || [])
+  const text = (recentMessages || [])
     .slice(-scanCount)
-    .map((m) => String((m && m.text) || '').toLowerCase())
+    .map((m) => String((m && m.text) || ''))
     .join('\n');
-  if (!haystack.trim()) return [];
+  if (!text.trim()) return [];
+  const haystack = prepareHaystack(text);
 
   const matched = list
-    .filter((e) => Array.isArray(e.keys) && e.keys.some((k) => k && haystack.includes(String(k).toLowerCase())))
+    .filter((e) => entryMatches(e, haystack))
     .sort((a, b) => (b.updated || 0) - (a.updated || 0));
 
   const kept = [];

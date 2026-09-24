@@ -75,7 +75,7 @@ personaje (MEM-001 v2: extracción aditiva de una línea vía KoboldCpp, inyecci
 por keyword, hoja "Ver lorebook" con editar/borrar/deshacer y "Actualizar memoria
 ahora"; MEM-002: la actualización automática cada 20 mensajes está APAGADA por
 defecto y se activa con un interruptor en esa hoja); 3 skins × claro/oscuro; fondo
-de chat por personaje; CI con gate de tests; versión visible en Ajustes; 187
+de chat por personaje; CI con gate de tests; versión visible en Ajustes; 207
 tests (`node --test tests/*.test.mjs`).
 
 **Verificado en un teléfono real (Hecho, reportado por el tester, 2026-09-24):**
@@ -106,7 +106,10 @@ personajes guiado (solo propuesta, no autorizado). Añadido por DOC-002
   avisa el costo. Siguen pendientes de evaluar las opciones 2 (extraer sobre el
   prefijo del chat, VER-004) y 4 (espaciar o disparar al salir del chat); ver
   "MEM-001 v2 → Informe de latencia" (en `HISTORIAL.md`) y "MEM-002".
-- **Calidad de la memoria (Hecho, tester en teléfono):** tras "Actualizar memoria
+- **Calidad de la memoria — atendida por MEM-003 (2026-09-24; implementado, sin probar en el
+  teléfono):** prompt de hechos concretos con nombres, higiene de keys, fusión de
+  casi-duplicados, coincidencia por palabra completa y botón "Limpiar recuerdos". Queda
+  "siempre presente" para MEM-004. Observación original (Hecho, tester en teléfono): tras "Actualizar memoria
   ahora" ("correcta, 1 nueva") la lista mostró 2 entradas casi duplicadas, con
   keys "personality" y "person who loves physical touch". Con la inyección vigente
   (solo si una key aparece en los últimos 3 mensajes) casi nunca llegarían al
@@ -225,6 +228,7 @@ personajes: segunda iteración visual"; auditoría de recuperabilidad →
 | FMT-001 | Preservar el formato de un solo párrafo en el modo "plantilla del modelo" y evitar respuestas vacías | Autorizado — **implementado el 2026-09-24** (sesión C); medido contra el servidor real; **pendiente de probar en el teléfono** | Ver "FMT-001" (en `HISTORIAL.md`). |
 | MEM-002 | Extracción automática de memoria apagada por defecto (protección de la latencia del chat) | Autorizado (decisión del arquitecto) — **implementado el 2026-09-24** (sesión C); **pendiente de probar en el teléfono** | Ver "MEM-002" (en `HISTORIAL.md`). Campo `Settings.lorebookAuto`. |
 | DOC-003 | Reducir el costo de leer la documentación: dividir NOTES.md y registrar principios y hoja de ruta | Autorizado — ejecutado el 2026-09-24 (sesión C; solo `docs/`) | Historia movida tal cual a `HISTORIAL.md`; este archivo queda como punto de partida. Añade principios 8 y 9 y la hoja de ruta. |
+| MEM-003 | Calidad de los recuerdos: concretos, keys útiles, sin duplicados, "Limpiar recuerdos" | Autorizado — **implementado el 2026-09-24** (sesión E); probado contra el servidor real (15+15 corridas) y en el navegador; **pendiente de probar en el teléfono** | Ver "MEM-003" (en `HISTORIAL.md`). Umbral de fusión 0,6; la inyección pasó de subcadena a palabra completa. |
 | BKP-001 | Importación de copias segura: confirmar, no pisar datos nuevos, todo o nada | **Autorizado; sin implementar** (sesión posterior a MEM-001 v2, solo cuando el usuario lo pida) | Punto de partida: hallazgos 2 y 10 de VER-001. |
 | MEM-001 (v1) | (Anulado) versión anterior de MEM-001 | **ANULADO**, reemplazado por MEM-001 v2 | Asumía que el servidor podía devolver una lista larga con saltos de línea. |
 | (previos) | `CONTRACT-LOREBOOK.md` (implementado, parcialmente superado), `CONTRACT-CHARACTER-CREATOR.md` (propuesta, no autorizada), `CONTRACT-HANDOFF.md` (briefing) | — | Ver los avisos al inicio de cada uno. |
@@ -265,6 +269,15 @@ personajes: segunda iteración visual"; auditoría de recuperabilidad →
   (extraer sobre el prefijo del chat; espaciar/disparar al salir) siguen pendientes
   de evaluación.
 
+- **MEM-003 (2026-09-24), calidad de la memoria.** El prompt de extracción pide hechos
+  concretos que nombran a los dos y keys de una palabra; `normalizeLoreKeys` limpia las
+  keys (sin genéricas ni nombres, máx. 4); no se guardan hechos sin sujeto con nombre
+  ("He…", "My…"); las casi-repetidas se fusionan (solapamiento ≥0,6 y ≥2 palabras); la
+  inyección compara por palabra completa (antes subcadena: "art" coincidía con "start");
+  botón "Limpiar recuerdos" (deshacible). Medido con el servidor real: entradas con
+  nombre 73 % → 100 %, keys-frase 34/70 → 0/95. Con las 7 entradas reales del tester:
+  7 → 4 (medido en el navegador).
+
 ## Hoja de ruta acordada (propuesta, NO autorizada)
 
 Ninguna de estas piezas está autorizada ni tiene contrato todavía; no se
@@ -283,6 +296,8 @@ implementan sin un contrato del arquitecto. Sin datos personales del usuario.
 6. **Modo en vivo** solo si (4) lo permite.
 7. Aparte: **leer del servidor los límites de contexto** para ajustar los topes de
    la memoria sin tocar el código.
+8. Creador de personajes dentro de la app con exportación a JSON y PNG (deseo del
+   usuario, no urgente; ver `CONTRACT-CHARACTER-CREATOR.md`).
 
 ## Mapa de la historia (`docs/HISTORIAL.md`, una línea por sección)
 
@@ -308,3 +323,4 @@ implementan sin un contrato del arquitecto. Sin datos personales del usuario.
 - **MEM-001 v2** — Paso 0 (mediciones del servidor real), implementación, verificación, informe de latencia, observación del tester y límites de calidad; al tocar memoria, latencia o el perfil del servidor.
 - **FMT-001** — mediciones antes/después del `stop` y del reintento por respuesta vacía.
 - **MEM-002** — decisión de apagar la memoria automática, cambios y limitación conocida.
+- **MEM-003** — prompt de extracción, higiene de keys, fusión, palabra completa, "Limpiar recuerdos" y la medición contra el servidor real.
