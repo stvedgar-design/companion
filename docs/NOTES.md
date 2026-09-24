@@ -23,7 +23,9 @@ y el código mandan sobre `CONTRACTS.md`.
 **Arquitectura.** JavaScript vanilla con módulos ES, sin bundler para el
 runtime (`www/`). Empaquetado como APK con Capacitor; el workflow
 (`.github/workflows/build-apk.yml`) corre `npm test`, `npx cap add android`
-y `assembleDebug` en cada push (`android/` NO está versionado). Persistencia
+y `assembleDebug` en cada push (`android/` NO está versionado). Desde ARQ-001
+firma con una llave de depuración fija versionada en `signing/` (ver el
+registro de ARQ-001). Persistencia
 solo en `www/js/state.js` (IndexedDB `companion`, versión 2, stores
 `settings`, `characters`, `chats` [legado], `chatMeta`, `chatMsgs`). `fetch`
 solo en `www/js/api/kobold.js`. Skins = solo tokens en `www/css/themes.css`
@@ -63,14 +65,14 @@ tests/*.test.mjs`).
 
 **Pendiente:** todo lo anterior **sin probar en un APK real** (el teléfono
 del usuario tiene la 4.ª APK del repositorio, muy anterior); editar/borrar
-lorebook a mano; pantalla de respaldos; firma de depuración estable (ARQ-001);
-búsqueda dentro de un chat; ajustes de IA por personaje; creador de
+lorebook a mano; pantalla de respaldos; búsqueda dentro de un chat; ajustes de IA por personaje; creador de
 personajes guiado (solo propuesta, no autorizado).
 
 **Dónde está cada decisión:** lorebook por personaje → "Cambio de diseño:
 lorebook por personaje, no por chat"; fondo por personaje → "Fondo de chat
 por personaje + buscador"; skins → "Rearquitectura del sistema de skins";
-firma del APK y reinstalación → "Portabilidad y calidad a futuro", punto C;
+firma del APK y reinstalación → "Portabilidad y calidad a futuro", punto C y
+"ARQ-001: firma estable del APK";
 fix de exportación en APK → "Bug crítico corregido…"; respaldo automático,
 PIN, default `mode` → "Segunda ronda de QoL"; hub de 2 columnas → "Hub de
 personajes: segunda iteración visual"; auditoría de recuperabilidad →
@@ -82,7 +84,7 @@ personajes: segunda iteración visual"; auditoría de recuperabilidad →
 |---|---|---|---|
 | DOC-001 | Reconciliar la documentación con el estado real | Autorizado — ejecutado el 2026-09-23 (solo `docs/`; el commit lo confirma `git log`) | Esta sección, "Estado vigente", marcas "SUPERADO", `CONTRACTS.md` reescrito a los typedefs reales y aviso al inicio de `CONTRACT-LOREBOOK.md`. |
 | VER-001 | Auditoría de recuperabilidad y seguridad de datos | Autorizado — ejecutado el 2026-09-23; informe en "Auditoría VER-001" (al final de este archivo) | Solo lectura: no cambia comportamiento. Los hallazgos P0/P1 requieren contratos de corrección aparte (sin autorizar). |
-| ARQ-001 | Firma estable del APK | **Borrador, sin autorización** | Causa raíz y arreglo propuesto ya descritos en "Portabilidad y calidad a futuro", punto C. Sin implementar. |
+| ARQ-001 | Firma estable del APK | Autorizado — implementado el 2026-09-24; **pendiente de verificar en el primer build de CI y en un teléfono real** | Ver "ARQ-001: firma estable del APK" (al final de este archivo). Llave en `signing/`, workflow actualizado. |
 | MEM-001 | Proteger y gestionar el lorebook (incluye botón "Actualizar memoria ahora") | **Autorizado en principio por el usuario; pendiente de que termine VER-001; sin implementar** | Punto de partida: los hallazgos sobre lorebook de VER-001 (truncado por `maxLen`, colisión con la respuesta del chat, reemplazo total) y el pendiente "editar/borrar a mano". |
 | (previos) | `CONTRACT-LOREBOOK.md` (implementado, parcialmente superado), `CONTRACT-CHARACTER-CREATOR.md` (propuesta, no autorizada), `CONTRACT-HANDOFF.md` (briefing) | — | Ver los avisos al inicio de cada uno. |
 
@@ -547,7 +549,8 @@ por eso exige desinstalar la versión anterior antes de instalar la nueva
 (no es un bug de esta app, es el comportamiento esperado de Android ante
 una firma que cambió).
 
-Arreglo (no implementado todavía, no era prioridad en esta sesión): generar
+**(IMPLEMENTADO en ARQ-001, 2026-09-24 — ver "ARQ-001: firma estable del
+APK" al final.)** Arreglo propuesto entonces: generar
 un keystore de depuración una sola vez y reusarlo en cada build. El
 keystore de depuración de Android no es sensible (contraseña pública y
 conocida, `android`/`android`, no sirve para firmar nada que vaya a la Play
@@ -1064,7 +1067,7 @@ sin un APK real u otro entorno). Severidad P0 (pérdida de datos clara) a P3.
 | 14 | `saveCharacterLorebook` y `saveCharacterBackground` releen el personaje al guardar, así que la extracción larga NO pisa avatar ni fondo. Lo que queda pisable es lo contrario: `onCycleAvatarMode` y `onChangeAvatar` guardan el objeto entero en memoria; la copia en memoria se refresca al terminar la extracción del mismo chat, por lo que no encontré un camino realista, solo una ventana de milisegundos. Con "editar lorebook a mano" (MEM-001) este patrón de reemplazo total sí pasará a ser un riesgo real. | `state.js: saveCharacterLorebook`, `saveCharacterBackground`; `ui/chat.js: maybeUpdateLorebook`, `onCycleAvatarMode`, `onChangeAvatar` | H / I | P3 (hoy) |
 | 15 | Datos personales en texto plano fuera del almacenamiento privado: ver pregunta 8. La copia manual incluye `pinSalt`/`pinHash`; el PIN (≥4 dígitos, sin máximo) usa SHA-256 con sal y una sola pasada, así que un PIN corto se rompe por fuerza bruta. El PIN es un bloqueo de pantalla: los datos de IndexedDB no están cifrados. | `state.js: exportBackup`; `lock.js: hashPin`; `platform.js` | H | P2 |
 | 16 | Proyecto Android: `allowBackup="true"` (plantilla de Capacitor), sin `debuggable` explícito (el APK de `assembleDebug` es depurable), y `usesCleartextTraffic` no aparece en la plantilla. Ver pregunta 7. | plantilla oficial de Capacitor 6.x; `build-apk.yml`; `capacitor.config.json` | H (plantilla) / I (APK generado) / S (Auto Backup real) | P2 |
-| 17 | Cada APK se firma con un keystore distinto (causa ya documentada): actualizar exige desinstalar. La copia manual completa (v2) es entonces la única vía real de conservar personajes, chats y lorebook al actualizar, y es manual. | `build-apk.yml` (sin `android/` ni keystore versionados); sección "Portabilidad…", punto C | H | P1 (para futuras versiones) |
+| 17 | Cada APK se firma con un keystore distinto (causa ya documentada): actualizar exige desinstalar. La copia manual completa (v2) es entonces la única vía real de conservar personajes, chats y lorebook al actualizar, y es manual. | `build-apk.yml` (sin `android/` ni keystore versionados); sección "Portabilidad…", punto C | H | P1 (para futuras versiones) — **CORREGIDO por ARQ-001 (2026-09-24), a falta de verificar en un teléfono real** |
 | 18 | Rendimiento con muchos personajes: `listCharacters()` carga objetos completos (avatar y fondo incluidos) y se llama dos veces al arrancar (`migrateLegacyChats` en `main.js`, luego el hub); además `buildLastPreviews` hace un `getAll('chatMeta')` por personaje. Ver pregunta 10. | `state.js: listCharacters`; `main.js: boot`; `ui/home.js: show`, `buildLastPreviews` | H | P2 |
 | 19 | `Character.updated` no se mantiene nunca después de importar; `listCharacters()` ordena por él, así que el hub ordena por fecha de importación y no por actividad. No es pérdida de datos. | `cards/import.js`; `state.js: listCharacters`, `saveChatMessages` | H | P3 |
 | 20 | Repositorio público: sin secretos ni archivos personales. Tres detalles menores (P3) y ausencia de `.gitignore`. Ver pregunta 1. | escaneo de `git rev-list --all` | H | P3 |
@@ -1243,7 +1246,7 @@ La 4.ª APK del teléfono no contiene datos valiosos; no hay riesgo por
 reinstalar hoy. El servidor KoboldCpp es su PC personal, que se apaga al
 salir de casa. MEM-001 (proteger y gestionar el lorebook, incluido un botón
 "Actualizar memoria ahora") está autorizado en principio, sin implementar. ARQ-001
-sigue pendiente de confirmación, sin implementar.
+quedó autorizado después y se implementó (ver su sección al final).
 
 ### Contratos de corrección que esta auditoría sugiere (sin autorizar)
 
@@ -1257,6 +1260,72 @@ Ninguno está implementado ni autorizado; son insumos para el arquitecto:
    de partida (subir `maxLen` de la extracción o extraer por lotes; no
    reemplazar el lorebook si la respuesta es vacía o inesperada; no lanzar
    la extracción a la vez que la respuesta del chat; botón manual).
-4. ARQ-001: firma estable (hallazgo 17).
+4. ARQ-001: firma estable (hallazgo 17) — **hecho, ver su sección**.
 5. Guardado incremental de la respuesta parcial y manejo de segundo plano.
 6. `.gitignore` y `package-lock.json`.
+
+## ARQ-001: firma estable del APK de depuración (2026-09-24)
+
+**Estado:** implementado; NO verificado todavía en el CI ni en un teléfono
+(ver "Verificación" abajo).
+
+**Qué se hizo.**
+- `signing/companion-debug.keystore`: llave JKS generada una sola vez con
+  `keytool` (alias `androiddebugkey`, storepass y keypass `android`, RSA 2048,
+  SHA256withRSA, validez 36500 días ≈ 100 años). Está versionada en el repo a
+  propósito: el usuario no administra secretos de GitHub y es una llave de
+  depuración sin valor. **Es SOLO de depuración: NUNCA usarla para firmar
+  algo que se publique en una tienda.**
+- `signing/EXPECTED-CERT-SHA256.txt`: huella SHA-256 pública del certificado
+  (hex en minúsculas, sin `:`), la que el CI compara contra el APK.
+- `.github/workflows/build-apk.yml`, tres pasos nuevos, todos DESPUÉS de
+  `npx cap add android` (que regenera `android/` desde cero):
+  1. copia la llave a `~/.android/debug.keystore` (donde Gradle la busca);
+  2. inyecta `versionCode` (= `github.run_number`, crece en cada build) y
+     `versionName` (= `version` de `package.json`) en
+     `android/app/build.gradle`; **si el reemplazo no coincide, el job
+     falla**;
+  3. tras `assembleDebug`, corre `apksigner verify --print-certs` y compara el
+     SHA-256 del certificado con el archivo anterior; **si difiere, el job
+     falla**, antes de subir el artifact.
+- No cambió: `applicationId` (`com.companion.app`), `androidScheme` (`"http"`),
+  el gate `npm test`, nada bajo `www/` ni `tests/`.
+
+**Por qué versionCode = run_number.** Android solo deja "actualizar" encima
+si el `versionCode` nuevo es ≥ al instalado; el `1` fijo que trae Capacitor
+habría bloqueado actualizaciones entre builds distintos con la misma firma.
+
+**Cómo regenerar la llave si se pierde o hay que cambiarla** (implica que
+TODOS los teléfonos deban desinstalar la app una vez, perdiendo sus datos
+locales: exportar una copia antes):
+```
+keytool -genkeypair -keystore signing/companion-debug.keystore -storetype JKS \
+  -alias androiddebugkey -storepass android -keypass android \
+  -keyalg RSA -keysize 2048 -validity 36500 \
+  -dname "CN=Companion Debug,O=Companion,C=XX"
+keytool -list -v -keystore signing/companion-debug.keystore -storepass android
+```
+y copiar el valor `SHA256` (sin `:`, en minúsculas) a
+`signing/EXPECTED-CERT-SHA256.txt`. No añadir `*.keystore` a ningún
+`.gitignore` (SEC-001 debe dejar `signing/` fuera de sus reglas).
+
+**Verificación.**
+- Hecho: la llave abre con storepass/keypass `android`, el alias existe y la
+  huella del archivo coincide con `keytool -list -v`. Los pasos de inyección
+  se probaron localmente contra el `build.gradle` real que genera
+  `npx cap add android` (Capacitor 6): reemplaza `versionCode 1` y
+  `versionName "1.0"`, y falla con error si la línea no existe. El YAML del
+  workflow se parsea bien. 144/144 tests en verde.
+- **Supuesto (no verificable sin el CI):** que Gradle use
+  `~/.android/debug.keystore` con este JKS, que `apksigner` esté en
+  `$ANDROID_HOME/build-tools/*/` del runner y que su salida contenga
+  `certificate SHA-256 digest`. Si algo de esto falla, el job en rojo lo
+  avisa (no se publica un APK con firma equivocada). No hay `gh` para leer
+  los logs de Actions desde aquí.
+- **Supuesto (solo con un teléfono):** que instalar un APK sobre otro
+  conserve los datos; se comprueba con MARCA-1 (sección 8 del contrato) al
+  instalar el APK de MEM-001 sin desinstalar.
+
+**Aviso operativo.** El primer APK con esta firma exige desinstalar la
+versión anterior UNA vez (el usuario ya sabe que no hay datos valiosos en
+ella). Desde el siguiente, actualizar encima debería conservar los datos.
