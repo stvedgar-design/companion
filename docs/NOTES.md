@@ -81,9 +81,9 @@ personajes: segunda iteración visual"; auditoría de recuperabilidad →
 | ID | Título | Estado | Notas |
 |---|---|---|---|
 | DOC-001 | Reconciliar la documentación con el estado real | Autorizado — ejecutado el 2026-09-23 (solo `docs/`; el commit lo confirma `git log`) | Esta sección, "Estado vigente", marcas "SUPERADO", `CONTRACTS.md` reescrito a los typedefs reales y aviso al inicio de `CONTRACT-LOREBOOK.md`. |
-| VER-001 | Auditoría de recuperabilidad y seguridad de datos | Autorizado — informe en "Auditoría VER-001" | Solo lectura: no cambia comportamiento. Los hallazgos P0/P1 requieren contratos de corrección aparte (sin autorizar). |
+| VER-001 | Auditoría de recuperabilidad y seguridad de datos | Autorizado — ejecutado el 2026-09-23; informe en "Auditoría VER-001" (al final de este archivo) | Solo lectura: no cambia comportamiento. Los hallazgos P0/P1 requieren contratos de corrección aparte (sin autorizar). |
 | ARQ-001 | Firma estable del APK | **Borrador, sin autorización** | Causa raíz y arreglo propuesto ya descritos en "Portabilidad y calidad a futuro", punto C. Sin implementar. |
-| MEM-001 | Proteger y gestionar el lorebook | **Borrador, sin autorización** | Punto de partida: los hallazgos sobre lorebook de VER-001 (truncado por `maxLen`, colisión con la respuesta del chat, reemplazo total) y el pendiente "editar/borrar a mano". |
+| MEM-001 | Proteger y gestionar el lorebook (incluye botón "Actualizar memoria ahora") | **Autorizado en principio por el usuario; pendiente de que termine VER-001; sin implementar** | Punto de partida: los hallazgos sobre lorebook de VER-001 (truncado por `maxLen`, colisión con la respuesta del chat, reemplazo total) y el pendiente "editar/borrar a mano". |
 | (previos) | `CONTRACT-LOREBOOK.md` (implementado, parcialmente superado), `CONTRACT-CHARACTER-CREATOR.md` (propuesta, no autorizada), `CONTRACT-HANDOFF.md` (briefing) | — | Ver los avisos al inicio de cada uno. |
 
 ## Línea de tiempo resumida
@@ -1030,3 +1030,233 @@ explícitamente una propuesta para que el usuario la revise, no un encargo
 ya autorizado (a diferencia de `docs/CONTRACT-LOREBOOK.md`, que sí era un
 encargo directo). Cualquier instancia que retome este trabajo debe
 confirmar el alcance con el usuario antes de empezar a implementar.
+
+## Auditoría VER-001: recuperabilidad y seguridad de datos (2026-09-23)
+
+Contrato VER-001 (solo lectura: no se modificó ningún archivo de código).
+Método: lectura del código real, escaneo de todo el historial de git, y
+ejecución de tres comprobaciones contra los módulos reales desde un
+directorio temporal fuera del proyecto (truncado del lorebook, nombres del
+respaldo automático, `importBackup`). Línea base de tests antes y después:
+**144 de 144 en verde** (`node --test tests/*.test.mjs`).
+
+Leyenda: **H** = Hecho (leído en el código o ejecutado; con archivo y
+función), **I** = Inferencia (deducción), **S** = Supuesto (no verificable
+sin un APK real u otro entorno). Severidad P0 (pérdida de datos clara) a P3.
+
+### Tabla de hallazgos
+
+| # | Hallazgo | Evidencia | H/I/S | Sev. |
+|---|---|---|---|---|
+| 1 | El respaldo automático NO es una copia completa: solo guarda el log del chat (mensajes + `{id,name}` del personaje + título y escenario del chat). No incluye la card, el avatar, el fondo, el lorebook, `avatarMode` ni `Settings`. | `ui/chat.js: chatExportBlob()`, `maybeAutoBackup()` | H | P1 |
+| 2 | Ese archivo no lo acepta `importBackup` ("Ese archivo no es una copia de seguridad válida"). Solo lo lee "Importar chat", que exige tener ya el personaje y un chat abierto y usa únicamente `messages` (título y escenario del archivo se ignoran). En una instalación limpia hay que re-importar la card original, crear un chat y luego importar el log; se pierden lorebook, avatar/fondo cambiados y escenario. Los mensajes sí son recuperables. | `state.js: importBackup` (exige `Array.isArray(data.characters)`); `ui/chat.js: onImportChat`; ejecutado (C1) | H | P1 (P0 si "restaurable" se entiende como estado completo) |
+| 3 | Colisión de nombres: el archivo se llama `<personaje>[-<título>].json`. Dos chats del mismo personaje sin título (el chat automático de `chats.js: show()` nace sin título, y el título de "Nuevo chat" es opcional) comparten archivo y **cada respaldo pisa al del otro**. Igual con dos personajes de igual nombre, y con nombres sin letras latinas, cuyo `slug` queda vacío y cae en `chat.json`. Contradice "un archivo por chat" de esta misma documentación. | `ui/chat.js: chatSlug()`, `slugify()`; ejecutado (B): dos chats sin título → `mia.json` y `mia.json` | H | P1 |
+| 4 | Sin generaciones: un solo archivo por nombre, sobrescrito en cada respaldo (cada ≥10 min de actividad). Renombrar un chat crea un archivo nuevo y deja el viejo huérfano. | `platform.js: autoBackupBlob`, `AUTO_BACKUP_INTERVAL_MS` | H | P2 |
+| 5 | Atomicidad de la escritura no verificada: el código llama a `Filesystem.writeFile` sobre el mismo nombre, sin temporal + renombrado propio. No se pudo leer la fuente del plugin (la consulta a GitHub devolvió 404), así que no se sabe si trunca antes de escribir. | `platform.js: autoBackupBlob` | S (no verificable sin leer el plugin / APK real) | P2 |
+| 6 | El mensaje del usuario SÍ se guarda en IndexedDB **antes** de pedir la respuesta (`await persistChat()` y después `await generate()`), en una transacción atómica mensajes+meta. Esto es lo correcto. | `ui/chat.js: onSendClick`; `state.js: saveChatMessages` (`backend.atomic`) | H | — (positivo) |
+| 7 | La respuesta parcial solo vive en memoria mientras se genera: se guarda al terminar, al abortar o al salir del chat (`hide()`). No hay guardado periódico ni manejo de segundo plano (no existe `visibilitychange`/`pagehide`). Si Android mata la app a mitad de una respuesta, el mensaje del usuario queda guardado pero la respuesta parcial se pierde. | `ui/chat.js: generate()`, `hide()`; búsqueda de `visibilitychange` sin resultados | H (código) / S (que Android mate el proceso) | P2 |
+| 8 | Si la red se corta con texto ya recibido, la respuesta parcial se guarda (`truncated:true`) pero `chat.js` ignora ese indicador: no avisa al usuario. Si no hubo nada de texto, aparece un aviso y el botón "Reintentar respuesta". | `api/kobold.js: generateReply` (catch); `ui/chat.js: generate()` | H | P3 |
+| 9 | Un fallo al guardar (`saveChatMessages`) sí llega a un aviso visible ("No se pudo guardar la conversación."), pero es un toast de ~4 s: sin indicador persistente, sin reintento, y la generación continúa. Si además falla la creación inicial del chat, otro toast. | `ui/chat.js: persistChat()`, `show()`; `ui/shell.js: toast` | H | P3 |
+| 10 | `importBackup`: **gana el archivo** sin comparar fechas y sin avisar. Ejecutado (C2): un respaldo viejo importado sobre un chat de 5 mensajes lo dejó en 1, borró el lorebook (0 entradas) y vació el avatar. `ui/settings.js` no pide confirmación y solo muestra "Se restauraron N personajes". No es transaccional (`put` uno a uno). No restaura `Settings` (ni URL, ni nombre de usuario, ni PIN, ni tema). | `state.js: importBackup`; `ui/settings.js` (botón importar); ejecutado (C2) | H | P1 |
+| 11 | Lorebook: la extracción pide "la lista completa actualizada" con `maxLen` = el de chat (220 por defecto, 60–500), pero una lista de hasta 24 entradas × 320 caracteres necesita mucho más. Si el modelo se queda sin tokens, el parser cae al primer `{…}` completo y **el lorebook se reemplaza por 1 entrada**. Ejecutado (A): 8 entradas → 1. También borra todo si el modelo devuelve `[]` o envuelve la lista en un objeto (`{"entries":[…]}`): 8 → 0. Solo se salva si el texto no es JSON (parse = `null`). | `ui/chat.js: maybeUpdateLorebook()` (`completeOnce` sin `maxLen`); `api/lorebook.js: parseExtractionResponse`, `sanitizeLoreEntries`; ejecutado (A) y comprobación extra | H | P1 |
+| 12 | Lorebook y chat compiten por el servidor: `maybeUpdateLorebook()` se dispara dentro de `persistChat()`, sin `await`, justo antes de `generate()`; en el mensaje que cruza el umbral (cada 40) salen dos peticiones casi a la vez. No hay cola ni bloqueo entre `completeOnce` y `generateReply`. Qué pasa depende del servidor (cola, o "ocupado"). Además `completeOnce` no envía `genkey` ni llama a `/api/extra/abort`: si el cliente se rinde a los 2 min, el servidor sigue generando. Si la llamada falla por HTTP (p. ej. "ocupado"), el contador no avanza y se reintenta en cada guardado siguiente. | `ui/chat.js: persistChat()`, `onSendClick`; `api/kobold.js: completeOnce`, `generateReply` | H (código) / S (comportamiento del servidor) | P1 |
+| 13 | Con el PC apagado (uso fuera de casa), `completeOnce` espera hasta 2 min por intento (timeout, no rechazo inmediato) y no hay más de uno a la vez (`lorebookUpdateInFlight`). No pierde datos; solo reintenta. | `ui/chat.js`, `api/kobold.js: COMPLETE_ONCE_TIMEOUT_MS` | H (código) / I (efecto) | P3 |
+| 14 | `saveCharacterLorebook` y `saveCharacterBackground` releen el personaje al guardar, así que la extracción larga NO pisa avatar ni fondo. Lo que queda pisable es lo contrario: `onCycleAvatarMode` y `onChangeAvatar` guardan el objeto entero en memoria; la copia en memoria se refresca al terminar la extracción del mismo chat, por lo que no encontré un camino realista, solo una ventana de milisegundos. Con "editar lorebook a mano" (MEM-001) este patrón de reemplazo total sí pasará a ser un riesgo real. | `state.js: saveCharacterLorebook`, `saveCharacterBackground`; `ui/chat.js: maybeUpdateLorebook`, `onCycleAvatarMode`, `onChangeAvatar` | H / I | P3 (hoy) |
+| 15 | Datos personales en texto plano fuera del almacenamiento privado: ver pregunta 8. La copia manual incluye `pinSalt`/`pinHash`; el PIN (≥4 dígitos, sin máximo) usa SHA-256 con sal y una sola pasada, así que un PIN corto se rompe por fuerza bruta. El PIN es un bloqueo de pantalla: los datos de IndexedDB no están cifrados. | `state.js: exportBackup`; `lock.js: hashPin`; `platform.js` | H | P2 |
+| 16 | Proyecto Android: `allowBackup="true"` (plantilla de Capacitor), sin `debuggable` explícito (el APK de `assembleDebug` es depurable), y `usesCleartextTraffic` no aparece en la plantilla. Ver pregunta 7. | plantilla oficial de Capacitor 6.x; `build-apk.yml`; `capacitor.config.json` | H (plantilla) / I (APK generado) / S (Auto Backup real) | P2 |
+| 17 | Cada APK se firma con un keystore distinto (causa ya documentada): actualizar exige desinstalar. La copia manual completa (v2) es entonces la única vía real de conservar personajes, chats y lorebook al actualizar, y es manual. | `build-apk.yml` (sin `android/` ni keystore versionados); sección "Portabilidad…", punto C | H | P1 (para futuras versiones) |
+| 18 | Rendimiento con muchos personajes: `listCharacters()` carga objetos completos (avatar y fondo incluidos) y se llama dos veces al arrancar (`migrateLegacyChats` en `main.js`, luego el hub); además `buildLastPreviews` hace un `getAll('chatMeta')` por personaje. Ver pregunta 10. | `state.js: listCharacters`; `main.js: boot`; `ui/home.js: show`, `buildLastPreviews` | H | P2 |
+| 19 | `Character.updated` no se mantiene nunca después de importar; `listCharacters()` ordena por él, así que el hub ordena por fecha de importación y no por actividad. No es pérdida de datos. | `cards/import.js`; `state.js: listCharacters`, `saveChatMessages` | H | P3 |
+| 20 | Repositorio público: sin secretos ni archivos personales. Tres detalles menores (P3) y ausencia de `.gitignore`. Ver pregunta 1. | escaneo de `git rev-list --all` | H | P3 |
+
+### Respuestas a las 10 preguntas
+
+**1. Repositorio público (hecha primero).** Alcance del escaneo: los 10
+commits de `git rev-list --all` (una sola rama, `main`; sin tags ni stash), el
+árbol actual (47 archivos) y todos los blobs; no hay blobs binarios ni de más
+de 200 KB. *Que el repositorio sea público* es un dato aportado por el
+usuario: **S** (la herramienta `gh` no estaba disponible para comprobarlo).
+- **Rutas de todo el historial** (`git log --all --name-only`): solo archivos
+  del proyecto (código, tests, docs, workflow). No aparece ninguna ruta de
+  `.ssh`, `.bash_history`, keystores (`*.jks`/`*.p12`), `.env`, Papelera
+  (`.local/share/Trash`), copias de seguridad de chats ni documentos
+  personales. La única ruta desaparecida es `www/css/theme-glass.css`
+  (borrada a propósito, código de la app). **H**.
+- **Patrones de secretos** en todos los blobs (claves PEM/SSH, tokens de
+  GitHub, claves tipo AWS/Google/Slack/OpenAI, asignaciones
+  `password/secret/token/apikey`, `storepass`, correos electrónicos, nombres
+  `*.ts.net`, IPs privadas 192.168/10./172.16): **sin coincidencias**. Las
+  palabras "keystore" solo aparecen en la prosa de `docs/NOTES.md` y
+  `docs/CONTRACT-HANDOFF.md`. **H**.
+- **Metadatos de commits**: un único autor (la cuenta de GitHub del proyecto) con un correo
+  de relleno, no el correo real del usuario. **H**.
+- **`.git/config`**: solo la URL del remoto, sin credenciales embebidas. **H**.
+- **Hallazgos menores (P3), sin copiar su contenido y sin cambiar nada:**
+  1. *Dirección IP de una red privada Tailscale*, presente como ejemplo en
+     `tests/state.test.mjs` y `docs/CONTRACTS.md` (unas 10 líneas en cada
+     archivo, en varios commits; un único valor). No es un secreto ni es
+     alcanzable desde fuera de la tailnet, pero revela que existe ese
+     servidor. Que sea la IP real del usuario es **S**.
+  2. *Ruta absoluta con el nombre de usuario del PC*, en `docs/NOTES.md` y
+     `docs/CONTRACT-HANDOFF.md` (en el historial de git; la ruta del
+     proyecto y la del directorio personal).
+  3. *Contenido personal*: `docs/examples/mia-card-reference.json` es una
+     character card creada por el usuario que menciona su nombre. El usuario
+     decidirá qué hacer con ella.
+  4. *No existe `.gitignore`*: nada impide añadir por accidente
+     `android/`, `node_modules/`, un keystore o un backup. P3 (P2 si se
+     versiona `android/`).
+  5. Sin `package-lock.json` versionado y con dependencias con rango `^`: el
+     CI instala versiones no fijadas (riesgo de cadena de suministro y de
+     builds no reproducibles). Los artefactos de `Actions` de un repositorio
+     público los puede descargar cualquier cuenta de GitHub (**I**); el APK
+     no contiene datos del usuario ni secretos.
+- **Recomendación** (nada se ejecutó): no hace falta rotar credenciales porque
+  no hay ninguna. Para los detalles 1–3, no reescribir historia ni hacer
+  `push --force`; decidir si se quiere retirar la card de Mia o sustituir la
+  IP por un ejemplo genérico *hacia adelante*. Aunque se borrara hoy, seguiría
+  en el historial público. Añadir un `.gitignore` sería un contrato aparte.
+  Como buena práctica: no escribir más IPs, rutas ni nombres reales en la
+  documentación (usar `<IP-TAILSCALE>`, `<RUTA-DEL-PROYECTO>`).
+
+**2. Contenido del respaldo automático.** Un JSON
+`{app:'companion', kind:'chat-log', version:2, exported, character:{id,name},
+chat:{id,title,scenario}, messages}`. **No** incluye la card completa, el
+avatar, el fondo, el lorebook ni `chatBackground*`, y **no** incluye
+`Settings` (por tanto tampoco `pinSalt`/`pinHash`). *Evidencia:*
+`ui/chat.js: chatExportBlob()`. **H**. (La copia manual de Ajustes,
+`exportBackup()`, sí lleva personajes completos y `Settings` con el hash del
+PIN.)
+
+**3. Restaurar en instalación limpia.** El log **no** entra por
+`importBackup` (rechazado, ejecutado). Solo entra por "Importar chat" del menú
+del chat, que requiere un personaje y un chat ya existentes y reemplaza los
+mensajes (con confirmación). En una instalación limpia: re-importar la card
+original, crear un chat, importar el log. Se recuperan los mensajes; no el
+lorebook, ni el avatar/fondo personalizados, ni título/escenario del chat, ni
+los ajustes; el personaje obtiene un `id` nuevo. **H**. Que el archivo
+exista y sea legible en `Documents/Companion-backups/` tras reinstalar
+depende de que la escritura funcione en Android: **S, no verificable fuera
+de un APK real** (la 4.ª APK del usuario es anterior a esta función).
+
+**4. Nombres, sobrescritura, generaciones y atomicidad.** Nombre =
+`<slug del personaje>[-<slug del título>].json`; se sobrescribe en cada
+respaldo (≥10 min y ≥2 mensajes); una sola generación; colisiones descritas en
+el hallazgo 3 (ejecutado). Atomicidad: el código no hace temporal +
+renombrado y no se pudo verificar cómo escribe el plugin: **S**. Un fallo se
+traga en silencio (devuelve `false`) y se reintenta en el siguiente guardado
+(`markChatExported` solo se llama si tuvo éxito).
+
+**5. Secuencia de persistencia al enviar.** (1) el mensaje se añade en
+memoria; (2) `await persistChat()` → `saveChatMessages` (transacción
+atómica de mensajes + meta) → dispara sin esperar `maybeAutoBackup()` y
+`maybeUpdateLorebook()`; (3) `await generate()`. **El mensaje del usuario
+queda guardado antes de `generateReply`.** **H**. La respuesta parcial se
+acumula solo en memoria y se guarda: al terminar, al abortar (Detener), al
+salir del chat (`hide()`) o al fallar la red con texto ya recibido (guardada
+como parcial recortada, sin aviso). Segundo plano: no hay ningún manejo; si
+el proceso muere, se pierde la parcial (hallazgo 7). Los fallos de
+`saveChatMessages` llegan a un toast (hallazgo 9). Un solapamiento entre
+`hide()` y el `finally` de `generate()` reescribe siempre el mismo par
+`chat`/`messages` en memoria; una ventana teórica de cruce entre chats
+existe solo durante el `await` de `show()` y dura milisegundos (**I**, no
+reproducida).
+
+**6. Conflicto de `id` en `importBackup`.** Gana el archivo para personajes,
+metadatos de chat y mensajes; no compara `updated`; no avisa; no restaura
+`Settings`. Ejecutado (C2): pisa datos nuevos con uno viejo. **H**.
+
+**7. Persistencia y proyecto Android.**
+- `navigator.storage.persist()`: sí se llama, una vez, al crear la instancia
+  de estado (`state.js: requestPersistence`), sin comprobar el resultado.
+  **H**. Su efecto real en el WebView de Android: **S**.
+- El proyecto Android se genera en cada build (`npx cap add android`,
+  `build-apk.yml`); `android/` no está versionado. En la plantilla oficial de
+  Capacitor 6.x: `android:allowBackup="true"`; no hay `android:debuggable` ni
+  `android:usesCleartextTraffic` ni reglas de backup (`fullBackupContent`,
+  `dataExtractionRules`); único permiso `INTERNET`. **H** (plantilla).
+  `assembleDebug` compila la variante *debug*, que es depurable: **I**.
+  `capacitor.config.json` fija `androidScheme:"http"` y `cleartext:true`; no
+  se pudo confirmar si el CLI lo traduce a un atributo del manifiesto: **S**.
+  Consecuencias: con depuración USB activa se pueden leer los datos de la
+  app; `allowBackup` permite la copia automática de Android a la cuenta de
+  Google (puede o no incluir IndexedDB, y puede o no restaurarse tras una
+  reinstalación con otra firma): **S, no verificable fuera de APK real**.
+
+**8. Datos personales fuera del almacenamiento privado** (todo texto plano,
+JSON sin cifrar):
+- `Documents/<nombre>.json` (`platform.js: saveBlobNative`, además se ofrece
+  el panel Compartir con ese archivo): copia completa manual
+  (`companion-copia-<fecha>.json`: personajes con card/avatar/fondo/lorebook,
+  todos los chats, `Settings` con URL del servidor, nombre de usuario y hash
+  del PIN) y log de un chat (`companion-chat-<slug>-<fecha>.json`).
+- `Documents/Companion-backups/<slug>.json` (`autoBackupBlob`): log de chat
+  completo, automático y silencioso.
+- Red: los mensajes viajan por `http://` (cleartext) al KoboldCpp del usuario
+  (dentro del túnel de Tailscale); la app además carga la fuente Literata
+  desde Google Fonts (`index.html`), lo que expone la IP a Google. Portapapeles
+  solo cuando el usuario pulsa "Copiar".
+- No hay `localStorage`, cookies, `console.log` de datos ni telemetría.
+  **H** (búsqueda en `www/`).
+
+**9. Lorebook (solo lectura de código).** Resultado guardado con
+`saveCharacterLorebook(targetCharacterId, lorebook)`, que **relee** el
+personaje en el momento de guardar y solo cambia `lorebook`: no pisa avatar
+ni fondo. El objeto leído antes de `completeOnce()` se usa para el prompt y
+como `baseLorebook` (para conservar entradas `manual`, hoy inexistentes, y
+como valor de reserva si el texto no se puede parsear). Lo que sí puede
+quedar obsoleto es ese `baseLorebook`: cualquier cambio hecho entre la
+lectura y el guardado (hoy nada, porque no hay UI de edición) se pierde por
+el reemplazo total. El mayor riesgo no es obsolescencia sino el hallazgo 11
+(truncado/`[]`/objeto envuelto → lorebook reducido o vaciado). Sobre el
+servidor: la extracción no bloquea la app pero sí coincide con la petición
+del chat (hallazgo 12) y, si el cliente se rinde, el servidor sigue
+generando. **H/S** según se indica.
+
+**10. Tamaño de datos.** Avatar: JPEG 384 px, calidad 0,85; fondo: JPEG máx.
+1280 px, calidad 0,82; ambos como data URL base64 dentro de `Character`.
+`listCharacters()` los carga completos (`backend.getAll('characters')`) en el
+hub y también al arrancar (`migrateLegacyChats`). **H**. Estimación (**I**,
+no medida): un fondo típico de 90–250 KB en binario ≈ 0,12–0,33 MB en base64
+y un avatar de 20–45 KB; con 30 personajes con fondo ≈ **4–10 MB de fondos +
+1–2 MB de avatares**, leídos dos veces al arrancar y retenidos en memoria
+mientras el hub está abierto, más ~30 lecturas completas del store de
+metadatos de chats. Es manejable en un teléfono actual pero crece lineal; la
+copia manual con 30 personajes ronda 5–15 MB y se envía a Android como
+base64 por el puente de Capacitor (`blobToBase64`): si ese tamaño es un
+problema en gama baja es **S, no verificable fuera de APK real**.
+
+### Lo que NO se pudo verificar (y por qué)
+
+Todo lo que depende de Android/Capacitor real: que `Documents/` acepte la
+escritura y cómo (atomicidad, permisos), el comportamiento de
+`storage.persist()`, `allowBackup`/Auto Backup, el límite de tamaño del
+puente base64, qué hace el WebView al pasar a segundo plano, y cómo responde
+KoboldCpp ante dos peticiones simultáneas (depende de su versión y de si se
+lanzó con `--multiuser`). Ninguna función nueva se ha probado en el teléfono
+del usuario (tiene la 4.ª APK, muy anterior). No se probó contra un servidor
+KoboldCpp real.
+
+### Contexto aportado por el usuario tras la auditoría (Hecho, por el usuario)
+
+La 4.ª APK del teléfono no contiene datos valiosos; no hay riesgo por
+reinstalar hoy. El servidor KoboldCpp es su PC personal, que se apaga al
+salir de casa. MEM-001 (proteger y gestionar el lorebook, incluido un botón
+"Actualizar memoria ahora") está autorizado en principio, sin implementar. ARQ-001
+sigue pendiente de confirmación, sin implementar.
+
+### Contratos de corrección que esta auditoría sugiere (sin autorizar)
+
+Ninguno está implementado ni autorizado; son insumos para el arquitecto:
+1. Respaldo automático completo y sin colisiones (nombre por `chatId`,
+   generaciones, escritura segura, incluir personaje/lorebook, importable por
+   `importBackup`).
+2. Importación de copias con confirmación y protección contra pisar datos
+   más nuevos.
+3. MEM-001 (ya autorizado en principio): hallazgos 11, 12 y 14 son su punto
+   de partida (subir `maxLen` de la extracción o extraer por lotes; no
+   reemplazar el lorebook si la respuesta es vacía o inesperada; no lanzar
+   la extracción a la vez que la respuesta del chat; botón manual).
+4. ARQ-001: firma estable (hallazgo 17).
+5. Guardado incremental de la respuesta parcial y manejo de segundo plano.
+6. `.gitignore` y `package-lock.json`.
