@@ -11,6 +11,7 @@
  * @property {string} content       // el hecho en sí, en texto plano, conciso
  * @property {number} updated       // ms desde epoch
  * @property {'auto'|'manual'} source  // 'auto' = generado por este sistema
+ * @property {boolean} [always]     // MEM-004: siempre presente (sin keys); implica source:'manual'
  */
 
 // Cada cuántos mensajes nuevos de un chat se dispara una actualización
@@ -56,9 +57,17 @@ export const LOREBOOK_EXTRACT_PREFILL = '[';
 export const LOREBOOK_MAX_ENTRIES = 24;
 export const LOREBOOK_MAX_ENTRY_CHARS = 320;
 
-// Tope duro de caracteres inyectados en el prompt real por turno (~250-300
-// tokens con la heurística CHARS_PER_TOKEN de prompt.js).
+// Tope duro de caracteres inyectados en el prompt real por turno para las
+// entradas "por tema" (~250-300 tokens con la heurística CHARS_PER_TOKEN de
+// prompt.js). Es el tope máximo: con recuerdos "siempre presentes" en uso se
+// reduce para que la suma no pase de LOREBOOK_TOTAL_CHAR_BUDGET (ver
+// `loreTopicBudget`); sin ellos, todo sigue exactamente como antes.
 export const LOREBOOK_INJECT_CHAR_BUDGET = 1000;
+
+// MEM-004. Tope de caracteres de los recuerdos "siempre presentes" (estables,
+// van en cada turno) y suma máxima de ambos bloques (~340 tokens).
+export const LOREBOOK_ALWAYS_CHAR_BUDGET = 500;
+export const LOREBOOK_TOTAL_CHAR_BUDGET = 1200;
 
 // Cuántos de los últimos mensajes se escanean buscando coincidencias de
 // `keys` antes de armar cada respuesta (no todo el historial: sería caro).
@@ -771,11 +780,12 @@ export function parseKeysInput(text) {
 /**
  * Devuelve una copia de `entries` con la entrada `id` editada. Una entrada
  * editada pasa a `source:'manual'`, así la extracción automática ya no la
- * toca. Pura; devuelve `null` si el `id` no existe o los datos no son válidos
- * (contenido o keys vacíos).
+ * toca. `patch.always` (MEM-004; `true`/`false`, opcional: si falta no se
+ * cambia) la marca o desmarca como "siempre presente". Pura; devuelve `null`
+ * si el `id` no existe o los datos no son válidos (contenido o keys vacíos).
  * @param {LoreEntry[]} entries
  * @param {string} id
- * @param {{ content: string, keys: string[] }} patch
+ * @param {{ content: string, keys: string[], always?: boolean }} patch
  * @param {number} [now]
  * @returns {LoreEntry[]|null}
  */
@@ -787,7 +797,10 @@ export function editLoreEntry(entries, id, patch, now = Date.now()) {
   const keys = Array.isArray(patch && patch.keys) ? patch.keys.map(normKey).filter(Boolean) : [];
   if (!content || !keys.length) return null;
   const out = list.slice();
-  out[idx] = { ...list[idx], content, keys, updated: now, source: 'manual' };
+  const edited = { ...list[idx], content, keys, updated: now, source: 'manual' };
+  if (patch && patch.always === true) edited.always = true;
+  else if (patch && patch.always === false) delete edited.always;
+  out[idx] = edited;
   return out;
 }
 
@@ -1003,7 +1016,7 @@ export function selectLoreEntries(entries, recentMessages, opts = {}) {
   if (!list.length) return [];
 
   const scanCount = opts.scanCount || LOREBOOK_SCAN_LAST_MESSAGES;
-  const budget = opts.charBudget || LOREBOOK_INJECT_CHAR_BUDGET;
+  const budget = typeof opts.charBudget === 'number' ? opts.charBudget : LOREBOOK_INJECT_CHAR_BUDGET;
 
   const text = (recentMessages || [])
     .slice(-scanCount)
@@ -1013,7 +1026,7 @@ export function selectLoreEntries(entries, recentMessages, opts = {}) {
   const haystack = prepareHaystack(text);
 
   const matched = list
-    .filter((e) => entryMatches(e, haystack))
+    .filter((e) => !e.always && entryMatches(e, haystack)) // las "siempre presentes" ya van aparte
     .sort((a, b) => (b.updated || 0) - (a.updated || 0));
 
   const kept = [];
@@ -1036,4 +1049,96 @@ export function selectLoreEntries(entries, recentMessages, opts = {}) {
 export function formatLoreBlock(entries) {
   if (!entries || !entries.length) return '';
   return `Known facts (from memory):\n${entries.map((e) => `- ${e.content}`).join('\n')}`;
+}
+
+/* ---------- MEM-004: recuerdos "siempre presentes" y presupuestos ---------- */
+
+/** Caracteres que cuesta una entrada en el prompt ("- " + salto de línea). */
+export function loreEntryCost(entry) {
+  return String((entry && entry.content) || '').length + 3;
+}
+
+/**
+ * Selecciona los recuerdos "siempre presentes" que caben en `charBudget`
+ * (por defecto LOREBOOK_ALWAYS_CHAR_BUDGET), en el orden en que están
+ * guardados. Si una no cabe, ESA y las que la siguen NO se envían (así el
+ * conjunto es estable y predecible). Pura.
+ * @param {LoreEntry[]} entries
+ * @param {{ charBudget?: number }} [opts]
+ * @returns {{ entries: LoreEntry[], sent: number, total: number, used: number, requested: number, budget: number, overflow: boolean }}
+ *   `requested` = caracteres de TODAS las marcadas; `used` = los que se envían.
+ */
+export function selectAlwaysEntries(entries, opts = {}) {
+  const budget = typeof opts.charBudget === 'number' ? opts.charBudget : LOREBOOK_ALWAYS_CHAR_BUDGET;
+  const marked = (Array.isArray(entries) ? entries : []).filter(
+    (e) => e && e.always === true && typeof e.content === 'string' && e.content
+  );
+  const kept = [];
+  let used = 0;
+  for (const entry of marked) {
+    const cost = loreEntryCost(entry);
+    if (used + cost > budget) break;
+    used += cost;
+    kept.push(entry);
+  }
+  const requested = marked.reduce((sum, e) => sum + loreEntryCost(e), 0);
+  return { entries: kept, sent: kept.length, total: marked.length, used, requested, budget, overflow: kept.length < marked.length };
+}
+
+/**
+ * Tope de caracteres para el bloque "por tema" dado lo que ya usan las
+ * "siempre presentes": la suma nunca pasa de LOREBOOK_TOTAL_CHAR_BUDGET, y sin
+ * "siempre presentes" queda en LOREBOOK_INJECT_CHAR_BUDGET (como antes).
+ * @param {number} alwaysUsed
+ * @returns {number}
+ */
+export function loreTopicBudget(alwaysUsed) {
+  return Math.max(0, Math.min(LOREBOOK_INJECT_CHAR_BUDGET, LOREBOOK_TOTAL_CHAR_BUDGET - (alwaysUsed || 0)));
+}
+
+/**
+ * Bloque de texto para los recuerdos "siempre presentes" ya seleccionados.
+ * @param {LoreEntry[]} entries
+ * @returns {string} '' si no hay ninguna.
+ */
+export function formatAlwaysBlock(entries) {
+  if (!entries || !entries.length) return '';
+  return `Always keep in mind:\n${entries.map((e) => `- ${e.content}`).join('\n')}`;
+}
+
+/**
+ * Arma los dos bloques de lorebook de un turno: `always` (estable: solo cambia
+ * cuando el usuario edita) y `topic` (varía con la conversación). Sin
+ * entradas devuelve ambos '' y el prompt queda IDÉNTICO al de siempre.
+ * @param {LoreEntry[]} entries  `character.lorebook`
+ * @param {import('../state.js').Message[]} recentMessages
+ * @returns {{ always: string, topic: string, alwaysSelection: ReturnType<typeof selectAlwaysEntries> }}
+ */
+export function buildLoreBlocks(entries, recentMessages) {
+  const alwaysSelection = selectAlwaysEntries(entries);
+  const topicEntries = selectLoreEntries(entries, recentMessages, {
+    charBudget: loreTopicBudget(alwaysSelection.used),
+  });
+  return { always: formatAlwaysBlock(alwaysSelection.entries), topic: formatLoreBlock(topicEntries), alwaysSelection };
+}
+
+/**
+ * Vista previa de presupuestos para la UI y para `estimateContextUsage`:
+ * el bloque "siempre presentes" real y el espacio máximo que podría ocupar el
+ * bloque "por tema" (el menor entre su tope y el total de sus entradas).
+ * @param {LoreEntry[]} entries
+ * @returns {{ alwaysBlock: string, alwaysSelection: ReturnType<typeof selectAlwaysEntries>, topicReserve: number, topicBudget: number }}
+ */
+export function loreBudgetPreview(entries) {
+  const alwaysSelection = selectAlwaysEntries(entries);
+  const topicBudget = loreTopicBudget(alwaysSelection.used);
+  const topicTotal = (Array.isArray(entries) ? entries : [])
+    .filter((e) => e && !e.always && typeof e.content === 'string')
+    .reduce((sum, e) => sum + loreEntryCost(e), 0);
+  return {
+    alwaysBlock: formatAlwaysBlock(alwaysSelection.entries),
+    alwaysSelection,
+    topicReserve: Math.min(topicBudget, topicTotal),
+    topicBudget,
+  };
 }

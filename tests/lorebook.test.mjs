@@ -32,7 +32,15 @@ import {
   areNearDuplicates,
   mergeNearDuplicates,
   cleanupLorebook,
-  cleanStoredLorebook
+  cleanStoredLorebook,
+  LOREBOOK_ALWAYS_CHAR_BUDGET,
+  LOREBOOK_TOTAL_CHAR_BUDGET,
+  selectAlwaysEntries,
+  loreTopicBudget,
+  formatAlwaysBlock,
+  buildLoreBlocks,
+  loreBudgetPreview,
+  loreEntryCost
 } from '../www/js/api/lorebook.js';
 
 function makeCharacter(overrides = {}) {
@@ -838,4 +846,113 @@ test('cleanStoredLorebook: si el guardado falla, lanza y no cambia nada', async 
     names: NAMES
   }));
   assert.deepEqual(stored, realSeven());
+});
+
+// ---------- MEM-004: "siempre presentes" y presupuestos ----------
+
+const always = (id, content, extra = {}) => ({ id, keys: ['x'], content, updated: 1, source: 'manual', always: true, ...extra });
+
+test('MEM-004: editLoreEntry marca y desmarca `always`; la entrada queda manual', () => {
+  const list = [makeEntry({ id: 'a', keys: ['perro'], content: 'El perro se llama Bruno.' })];
+  const on = editLoreEntry(list, 'a', { content: 'El perro se llama Bruno.', keys: ['perro'], always: true }, 7);
+  assert.equal(on[0].always, true);
+  assert.equal(on[0].source, 'manual');
+  const same = editLoreEntry(on, 'a', { content: 'El perro se llama Bruno.', keys: ['perro'] }, 8); // sin `always`: no cambia
+  assert.equal(same[0].always, true);
+  const off = editLoreEntry(on, 'a', { content: 'El perro se llama Bruno.', keys: ['perro'], always: false }, 9);
+  assert.ok(!('always' in off[0]));
+  assert.equal(off[0].source, 'manual');
+  assert.ok(!('always' in list[0])); // no muta
+});
+
+test('MEM-004: selectAlwaysEntries respeta el tope, mantiene el orden guardado y avisa si no caben', () => {
+  const a = always('a', 'x'.repeat(200));
+  const b = always('b', 'y'.repeat(200));
+  const c = always('c', 'z'.repeat(200));
+  const skip = makeEntry({ id: 'n', content: 'No marcada.' });
+  const out = selectAlwaysEntries([a, skip, b, c]);
+  assert.deepEqual(out.entries.map((e) => e.id), ['a', 'b']);   // 203 + 203 = 406 ≤ 500; con la tercera pasaría
+  assert.equal(out.overflow, true);
+  assert.equal(out.sent, 2);
+  assert.equal(out.total, 3);
+  assert.equal(out.used, 406);
+  assert.equal(out.requested, 609);
+  assert.equal(out.budget, LOREBOOK_ALWAYS_CHAR_BUDGET);
+  // Si una no cabe, las que la siguen tampoco se envían (aunque fueran cortas).
+  const short = always('s', 'corta');
+  assert.deepEqual(selectAlwaysEntries([a, b, c, short]).entries.map((e) => e.id), ['a', 'b']);
+  assert.equal(selectAlwaysEntries([a]).overflow, false);
+  assert.deepEqual(selectAlwaysEntries([]).entries, []);
+  assert.deepEqual(selectAlwaysEntries(null).entries, []);
+});
+
+test('MEM-004: la suma de ambos presupuestos nunca pasa del total; sin "siempre presentes" nada cambia', () => {
+  assert.equal(loreTopicBudget(0), LOREBOOK_INJECT_CHAR_BUDGET); // instalación existente: idéntico a antes
+  assert.equal(loreTopicBudget(LOREBOOK_ALWAYS_CHAR_BUDGET), LOREBOOK_TOTAL_CHAR_BUDGET - LOREBOOK_ALWAYS_CHAR_BUDGET);
+  for (const used of [0, 100, 300, 500]) assert.ok(used + loreTopicBudget(used) <= LOREBOOK_TOTAL_CHAR_BUDGET);
+  assert.ok(LOREBOOK_TOTAL_CHAR_BUDGET <= 1200);
+});
+
+test('MEM-004: una entrada `always` no se repite en el bloque por tema aunque coincida su key', () => {
+  const entries = [
+    always('a', 'Edgar prefiere las mañanas tranquilas.', { keys: ['mañanas'] }),
+    makeEntry({ id: 'b', keys: ['mañanas'], content: 'Sobre las mañanas de domingo.' })
+  ];
+  const recent = [{ role: 'user', text: 'Me encantan las mañanas', ts: 1 }];
+  assert.deepEqual(selectLoreEntries(entries, recent).map((e) => e.id), ['b']);
+  const blocks = buildLoreBlocks(entries, recent);
+  assert.match(blocks.always, /^Always keep in mind:\n- Edgar prefiere las mañanas tranquilas\.$/);
+  assert.match(blocks.topic, /Sobre las mañanas de domingo/);
+  assert.ok(!blocks.topic.includes('Edgar prefiere'));
+});
+
+test('MEM-004: buildLoreBlocks sin entradas devuelve todo vacío; con solo "por tema" el bloque es el de siempre', () => {
+  const recent = [{ role: 'user', text: 'hablemos del café', ts: 1 }];
+  const none = buildLoreBlocks([], recent);
+  assert.deepEqual([none.always, none.topic], ['', '']);
+  const only = buildLoreBlocks([makeEntry({ keys: ['café'], content: 'Se conocieron en un café.' })], recent);
+  assert.equal(only.always, '');
+  assert.equal(only.topic, formatLoreBlock(selectLoreEntries([makeEntry({ keys: ['café'], content: 'Se conocieron en un café.' })], recent)));
+});
+
+test('MEM-004: el bloque por tema usa el presupuesto reducido cuando hay "siempre presentes"', () => {
+  const marked = [always('a', 'a'.repeat(247)), always('b', 'b'.repeat(247))]; // 250 + 250 = 500 (el tope justo)
+  const topics = ['uno', 'dos', 'tres', 'cuatro'].map((k, i) =>
+    makeEntry({ id: k, keys: [k], content: `${k} ` + 'x'.repeat(250 - k.length - 1), updated: 10 - i }));
+  const recent = [{ role: 'user', text: 'uno dos tres cuatro', ts: 1 }];
+  const countLines = (block) => (block ? block.split('\n').length - 1 : 0);
+  const withAlways = buildLoreBlocks([...marked, ...topics], recent);
+  const plain = buildLoreBlocks(topics, recent);
+  assert.equal(countLines(plain.topic), 3);        // sin "siempre presentes": tope de 1000, caben 3 de 253
+  assert.equal(countLines(withAlways.topic), 2);   // con 500 usados: tope de 700, caben 2
+  assert.equal(countLines(withAlways.always), 2);
+  const total = withAlways.always.length + withAlways.topic.length;
+  assert.ok(total <= LOREBOOK_TOTAL_CHAR_BUDGET + 80, `sumaron ${total}`); // + los títulos de bloque
+});
+
+test('MEM-004: la vía automática nunca toca, fusiona ni borra una entrada `always`; y nunca marca una', () => {
+  const pinned = always('m', 'U loves physical touch and is clumsy with technology', { keys: ['touch'] });
+  const out = applyExtraction([pinned], [{ keys: ['hugs'], content: 'U likes physical touch.' }], { now: 9, ignoreKeys: NAMES });
+  assert.deepEqual(out.entries[0], pinned);
+  assert.equal(out.entries.length, 2);
+  assert.ok(out.entries.slice(1).every((e) => !e.always && e.source === 'auto'));
+  const cleaned = cleanupLorebook([pinned, makeEntry({ id: 'z', keys: ['personality'], content: 'U likes physical touch.' })], { names: NAMES, now: 9 });
+  assert.deepEqual(cleaned.entries.find((e) => e.id === 'm'), pinned);
+  assert.equal(cleaned.entries.length, 2);
+  // Con el tope de entradas lleno, las `always` no se descartan para hacer sitio.
+  const many = [pinned, ...Array.from({ length: LOREBOOK_MAX_ENTRIES }, (_, i) => makeEntry({ id: 'e' + i, keys: ['k' + i], content: `Hecho distinto número ${i} sobre tema${i}.`, updated: i + 1 }))];
+  const capped = applyExtraction(many, [{ keys: ['nuevo'], content: 'Sam mencionó un viaje a la montaña.' }], { now: 99, ignoreKeys: NAMES });
+  assert.ok(capped.entries.some((e) => e.id === 'm'));
+});
+
+test('MEM-004: loreBudgetPreview da el bloque real y la reserva del bloque por tema', () => {
+  assert.deepEqual(loreBudgetPreview([]), {
+    alwaysBlock: '', alwaysSelection: selectAlwaysEntries([]), topicReserve: 0, topicBudget: LOREBOOK_INJECT_CHAR_BUDGET
+  });
+  const entries = [always('a', 'Importante.'), makeEntry({ id: 'n', content: 'Un hecho por tema.' })];
+  const prev = loreBudgetPreview(entries);
+  assert.equal(prev.alwaysBlock, formatAlwaysBlock([entries[0]]));
+  assert.equal(prev.topicReserve, loreEntryCost(entries[1]));
+  assert.equal(prev.topicBudget, loreTopicBudget(loreEntryCost(entries[0])));
+  assert.equal(formatAlwaysBlock([]), '');
 });

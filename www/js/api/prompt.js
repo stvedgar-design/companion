@@ -163,6 +163,12 @@ function headBlock(card, settings, chatScenario, loreBlock) {
   return parts.join('\n\n');
 }
 
+// MEM-004: envoltorio del bloque "por tema" cuando va al final del prompt. Es una nota para el
+// modelo, no algo que el usuario dijo; el texto exacto se eligió midiendo (docs/HISTORIAL.md, "MEM-004").
+function formatTopicBlock(topicBlock) {
+  return `[${String(topicBlock).trim()}]`;
+}
+
 // Conserva los items más recientes dentro de un presupuesto de caracteres.
 // Nunca devuelve menos de 1 item si items no está vacío.
 function pickHistory(items, budget, lengthOf) {
@@ -184,10 +190,13 @@ function pickHistory(items, budget, lengthOf) {
  * @param {Message[]} messages
  * @param {Settings} settings
  * @param {string} [chatScenario] Escenario propio del chat (adenda multi-chat).
- * @param {string} [loreBlock] Entradas del lorebook automático ya seleccionadas (ver api/lorebook.js).
+ * @param {string} [loreBlock] Bloque estable de la CABECERA: los recuerdos "siempre presentes" (ver api/lorebook.js).
+ * @param {string} [topicBlock] MEM-004: bloque "por tema" (varía turno a turno). Va al FINAL, justo antes de la
+ *   última línea del usuario, y solo en el prompt construido (nunca se guarda ni se muestra). En la cabecera
+ *   invalidaría la caché de prompt del servidor (ver docs/HISTORIAL.md, "MEM-004").
  * @returns {{ prompt: string, stop: string[] }}
  */
-export function buildPlainPrompt(card, messages, settings, chatScenario = '', loreBlock = '') {
+export function buildPlainPrompt(card, messages, settings, chatScenario = '', loreBlock = '', topicBlock = '') {
   const N = card.name;
   const U = (settings && settings.user) || 'User';
   const ctx = (settings && settings.ctx) || 4096;
@@ -199,13 +208,25 @@ export function buildPlainPrompt(card, messages, settings, chatScenario = '', lo
     : '';
   const cue = `\n${N}:`;
 
+  const topic = topicBlock ? formatTopicBlock(topicBlock) : '';
   const budget = Math.max(
     MIN_HISTORY_BUDGET,
-    (ctx - maxLen - 64) * CHARS_PER_TOKEN - head.length - post.length - cue.length
+    (ctx - maxLen - 64) * CHARS_PER_TOKEN - head.length - post.length - cue.length - topic.length
   );
 
   const lines = messages.map((m) => `${m.role === 'user' ? U : N}: ${m.text}`);
   const kept = pickHistory(lines, budget, (line) => line.length);
+  if (topic) {
+    // Antes de la última línea del usuario; si el historial no tiene ninguna, al final.
+    let at = kept.length;
+    for (let i = kept.length - 1; i >= 0; i--) {
+      if (kept[i].startsWith(`${U}: `)) {
+        at = i;
+        break;
+      }
+    }
+    kept.splice(at, 0, topic);
+  }
 
   const prompt = head + '\n' + kept.join('\n') + post + cue;
   const stop = [`\n${U}:`, `${U}:`, `\n${N}:`];
@@ -220,10 +241,13 @@ export function buildPlainPrompt(card, messages, settings, chatScenario = '', lo
  * @param {Message[]} messages
  * @param {Settings} settings
  * @param {string} [chatScenario] Escenario propio del chat (adenda multi-chat).
- * @param {string} [loreBlock] Entradas del lorebook automático ya seleccionadas (ver api/lorebook.js).
+ * @param {string} [loreBlock] Bloque estable de la CABECERA: los recuerdos "siempre presentes" (ver api/lorebook.js).
+ * @param {string} [topicBlock] MEM-004: bloque "por tema". Se antepone al contenido del ÚLTIMO mensaje del usuario
+ *   en la copia que se envía (no se asume que la plantilla del modelo admita mensajes `system` intercalados);
+ *   los mensajes guardados no se tocan. Ver `buildPlainPrompt`.
  * @returns {{ messages: {role:'system'|'user'|'assistant', content:string}[], stop: string[] }}
  */
-export function buildChatMessages(card, messages, settings, chatScenario = '', loreBlock = '') {
+export function buildChatMessages(card, messages, settings, chatScenario = '', loreBlock = '', topicBlock = '') {
   const N = card.name;
   const U = (settings && settings.user) || 'User';
   const ctx = (settings && settings.ctx) || 4096;
@@ -234,7 +258,8 @@ export function buildChatMessages(card, messages, settings, chatScenario = '', l
     head += '\n\n' + subMacros(card.post_history_instructions, N, U);
   }
 
-  const budget = Math.max(MIN_HISTORY_BUDGET, (ctx - maxLen - 64) * CHARS_PER_TOKEN - head.length);
+  const topic = topicBlock ? formatTopicBlock(topicBlock) : '';
+  const budget = Math.max(MIN_HISTORY_BUDGET, (ctx - maxLen - 64) * CHARS_PER_TOKEN - head.length - topic.length);
   const kept = pickHistory(messages, budget, (m) => m.text.length);
 
   const out = [{ role: 'system', content: head }];
@@ -243,6 +268,15 @@ export function buildChatMessages(card, messages, settings, chatScenario = '', l
     out.push({ role: 'user', content: '[Start of roleplay]' });
   }
   kept.forEach((m) => out.push({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text }));
+  if (topic) {
+    // Copia enviada: el bloque va al principio del contenido del último mensaje del usuario.
+    for (let i = out.length - 1; i > 0; i--) {
+      if (out[i].role === 'user') {
+        out[i] = { ...out[i], content: `${topic}\n\n${out[i].content}` };
+        break;
+      }
+    }
+  }
 
   // "\n" primero: en /v1/chat/completions el corte en salto de línea de los
   // `gendefaults` del servidor NO se aplica si la petición trae su propio `stop`
@@ -263,17 +297,18 @@ export function buildChatMessages(card, messages, settings, chatScenario = '', l
  * @param {Message[]} messages
  * @param {Settings} settings
  * @param {string} [chatScenario]
- * @param {string} [loreBlock] Entradas del lorebook automático ya seleccionadas (ver api/lorebook.js).
+ * @param {string} [loreBlock] Bloque estable de la cabecera ("siempre presentes").
+ * @param {number} [topicReserveChars] MEM-004: caracteres que se reservan para el bloque "por tema" (va al final del prompt).
  * @returns {{ approxTokens: number, budgetTokens: number, ratio: number }}
  *   `ratio` es approxTokens/budgetTokens, sin recortar a 1 (puede superar 1
  *   si ya no entra todo el historial y algunos mensajes se recortarían).
  */
-export function estimateContextUsage(card, messages, settings, chatScenario = '', loreBlock = '') {
+export function estimateContextUsage(card, messages, settings, chatScenario = '', loreBlock = '', topicReserveChars = 0) {
   const ctx = (settings && settings.ctx) || 4096;
   const maxLen = (settings && settings.maxLen) || 220;
   const head = headBlock(card, settings, chatScenario, loreBlock);
   const historyChars = messages.reduce((sum, m) => sum + String(m.text || '').length + LINE_OVERHEAD, 0);
-  const approxTokens = Math.ceil((head.length + historyChars) / CHARS_PER_TOKEN);
+  const approxTokens = Math.ceil((head.length + historyChars + Math.max(0, topicReserveChars || 0)) / CHARS_PER_TOKEN);
   const budgetTokens = Math.max(1, ctx - maxLen);
   return { approxTokens, budgetTokens, ratio: approxTokens / budgetTokens };
 }

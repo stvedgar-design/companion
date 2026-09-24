@@ -62,7 +62,8 @@ navegación), `setup`, `home`, `chats`, `chat`. Versión: `APP_VERSION`
   (marcador de disparo del lorebook; ya NO guarda entradas).
 - `Message` (store `chatMsgs`, un array por `chatId`): `role` (`user|char`),
   `text`, `ts`.
-- `LoreEntry`: `id`, `keys[]`, `content`, `updated`, `source` (`auto|manual`).
+- `LoreEntry`: `id`, `keys[]`, `content`, `updated`, `source` (`auto|manual`), `always?`
+  (MEM-004: "siempre presente"; solo se guarda `true`; implica `manual`).
 - Backup manual: JSON `{app:'companion', version:2, exported, settings,
   characters, chats, chatMessages}`; `importBackup` también acepta v1.
   El respaldo automático NO tiene este formato (ver VER-001 en `HISTORIAL.md`).
@@ -75,7 +76,7 @@ personaje (MEM-001 v2: extracción aditiva de una línea vía KoboldCpp, inyecci
 por keyword, hoja "Ver lorebook" con editar/borrar/deshacer y "Actualizar memoria
 ahora"; MEM-002: la actualización automática cada 20 mensajes está APAGADA por
 defecto y se activa con un interruptor en esa hoja); 3 skins × claro/oscuro; fondo
-de chat por personaje; CI con gate de tests; versión visible en Ajustes; 207
+de chat por personaje; CI con gate de tests; versión visible en Ajustes; 226
 tests (`node --test tests/*.test.mjs`).
 
 **Verificado en un teléfono real (Hecho, reportado por el tester, 2026-09-24):**
@@ -108,8 +109,8 @@ personajes guiado (solo propuesta, no autorizado). Añadido por DOC-002
   "MEM-001 v2 → Informe de latencia" (en `HISTORIAL.md`) y "MEM-002".
 - **Calidad de la memoria — atendida por MEM-003 (2026-09-24; implementado, sin probar en el
   teléfono):** prompt de hechos concretos con nombres, higiene de keys, fusión de
-  casi-duplicados, coincidencia por palabra completa y botón "Limpiar recuerdos". Queda
-  "siempre presente" para MEM-004. Observación original (Hecho, tester en teléfono): tras "Actualizar memoria
+  casi-duplicados, coincidencia por palabra completa y botón "Limpiar recuerdos". Lo de
+  "siempre presente" lo hizo MEM-004. Observación original (Hecho, tester en teléfono): tras "Actualizar memoria
   ahora" ("correcta, 1 nueva") la lista mostró 2 entradas casi duplicadas, con
   keys "personality" y "person who loves physical touch". Con la inyección vigente
   (solo si una key aparece en los últimos 3 mensajes) casi nunca llegarían al
@@ -229,6 +230,7 @@ personajes: segunda iteración visual"; auditoría de recuperabilidad →
 | MEM-002 | Extracción automática de memoria apagada por defecto (protección de la latencia del chat) | Autorizado (decisión del arquitecto) — **implementado el 2026-09-24** (sesión C); **pendiente de probar en el teléfono** | Ver "MEM-002" (en `HISTORIAL.md`). Campo `Settings.lorebookAuto`. |
 | DOC-003 | Reducir el costo de leer la documentación: dividir NOTES.md y registrar principios y hoja de ruta | Autorizado — ejecutado el 2026-09-24 (sesión C; solo `docs/`) | Historia movida tal cual a `HISTORIAL.md`; este archivo queda como punto de partida. Añade principios 8 y 9 y la hoja de ruta. |
 | MEM-003 | Calidad de los recuerdos: concretos, keys útiles, sin duplicados, "Limpiar recuerdos" | Autorizado — **implementado el 2026-09-24** (sesión E); probado contra el servidor real (15+15 corridas) y en el navegador; **pendiente de probar en el teléfono** | Ver "MEM-003" (en `HISTORIAL.md`). Umbral de fusión 0,6; la inyección pasó de subcadena a palabra completa. |
+| MEM-004 | Recuerdos "siempre presentes" y colocación que no invalida la caché del servidor | Autorizado — **implementado el 2026-09-24** (sesión E); Paso 0 medido (bloque en la cabecera: +22 s / +40 s; al final: +1 s); **pendiente de probar en el teléfono** | Ver "MEM-004" (en `HISTORIAL.md`). El bloque "por tema" va al FINAL del prompt; "siempre presentes" en la cabecera. |
 | BKP-001 | Importación de copias segura: confirmar, no pisar datos nuevos, todo o nada | **Autorizado; sin implementar** (sesión posterior a MEM-001 v2, solo cuando el usuario lo pida) | Punto de partida: hallazgos 2 y 10 de VER-001. |
 | MEM-001 (v1) | (Anulado) versión anterior de MEM-001 | **ANULADO**, reemplazado por MEM-001 v2 | Asumía que el servidor podía devolver una lista larga con saltos de línea. |
 | (previos) | `CONTRACT-LOREBOOK.md` (implementado, parcialmente superado), `CONTRACT-CHARACTER-CREATOR.md` (propuesta, no autorizada), `CONTRACT-HANDOFF.md` (briefing) | — | Ver los avisos al inicio de cada uno. |
@@ -243,31 +245,18 @@ personajes: segunda iteración visual"; auditoría de recuperabilidad →
   en un teléfono real (Hecho, tester): el APK se instaló encima del anterior y los
   datos se conservaron.** (Que el CI pasó la verificación es Inferencia: el APK
   salió del artifact.)
-- **VER-001 (2026-09-23), auditoría de recuperabilidad y seguridad de datos.** Solo
-  lectura. 20 hallazgos (P0–P3). Los más importantes: el respaldo automático NO es
-  una copia completa ni restaurable con `importBackup` (1–4), `importBackup` pisa
-  datos sin avisar (10, pendiente: BKP-001), no se guarda la respuesta parcial al
-  pasar a segundo plano (7). Ver la tabla de hallazgos en `HISTORIAL.md`.
-- **MEM-001 v2 (2026-09-24), memoria (lorebook) aditiva.** Extracción de una línea y
-  hasta 3 entradas con prefill, compatible con el servidor real; hoja "Ver
-  lorebook" con editar/borrar/deshacer y "Actualizar memoria ahora". Incluye el
-  Paso 0 (mediciones del servidor: límite de 160 tokens, corte en `\n` por
-  endpoint, caché de prompt) y el informe de latencia. **En el teléfono
-  (Hecho, tester): la actualización manual funcionó; la calidad de las entradas
-  es mejorable (ver "Calidad de la memoria" en Estado vigente).**
-- **FMT-001 (2026-09-24), un solo párrafo y sin respuestas vacías.** `stop` de
-  `buildChatMessages` incluye `"\n"`; `generateReplyNonEmpty` reintenta una vez si
-  la respuesta sale vacía y `chat.js` avisa si sigue vacía. Medido: estrés 10/12 →
-  0/12 con salto de línea; con la card de Mia, 1/80 → 0/80; 0 vacías en 160
-  respuestas (el reintento solo se probó con dobles y un servidor simulado).
-  Pendiente sin contrato: `Settings.maxLen` (>160) y `Settings.temp` no tienen
-  efecto real con este servidor.
-- **MEM-002 (2026-09-24), memoria automática apagada por defecto.** Cada extracción
-  cuesta ~20 s en la SIGUIENTE respuesta (principio nº 1: latencia). `Settings.
-  lorebookAuto` (false por defecto) + casilla con aviso en "Ver lorebook"; la
-  actualización manual sigue igual y avisa. Opciones 2 y 4 del informe de latencia
-  (extraer sobre el prefijo del chat; espaciar/disparar al salir) siguen pendientes
-  de evaluación.
+- **VER-001 (2026-09-23), auditoría de recuperabilidad.** Solo lectura; 20 hallazgos
+  (P0–P3): el respaldo automático no es restaurable con `importBackup` (1–4),
+  `importBackup` pisa datos sin avisar (10, BKP-001), no se guarda la respuesta parcial (7).
+- **MEM-001 v2 (2026-09-24), memoria (lorebook) aditiva.** Extracción de una línea y hasta
+  3 entradas con prefill; hoja "Ver lorebook"; Paso 0 con mediciones del servidor (160
+  tokens, corte en `\n`, caché de prompt) e informe de latencia. En el teléfono la
+  actualización manual funcionó.
+- **FMT-001 (2026-09-24), un solo párrafo y sin vacías.** `stop` incluye `"\n"`;
+  `generateReplyNonEmpty` reintenta una vez. Medido: estrés 10/12 → 0/12; card de Mia
+  1/80 → 0/80. Pendiente sin contrato: `Settings.maxLen` (>160) y `temp` no tienen efecto.
+- **MEM-002 (2026-09-24), memoria automática apagada por defecto** (`Settings.lorebookAuto`):
+  cada extracción cuesta ~20 s en la SIGUIENTE respuesta. Opciones 2 y 4 (VER-004) pendientes.
 
 - **MEM-003 (2026-09-24), calidad de la memoria.** El prompt de extracción pide hechos
   concretos que nombran a los dos y keys de una palabra; `normalizeLoreKeys` limpia las
@@ -277,6 +266,14 @@ personajes: segunda iteración visual"; auditoría de recuperabilidad →
   botón "Limpiar recuerdos" (deshacible). Medido con el servidor real: entradas con
   nombre 73 % → 100 %, keys-frase 34/70 → 0/95. Con las 7 entradas reales del tester:
   7 → 4 (medido en el navegador).
+
+- **MEM-004 (2026-09-24), "siempre presentes" y colocación.** Medido: cambiar el bloque de
+  lorebook en la CABECERA cuesta +22 s (chat de 2 440 tokens) / +40 s (4 020) en la siguiente
+  respuesta; al FINAL del prompt, +1 s. Por eso el bloque "por tema" va al final (solo en el
+  prompt construido; en plantilla, dentro del último mensaje del usuario) y los recuerdos
+  "siempre presentes" (`LoreEntry.always`, tope 500 caracteres; suma con "por tema" ≤1200)
+  van en la cabecera: son estables. Hoja con secciones, contador e interruptor. Sin entradas,
+  el prompt es idéntico al anterior. Editar un "siempre presente" cuesta UNA respuesta lenta.
 
 ## Hoja de ruta acordada (propuesta, NO autorizada)
 
@@ -324,3 +321,4 @@ implementan sin un contrato del arquitecto. Sin datos personales del usuario.
 - **FMT-001** — mediciones antes/después del `stop` y del reintento por respuesta vacía.
 - **MEM-002** — decisión de apagar la memoria automática, cambios y limitación conocida.
 - **MEM-003** — prompt de extracción, higiene de keys, fusión, palabra completa, "Limpiar recuerdos" y la medición contra el servidor real.
+- **MEM-004** — Paso 0 (latencia por colocación), decisión, ejemplo de prompt, pruebas de estilo.

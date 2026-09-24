@@ -740,3 +740,44 @@ test('Limpiar recuerdos: guarda lorebookPrevious con el estado anterior y "desha
   assert.equal(again.changed, false);
   assert.deepEqual((await state.getCharacter('x')).lorebookPrevious, original);
 });
+
+// ---------- MEM-004: LoreEntry.always ----------
+
+test('MEM-004: una entrada sin `always` (copias y personajes anteriores) carga idéntica, sin campo nuevo', async () => {
+  const state = createState(createMemoryBackend());
+  await state.saveCharacter(makeCharacter({ id: 'x' }));
+  const old = [{ id: 'l1', keys: ['café'], content: 'Se conocieron en un café.', updated: 1, source: 'auto' }];
+  await state.saveCharacterLorebook('x', old);
+  const loaded = (await state.getCharacter('x')).lorebook;
+  assert.deepEqual(loaded, old);
+  assert.ok(!('always' in loaded[0]));
+});
+
+test('MEM-004: `always` solo se conserva si es exactamente true; basura o false se descarta', async () => {
+  const state = createState(createMemoryBackend());
+  await state.saveCharacter(makeCharacter({ id: 'x' }));
+  const e = (id, always) => ({ id, keys: ['k'], content: 'Un recuerdo válido.', updated: 1, source: 'manual', always });
+  await state.saveCharacterLorebook('x', [e('a', true), e('b', false), e('c', 'yes'), e('d', 1), e('e', null), e('f', undefined)]);
+  const byId = Object.fromEntries((await state.getCharacter('x')).lorebook.map((x) => [x.id, x]));
+  assert.equal(byId.a.always, true);
+  for (const id of ['b', 'c', 'd', 'e', 'f']) assert.ok(!('always' in byId[id]), id);
+});
+
+test('MEM-004: una entrada `always` es siempre `manual`, aunque llegue como `auto` (p. ej. de una copia ajena)', async () => {
+  const state = createState(createMemoryBackend());
+  await state.saveCharacter(makeCharacter({ id: 'x' }));
+  await state.saveCharacterLorebook('x', [{ id: 'a', keys: ['k'], content: 'Importante.', updated: 1, source: 'auto', always: true }]);
+  const [entry] = (await state.getCharacter('x')).lorebook;
+  assert.equal(entry.always, true);
+  assert.equal(entry.source, 'manual');
+});
+
+test('MEM-004: un personaje importado en una copia sin `always` conserva su lorebook tal cual', async () => {
+  const backend = createMemoryBackend();
+  const state = createState(backend);
+  const character = makeCharacter({ id: 'x', lorebook: [{ id: 'l1', keys: ['tema'], content: 'Un hecho.', updated: 1, source: 'auto' }] });
+  const backup = { app: 'companion', version: 2, exported: 1, settings: null, characters: [character], chats: [], chatMessages: {} };
+  const result = await state.importBackup({ text: async () => JSON.stringify(backup) });
+  assert.ok(result);
+  assert.deepEqual((await state.getCharacter('x')).lorebook, character.lorebook);
+});

@@ -315,3 +315,105 @@ test('trimPartial no toca el texto si no hay ninguna puntuación de referencia',
   const t = 'x'.repeat(300) + ' sin puntuacion final';
   assert.equal(trimPartial(t), t);
 });
+
+// ---------- MEM-004: bloque "por tema" al final del prompt, sin tocar lo guardado ----------
+
+const TOPIC = 'Known facts (from memory):\n- Edgar tiene un perro llamado Bruno.';
+
+function fixture() {
+  return {
+    card: makeCard({ description: 'Una guardiana de la torre.', personality: 'Curiosa', scenario: 'Una torre junto al mar' }),
+    settings: makeSettings({ ctx: 4096, maxLen: 220 }),
+    msgs: [
+      { role: 'char', text: '*Sonrío.* Hola.', ts: 1 },
+      { role: 'user', text: 'Hola Luna, ¿cómo estás?', ts: 2 }
+    ]
+  };
+}
+
+test('MEM-004: sin entradas el prompt es IDÉNTICO al de antes (modo texto simple y modo plantilla)', () => {
+  const { card, settings, msgs } = fixture();
+  // Valores literales producidos por la versión anterior de prompt.js (antes de MEM-004).
+  const plain = {
+    prompt: "Roleplay chat between Luna and Edgar. Stay in character as Luna. Write only Luna's next reply, using *asterisks* for actions and plain text for speech.\n\nLuna's description:\nUna guardiana de la torre.\n\nLuna's personality: Curiosa\n\nScenario: Una torre junto al mar\n\n[Start of chat]\nLuna: *Sonrío.* Hola.\nEdgar: Hola Luna, ¿cómo estás?\nLuna:",
+    stop: ['\nEdgar:', 'Edgar:', '\nLuna:']
+  };
+  assert.deepEqual(buildPlainPrompt(card, msgs, settings), plain);
+  assert.deepEqual(buildPlainPrompt(card, msgs, settings, '', '', ''), plain);
+
+  const chat = {
+    messages: [
+      { role: 'system', content: "Roleplay chat between Luna and Edgar. Stay in character as Luna. Write only Luna's next reply, using *asterisks* for actions and plain text for speech.\n\nLuna's description:\nUna guardiana de la torre.\n\nLuna's personality: Curiosa\n\nScenario: Una torre junto al mar" },
+      { role: 'user', content: '[Start of roleplay]' },
+      { role: 'assistant', content: '*Sonrío.* Hola.' },
+      { role: 'user', content: 'Hola Luna, ¿cómo estás?' }
+    ],
+    stop: ['\n', '\nEdgar:']
+  };
+  assert.deepEqual(buildChatMessages(card, msgs, settings), chat);
+  assert.deepEqual(buildChatMessages(card, msgs, settings, '', '', ''), chat);
+});
+
+test('MEM-004 (texto simple): el bloque por tema va justo ANTES de la última línea del usuario, no en la cabecera', () => {
+  const { card, settings, msgs } = fixture();
+  const { prompt } = buildPlainPrompt(card, msgs, settings, '', '', TOPIC);
+  assert.ok(prompt.includes(TOPIC));
+  const head = prompt.slice(0, prompt.indexOf('[Start of chat]'));
+  assert.ok(!head.includes('Bruno'), 'la cabecera no debe cambiar con el bloque por tema');
+  assert.ok(prompt.indexOf(TOPIC) < prompt.indexOf('Edgar: Hola Luna'));
+  assert.ok(prompt.indexOf(TOPIC) > prompt.indexOf('Luna: *Sonrío.* Hola.'));
+  assert.ok(prompt.endsWith('Edgar: Hola Luna, ¿cómo estás?\nLuna:'));
+  // La cabecera es idéntica a la de un prompt sin bloque.
+  const plain = buildPlainPrompt(card, msgs, settings).prompt;
+  assert.equal(head, plain.slice(0, plain.indexOf('[Start of chat]')));
+});
+
+test('MEM-004 (plantilla): el bloque por tema va al principio del ÚLTIMO mensaje del usuario, no en system', () => {
+  const { card, settings, msgs } = fixture();
+  const base = buildChatMessages(card, msgs, settings);
+  const { messages: out, stop } = buildChatMessages(card, msgs, settings, '', '', TOPIC);
+  assert.equal(out.length, base.messages.length);           // no se añaden mensajes (nada de `system` intercalado)
+  assert.deepEqual(out[0], base.messages[0]);               // el system (cabecera) no cambia
+  assert.deepEqual(out.slice(1, -1), base.messages.slice(1, -1));
+  const last = out[out.length - 1];
+  assert.equal(last.role, 'user');
+  assert.ok(last.content.includes(TOPIC));
+  assert.ok(last.content.endsWith('Hola Luna, ¿cómo estás?'));
+  assert.deepEqual(stop, base.stop);
+});
+
+test('MEM-004: el bloque por tema nunca modifica los mensajes guardados', () => {
+  const { card, settings, msgs } = fixture();
+  const before = JSON.parse(JSON.stringify(msgs));
+  buildPlainPrompt(card, msgs, settings, '', 'Always keep in mind:\n- x', TOPIC);
+  buildChatMessages(card, msgs, settings, '', 'Always keep in mind:\n- x', TOPIC);
+  assert.deepEqual(msgs, before);
+});
+
+test('MEM-004: "siempre presentes" (5.º parámetro) sigue en la cabecera y el bloque por tema va aparte', () => {
+  const { card, settings, msgs } = fixture();
+  const always = 'Always keep in mind:\n- Edgar prefiere las mañanas tranquilas.';
+  const plain = buildPlainPrompt(card, msgs, settings, '', always, TOPIC).prompt;
+  assert.ok(plain.indexOf(always) < plain.indexOf('[Start of chat]'));
+  assert.ok(plain.indexOf(TOPIC) > plain.indexOf('[Start of chat]'));
+  const chat = buildChatMessages(card, msgs, settings, '', always, TOPIC).messages;
+  assert.ok(chat[0].content.includes(always));
+  assert.ok(!chat[0].content.includes(TOPIC));
+});
+
+test('MEM-004: el presupuesto del historial descuenta el bloque por tema', () => {
+  const { card } = fixture();
+  const settings = makeSettings({ ctx: 1024, maxLen: 200 });
+  const msgs = Array.from({ length: 40 }, (_, i) => ({ role: i % 2 ? 'user' : 'char', text: `mensaje número ${i} `.repeat(6), ts: i }));
+  const without = buildChatMessages(card, msgs, settings).messages.length;
+  const withTopic = buildChatMessages(card, msgs, settings, '', '', TOPIC.repeat(6)).messages.length;
+  assert.ok(withTopic <= without);
+});
+
+test('MEM-004: estimateContextUsage reserva el espacio del bloque por tema', () => {
+  const { card, settings, msgs } = fixture();
+  const base = estimateContextUsage(card, msgs, settings);
+  const reserved = estimateContextUsage(card, msgs, settings, '', '', 660);
+  assert.ok(Math.abs(reserved.approxTokens - base.approxTokens - 200) <= 1); // 660 caracteres ≈ 200 tokens (3,3 car./token)
+  assert.equal(estimateContextUsage(card, msgs, settings, '', '', 0).approxTokens, base.approxTokens);
+});

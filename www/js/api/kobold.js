@@ -4,7 +4,7 @@
 // respuestas en streaming. No guarda nada en localStorage/IndexedDB.
 
 import { buildPlainPrompt, buildChatMessages, cleanReply, trimPartial } from './prompt.js';
-import { selectLoreEntries, formatLoreBlock } from './lorebook.js';
+import { buildLoreBlocks } from './lorebook.js';
 
 const TOP_P = 0.92;
 const TOP_K = 0;
@@ -237,8 +237,8 @@ function canStream(res) {
 // Respaldo sin streaming: usa el endpoint nativo de generación de una sola
 // vez, con el prompt en formato de texto simple (es el único formato que
 // acepta este endpoint). Entrega el texto completo a `emit` de un tirón.
-async function nonStreamingGenerate(base, card, messages, settings, chatScenario, loreBlock, signal, emit) {
-  const { prompt } = buildPlainPrompt(card, messages, settings, chatScenario, loreBlock);
+async function nonStreamingGenerate(base, card, messages, settings, chatScenario, loreBlock, topicBlock, signal, emit) {
+  const { prompt } = buildPlainPrompt(card, messages, settings, chatScenario, loreBlock, topicBlock);
   const res = await fetch(base + '/api/v1/generate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -297,7 +297,10 @@ export async function generateReply({ character, chat, messages, settings, signa
   // personaje, no del chat — compartido entre todos sus chats. Solo se
   // inyectan las entradas que matchearon por keyword contra los últimos
   // mensajes, dentro de un tope de caracteres — nunca el lorebook entero.
-  const loreBlock = formatLoreBlock(selectLoreEntries((character && character.lorebook) || [], messages));
+  // MEM-004: dos bloques. `loreBlock` = recuerdos "siempre presentes" (estable, va en la
+  // cabecera); `topicBlock` = los "por tema" (varía turno a turno, va al FINAL del prompt
+  // para no invalidar la caché de prompt del servidor: ver docs/HISTORIAL.md, "MEM-004").
+  const { always: loreBlock, topic: topicBlock } = buildLoreBlocks((character && character.lorebook) || [], messages);
   const genkey = makeGenKey();
   const mode = settings.mode === 'chat' ? 'chat' : 'plain';
   const maxLen = settings.maxLen || 220;
@@ -323,7 +326,7 @@ export async function generateReply({ character, chat, messages, settings, signa
   try {
     let res;
     if (mode === 'chat') {
-      const { messages: chatMessages, stop } = buildChatMessages(card, messages, settings, chatScenario, loreBlock);
+      const { messages: chatMessages, stop } = buildChatMessages(card, messages, settings, chatScenario, loreBlock, topicBlock);
       res = await fetch(base + '/v1/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -338,7 +341,7 @@ export async function generateReply({ character, chat, messages, settings, signa
         })
       });
     } else {
-      const { prompt, stop } = buildPlainPrompt(card, messages, settings, chatScenario, loreBlock);
+      const { prompt, stop } = buildPlainPrompt(card, messages, settings, chatScenario, loreBlock, topicBlock);
       res = await fetch(base + '/api/extra/generate/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -362,12 +365,12 @@ export async function generateReply({ character, chat, messages, settings, signa
 
     if (res.status === 404) {
       usedFallback = true;
-      await nonStreamingGenerate(base, card, messages, settings, chatScenario, loreBlock, signal, emit);
+      await nonStreamingGenerate(base, card, messages, settings, chatScenario, loreBlock, topicBlock, signal, emit);
     } else if (!res.ok) {
       throw makeError(`El servidor respondió ${res.status}. ¿Es la URL de KoboldCpp?`, 'HTTP');
     } else if (!canStream(res)) {
       usedFallback = true;
-      await nonStreamingGenerate(base, card, messages, settings, chatScenario, loreBlock, signal, emit);
+      await nonStreamingGenerate(base, card, messages, settings, chatScenario, loreBlock, topicBlock, signal, emit);
     } else if (mode === 'chat') {
       await readSSE(res, (obj) => {
         const chunk = obj && obj.choices && obj.choices[0] && obj.choices[0].delta && obj.choices[0].delta.content;

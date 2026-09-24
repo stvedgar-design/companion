@@ -10,8 +10,10 @@ import {
   removeLoreEntry,
   parseKeysInput,
   cleanStoredLorebook,
+  loreBudgetPreview,
   LOREBOOK_UPDATE_EVERY_MESSAGES,
   LOREBOOK_MAX_ENTRY_CHARS,
+  LOREBOOK_ALWAYS_CHAR_BUDGET,
 } from '../api/lorebook.js';
 import { openSettings } from './settings.js';
 import { openAppearance } from './appearance.js';
@@ -848,10 +850,14 @@ function openLorebookSheet(note = '') {
 
   wrap.append(autoRow, autoHint, progress, refreshBtn, costHint, undoBtn, cleanBtn, cleanHint);
 
-  const entries = (character.lorebook || []).slice().sort((a, b) => (b.updated || 0) - (a.updated || 0));
+  // MEM-004: "Siempre presentes" (van en cada respuesta, con tope) y "Por tema" (solo cuando sale una palabra clave).
+  const all = character.lorebook || [];
+  const alwaysEntries = all.filter((e) => e.always);
+  const topicEntries = all.filter((e) => !e.always).sort((a, b) => (b.updated || 0) - (a.updated || 0));
+  const preview = loreBudgetPreview(all);
   const list = loreEl('div');
   list.style.marginTop = 'var(--space-4, 16px)';
-  if (!entries.length) {
+  if (!all.length) {
     list.appendChild(
       loreEl(
         'div',
@@ -861,11 +867,14 @@ function openLorebookSheet(note = '') {
       )
     );
   }
-  entries.forEach((entry) => {
+
+  const renderEntry = (entry) => {
     const field = loreEl('div', 'field');
     field.appendChild(loreEl('div', 'field__label', entry.content));
     const origin = entry.source === 'manual' ? 'escrita o editada por ti' : 'automática';
-    field.appendChild(loreEl('div', 'field__hint', `${(entry.keys || []).join(', ')} · ${origin}`));
+    field.appendChild(
+      loreEl('div', 'field__hint', entry.always ? origin : `${(entry.keys || []).join(', ')} · ${origin}`)
+    );
 
     const actions = loreEl('div');
     actions.style.display = 'flex';
@@ -879,8 +888,50 @@ function openLorebookSheet(note = '') {
     delBtn.addEventListener('click', () => openLoreDeleteConfirm(entry.id));
     actions.append(editBtn, delBtn);
     field.appendChild(actions);
-    list.appendChild(field);
-  });
+    return field;
+  };
+
+  if (all.length) {
+    const alwaysTitle = loreEl('h4', 'sheet__title', 'Siempre presentes');
+    list.appendChild(alwaysTitle);
+    const counter = loreEl(
+      'div',
+      'field__hint',
+      `${preview.alwaysSelection.requested} / ${LOREBOOK_ALWAYS_CHAR_BUDGET} caracteres · Mia los tiene en mente en cada respuesta, sin palabras clave.`
+    );
+    counter.setAttribute('data-role', 'always-counter');
+    counter.style.marginBottom = 'var(--space-3, 12px)';
+    list.appendChild(counter);
+    if (preview.alwaysSelection.overflow) {
+      const hidden = preview.alwaysSelection.total - preview.alwaysSelection.sent;
+      const warn = loreEl(
+        'div',
+        'field__label',
+        (hidden === 1 ? 'No cabe todo: el último NO se envía. ' : `No cabe todo: los últimos ${hidden} NO se envían. `) +
+          'Acorta alguno o quita alguno.'
+      );
+      warn.setAttribute('role', 'alert');
+      list.appendChild(warn);
+    }
+    if (!alwaysEntries.length) {
+      const none = loreEl('div', 'field__hint', 'Ninguno todavía. Toca «Editar» en un recuerdo importante y activa «Siempre presente».');
+      none.style.marginBottom = 'var(--space-3, 12px)';
+      list.appendChild(none);
+    }
+    alwaysEntries.forEach((entry) => list.appendChild(renderEntry(entry)));
+
+    const topicTitle = loreEl('h4', 'sheet__title', 'Por tema');
+    topicTitle.style.marginTop = 'var(--space-4, 16px)';
+    list.appendChild(topicTitle);
+    const topicHint = loreEl(
+      'div',
+      'field__hint',
+      `Entran en la conversación solo cuando aparece una de sus palabras clave (hasta ${preview.topicBudget} caracteres por respuesta).`
+    );
+    topicHint.style.marginBottom = 'var(--space-3, 12px)';
+    list.appendChild(topicHint);
+    topicEntries.forEach((entry) => list.appendChild(renderEntry(entry)));
+  }
   wrap.appendChild(list);
 
   app.openSheet(wrap);
@@ -913,6 +964,23 @@ function openLoreEdit(entryId) {
       'Al guardar, queda como escrita por ti y la memoria automática ya no la toca.'
   );
   hint.style.margin = 'var(--space-2, 8px) 0';
+  // MEM-004: interruptor "Siempre presente" (casilla nativa, como la de actualización automática).
+  const alwaysRow = loreEl('label', 'field__label');
+  alwaysRow.style.display = 'flex';
+  alwaysRow.style.alignItems = 'center';
+  alwaysRow.style.gap = 'var(--space-2, 8px)';
+  const alwaysBox = document.createElement('input');
+  alwaysBox.type = 'checkbox';
+  alwaysBox.checked = !!entry.always;
+  alwaysBox.style.accentColor = 'var(--color-accent, #8b1fe0)';
+  alwaysRow.append(alwaysBox, loreEl('span', '', 'Siempre presente (Mia lo tiene en mente siempre)'));
+  const alwaysHint = loreEl(
+    'div',
+    'field__hint',
+    `Va en cada respuesta, sin necesitar palabras clave. Tope: ${LOREBOOK_ALWAYS_CHAR_BUDGET} caracteres entre todos los recuerdos siempre presentes. ` +
+      'Al activarlo o cambiarlo, la siguiente respuesta puede tardar más una sola vez.'
+  );
+  alwaysHint.style.margin = 'var(--space-1, 4px) 0 var(--space-2, 8px)';
   const error = loreEl('div', 'field__label', '');
 
   const saveBtn = loreEl('button', 'btn', 'Guardar');
@@ -922,6 +990,7 @@ function openLoreEdit(entryId) {
       const next = editLoreEntry(await freshLorebook(), entryId, {
         content: content.value,
         keys: parseKeysInput(keys.value),
+        always: alwaysBox.checked,
       });
       if (!next) {
         error.textContent = 'Escribe el recuerdo y al menos una palabra clave.';
@@ -938,7 +1007,7 @@ function openLoreEdit(entryId) {
   cancelBtn.style.marginTop = 'var(--space-2, 8px)';
   cancelBtn.addEventListener('click', () => openLorebookSheet());
 
-  wrap.append(content, keys, hint, error, saveBtn, cancelBtn);
+  wrap.append(content, keys, hint, alwaysRow, alwaysHint, error, saveBtn, cancelBtn);
   app.openSheet(wrap);
 }
 
@@ -1032,8 +1101,10 @@ function buildUsageInfo() {
   const hint = document.createElement('div');
   hint.className = 'field__hint';
   if (character && settings) {
+    // MEM-004: refleja el bloque "siempre presentes" real y reserva el espacio del bloque "por tema".
+    const lore = loreBudgetPreview(character.lorebook || []);
     const { approxTokens, budgetTokens, ratio } = estimateContextUsage(
-      character.card, messages, settings, chat ? chat.scenario : ''
+      character.card, messages, settings, chat ? chat.scenario : '', lore.alwaysBlock, lore.topicReserve
     );
     const pct = Math.round(Math.min(ratio, 1) * 100);
     hint.textContent = ratio >= 1

@@ -96,6 +96,8 @@ Los imports son ESM relativos y siempre con extensión `.js`. Los tests importan
  * @property {string} content       // el hecho en sí, en texto plano, conciso
  * @property {number} updated       // ms desde epoch
  * @property {'auto'|'manual'} source  // 'auto' = generado por el lorebook automático
+ * @property {boolean} [always]     // MEM-004: "siempre presente" (sin keys, va en cada turno, tope LOREBOOK_ALWAYS_CHAR_BUDGET). Ausente = false;
+ *   solo se guarda `true`. Una entrada `always` es siempre `manual`: la vía automática nunca la modifica, fusiona ni borra, ni la marca.
  */
 
 /**
@@ -226,17 +228,22 @@ importCardFile(file: File): Promise<Character>              // parsea + avatar +
 subMacros(text: string, charName: string, userName: string): string        // {{char}} <BOT> {{user}} <USER>
 initialMessages(character: Character, settings: Settings, greetingIndex?: number): Message[]
    // greetingIndex 0 = card.first_mes (por defecto); i >= 1 = card.alternate_greetings[i-1]. Devuelve [] si no hay saludo.
-buildPlainPrompt(card: Card, messages: Message[], settings: Settings, chatScenario?: string, loreBlock?: string): { prompt: string, stop: string[] }
-buildChatMessages(card: Card, messages: Message[], settings: Settings, chatScenario?: string, loreBlock?: string): { messages: {role:'system'|'user'|'assistant', content:string}[], stop: string[] }
+buildPlainPrompt(card: Card, messages: Message[], settings: Settings, chatScenario?: string, loreBlock?: string, topicBlock?: string): { prompt: string, stop: string[] }
+buildChatMessages(card: Card, messages: Message[], settings: Settings, chatScenario?: string, loreBlock?: string, topicBlock?: string): { messages: {role:'system'|'user'|'assistant', content:string}[], stop: string[] }
    // `chatScenario` (adenda multi-chat) y `loreBlock` (adenda lorebook, ver docs/HISTORIAL.md
    // "Lorebook por personaje" y api/lorebook.js) son desviaciones sobre la firma original de
    // este contrato — ambos opcionales, '' por defecto. `loreBlock` ya viene armado
    // (formatLoreBlock) con las entradas seleccionadas.
+   // MEM-004: `loreBlock` = bloque ESTABLE de la cabecera (recuerdos "siempre presentes"); `topicBlock` = bloque "por tema",
+   // que varía turno a turno y por eso va al FINAL del prompt (medido: en la cabecera cada cambio cuesta ~22 s de la siguiente
+   // respuesta; al final, ~1 s; ver docs/HISTORIAL.md "MEM-004"). En `buildPlainPrompt` va justo antes de la última línea del
+   // usuario; en `buildChatMessages` va al principio del contenido del ÚLTIMO mensaje `user` de la copia enviada (no se asume
+   // que la plantilla admita `system` intercalados). Nunca se guarda ni se muestra. Sin bloques el prompt es idéntico al anterior.
    // FMT-001: `stop` = ['\n', '\n<usuario>:']. El '\n' fuerza un solo párrafo (formato Nomi):
    // en /v1/chat/completions el corte en salto de línea del servidor no se aplica si la
    // petición trae su propio `stop`. NO debe aplicarse a completeOnce() ni a otros usos.
 scenarioGreeting(character: Character, settings: Settings, chatScenario: string): Message[]   // nota de escenario en *asteriscos* como primer mensaje de un chat con escenario propio
-estimateContextUsage(card: Card, messages: Message[], settings: Settings, chatScenario?: string, loreBlock?: string): { approxTokens: number, budgetTokens: number, ratio: number }
+estimateContextUsage(card: Card, messages: Message[], settings: Settings, chatScenario?: string, loreBlock?: string, topicReserveChars?: number): { approxTokens: number, budgetTokens: number, ratio: number }
 cleanReply(text: string, charName: string): string
 trimPartial(text: string): string
 // kobold.js: el ÚNICO lugar con fetch
@@ -298,6 +305,13 @@ createLoreUpdater(deps): { maybeRun(), runNow(), abort(), isRunning(), getStatus
    // ni si `settings.lorebookAuto !== true`, MEM-002);
    // runNow() = "Actualizar memoria ahora"; abort() = el usuario envió un mensaje. Resultado: { kind: ok|nochange|unparsed|unavailable|
    // aborted|error|skipped|busy|toolittle, added?, updated? }.
+selectAlwaysEntries(entries: LoreEntry[], opts?: { charBudget?: number }): { entries, sent, total, used, requested, budget, overflow }
+   // MEM-004. Las `always` que caben en LOREBOOK_ALWAYS_CHAR_BUDGET (500), en el orden guardado; si una no cabe, ella y las siguientes NO se envían.
+loreTopicBudget(alwaysUsed: number): number   // MEM-004. min(LOREBOOK_INJECT_CHAR_BUDGET=1000, LOREBOOK_TOTAL_CHAR_BUDGET=1200 - alwaysUsed)
+formatAlwaysBlock(entries: LoreEntry[]): string   // "Always keep in mind:\n- …"; '' si no hay
+buildLoreBlocks(entries: LoreEntry[], recentMessages: Message[]): { always: string, topic: string, alwaysSelection }   // MEM-004; lo usa kobold.js
+loreBudgetPreview(entries: LoreEntry[]): { alwaysBlock, alwaysSelection, topicReserve, topicBudget }   // MEM-004; lo usa el indicador de contexto y la hoja
+editLoreEntry(...)   // MEM-004: `patch.always` (true/false/ausente) marca o desmarca "siempre presente"
 selectLoreEntries(entries: LoreEntry[], recentMessages: Message[], opts?: { scanCount?: number, charBudget?: number }): LoreEntry[]
    // MEM-003: la coincidencia de keys es por PALABRA completa (antes, por subcadena), sin distinguir mayúsculas ni acentos,
    // tolerando plurales `s`/`es`; keys de varias palabras = secuencia contigua; keys no latinas = subcadena.

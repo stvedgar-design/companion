@@ -24,6 +24,8 @@
  * @property {string} content       // el hecho en sí, en texto plano, conciso
  * @property {number} updated       // ms desde epoch
  * @property {'auto'|'manual'} source  // 'auto' = generado por el lorebook automático
+ * @property {boolean} [always]     // MEM-004: "siempre presente" (se envía en cada turno, sin keys). Ausente = false.
+ *   Una entrada `always` es siempre `source:'manual'`; solo se guarda `always:true` (nunca `false`).
  */
 
 /**
@@ -184,12 +186,17 @@ function sanitizeLoreEntry(raw) {
   if (!content) return null;
   const keys = Array.isArray(raw.keys) ? raw.keys.map((k) => String(k || '')).filter(Boolean) : [];
   if (!keys.length) return null;
+  // MEM-004: `always` solo se conserva si es exactamente `true` (copias y entradas
+  // anteriores no lo traen y cargan idénticas), y una entrada `always` es siempre
+  // `manual`: la vía automática nunca la modifica ni la borra.
+  const always = raw.always === true;
   return {
     id: typeof raw.id === 'string' && raw.id ? raw.id : ('l' + Math.random().toString(36).slice(2, 10)),
     keys,
     content,
     updated: Number.isFinite(raw.updated) ? raw.updated : Date.now(),
-    source: raw.source === 'manual' ? 'manual' : 'auto',
+    source: always || raw.source === 'manual' ? 'manual' : 'auto',
+    ...(always ? { always: true } : {}),
   };
 }
 

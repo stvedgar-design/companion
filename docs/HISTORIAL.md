@@ -1723,3 +1723,73 @@ del chat (no cambió el número ni el lugar de las llamadas; la automática sigu
   intacta; "Deshacer" devolvió las 8 originales. Sin errores de consola; datos borrados.
 - **No probado:** teléfono/APK; disparo automático; el efecto sobre lo que Mia responde.
 **Sugerencia para la card:** ninguna. **Pendiente:** "siempre presente" (MEM-004).
+
+## MEM-004: recuerdos "siempre presentes" y colocación que no invalida la caché (2026-09-24)
+
+**Estado:** implementado; 226 tests en verde (207 + 19); Paso 0 y pruebas de estilo contra el
+servidor real; hoja verificada en el navegador (375×812). **NO probado en el teléfono/APK.**
+
+### Paso 0 — latencia de la SIGUIENTE respuesta (Hecho; KoboldCpp 1.121, Mahou 12B, `/v1/chat/completions`)
+Historial sintético con la card de Mia; cada medida = "prima" la caché con el turno anterior y
+mide el primer token del siguiente (5 repeticiones por celda; la varianza fue ≤0,1 s, el
+procesamiento del prompt es determinista). Bloque de ~500 caracteres; solo cambia el bloque.
+
+| Caso (turno anterior → medido) | ~2 440 tokens | ~4 020 tokens |
+|---|---|---|
+| a: cabecera, sin cambios | 1,1 s | 1,2 s |
+| b: cabecera, bloque DISTINTO | **22,5 s** | **40,1 s** |
+| b0: cabecera, aparece un bloque (antes vacío) | 22,4 s | 39,6 s |
+| c1: al final (en el último mensaje del usuario), bloque distinto | 2,2 s | 2,4 s |
+| c2: al final como `system` intercalado, bloque distinto | 2,2 s | 2,5 s |
+| c1_0: al final, aparece un bloque | 1,7 s | 1,9 s |
+
+Conclusión: (b) penaliza ≫3 s y crece con el chat; (c) queda a ~1 s de (a). Se cumple la
+condición del contrato → **el bloque "por tema" va al final**. Coincide con MEM-001 v2 (~20 s).
+Alternativa `system` intercalado (c2): misma latencia; no se eligió porque el contrato pide no
+asumir que la plantilla lo admite (no se verificó con otras plantillas).
+
+### Decisión de colocación y por qué
+- **Siempre presentes → cabecera** (`loreBlock`, 5.º parámetro de los builders): es estable.
+  Cada vez que el usuario lo edita, UNA respuesta paga la relectura (~22–40 s); la hoja lo avisa.
+- **Por tema → final** (`topicBlock`, 6.º parámetro), solo en el prompt construido:
+  - Plantilla: se antepone al contenido del ÚLTIMO mensaje `user` de la copia enviada
+    (`[Known facts (from memory):\n- …]\n\n<mensaje>`). Sin mensajes `system` intercalados.
+  - Texto simple: línea entre corchetes justo antes de la última línea del usuario.
+  - Los mensajes guardados no se tocan (test) y el presupuesto del historial descuenta el bloque.
+- **Ejemplo (texto simple / plantilla)**, con 1 siempre presente y 1 por tema:
+  `…Always keep in mind:\n- Sam gets anxious in crowded places…\n\n[Start of chat]\nMia: *I smile.* Hi Sam.\n[Known facts (from memory):\n- Sam told Mia that the dog Bruno is afraid of thunder]\nSam: Thunder shook the house…\nMia:`
+  y `[system] …Always keep in mind:\n- …` · `[user] [Start of roleplay]` · `[assistant] *I smile.* Hi Sam.` ·
+  `[user] [Known facts (from memory):\n- …]\n\nThunder shook the house…`.
+
+### Diseño e implementación
+- `LoreEntry.always?: boolean` (`state.js`): solo se guarda `true`; una `always` es siempre `manual`
+  (también al importar). Entradas y copias sin el campo cargan idénticas (tests).
+- `LOREBOOK_ALWAYS_CHAR_BUDGET` = 500; `LOREBOOK_TOTAL_CHAR_BUDGET` = 1200; el tope "por tema"
+  sigue en 1000 pero baja a `1200 − usado por las siempre presentes` (con 500 usados, 700).
+  **Sin siempre presentes nada cambia** (1000). Si no caben, la primera que no cabe y las
+  siguientes NO se envían y la hoja lo avisa. `estimateContextUsage` suma el bloque real y reserva
+  el "por tema".
+- Nunca las toca la vía automática (aplicar, fusionar, limpiar, expulsar por tope) ni la marca.
+- Hoja: secciones "Siempre presentes" (contador "N / 500") y "Por tema"; interruptor "Siempre
+  presente (Mia lo tiene en mente siempre)" en Editar (casilla nativa). No se puede crear una
+  entrada desde cero (solo editar existentes; sin cambio).
+- Sin entradas el prompt es idéntico: fuzz de 600 casos × 5 comparaciones contra la versión
+  anterior (git) más un test con valores literales.
+
+### Pruebas de estilo (Hecho; 10 corridas por celda, `/v1/chat/completions`, card de Mia)
+- Bloque por tema al final: recuerda el nombre del perro 10/10 y el instrumento 10/10 (sin
+  bloque, 10/10 y 0/10: el perro ya salía del historial); no lo menciona sin venir a cuento
+  0/10; formato (1 párrafo, asteriscos pares, sin eco del bloque) 30/30; largo medio 112 vs 109.
+  Un texto alternativo ("use naturally, never quote") dio lo mismo → se dejó el actual.
+- Texto simple (bloque final): recuerda 10/10 (sin bloque 0/10), formato 10/10.
+- Siempre presente en la cabecera: 0/10 de repetición forzada en un tema ajeno; formato 19/20
+  (una respuesta con un asterisco suelto; ruido a este tamaño). **Su efecto positivo NO se
+  demostró** con la prueba usada: sin él, Mia ya aludía a la multitud 7/10 por su card (con él, 8/10).
+
+### Verificación
+Tests nuevos: `always` por defecto/saneado/`manual`/copias previas; selección con presupuestos,
+orden, desborde y suma ≤1200; sin duplicar entre bloques; la vía automática no las toca; prompt
+idéntico sin entradas y colocación en ambos modos con mensajes guardados intactos. Navegador
+(375×812): secciones, contador, aviso de desborde, interruptor guardado, indicador de contexto
+con la reserva. **No probado:** teléfono/APK; otras plantillas de modelo; el efecto real en Mia.
+**Sugerencia para la card (no aplicada):** ninguna.
