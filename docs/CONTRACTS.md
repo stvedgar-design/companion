@@ -20,7 +20,7 @@ Existe un **prototipo funcional en un solo archivo, `companion.html`**, que el u
 
 ## 2. Reglas técnicas para todos los módulos
 
-- JavaScript vanilla con módulos ES (`<script type="module">`). Sin npm, sin bundler, sin frameworks, sin librerías externas. Única dependencia externa permitida: Google Fonts (Literata — cambiada desde Outfit el 2026-09-23, ver `docs/HISTORIAL.md`; el skin iMessage usa la fuente del sistema en su lugar, sin dependencia externa) enlazada desde `index.html`.
+- JavaScript vanilla con módulos ES (`<script type="module">`). Sin npm, sin bundler, sin frameworks, sin librerías externas **en el runtime** y **sin ninguna dependencia de red para la interfaz**: desde UI-008 la tipografía (Literata, romana e itálica reales, licencia OFL) está incluida en `www/fonts/` y se declara con `@font-face` en `css/tokens.css`; ya no se enlaza Google Fonts. El skin iMessage usa la fuente del sistema.
 - Objetivo: WebView de Chromium reciente en Android, pantalla táctil de 360 a 430 px de ancho. Sin hover; usa `:active` y `:focus-visible`.
 - Identificadores de código en inglés. Comentarios y textos de interfaz en español neutro.
 - Sin variables globales. `localStorage`/IndexedDB solo dentro de `www/js/state.js`. `fetch` a servidores solo dentro de `www/js/api/kobold.js`. Prohibido `alert`, `confirm` y `prompt` nativos: usa `app.confirmDialog` y `app.toast`.

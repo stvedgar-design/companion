@@ -120,16 +120,16 @@
 }
 .chat-row--user .chat-bubble {
   background: var(--grad-user);
+  color: var(--color-on-user, var(--color-text)); /* UI-008: cada skin define el texto que se lee sobre su burbuja */
   border-bottom-right-radius: var(--radius-sm);
 }
-.chat-row--char { --em-color: var(--color-muted); }
+.chat-row--char { --em-color: var(--color-em, var(--color-muted)); }
 .chat-row--user { --em-color: var(--color-muted-on-accent); }
 .chat-bubble em { color: var(--em-color); font-style: italic; }
-/* Regla directa de respaldo además de la variable --em-color, por si el
-   navegador tiene algún problema heredando la variable CSS (mismo valor
-   resuelto que --color-muted-on-accent, no una var: es la red de
-   seguridad, no puede depender de lo mismo que respalda). */
-.chat-row--user .chat-bubble em { color: rgba(255, 255, 255, 0.72); }
+/* Regla directa de respaldo además de la variable --em-color, por si el navegador tiene algún problema
+   heredando la variable CSS. UI-008: antes forzaba rgba(255,255,255,.72) en TODOS los skins e ignoraba
+   --color-muted-on-accent; ahora respeta el token de cada skin (el valor de la derecha es solo el respaldo). */
+.chat-row--user .chat-bubble em { color: var(--color-muted-on-accent, rgba(255, 255, 255, 0.72)); }
 .chat-bubble strong { font-weight: 600; }
 
 /* --- UI-010: indicador de memoria usada (gris = ningún recuerdo, acento del skin = usó alguno) --- */
@@ -215,9 +215,10 @@
 /* --- botón flotante "volver abajo" (absolute, no fixed) --- */
 .chat-scrolldown {
   position: absolute;
-  left: 50%;
+  /* UI-008: en la esquina inferior derecha y algo translúcido, para no tapar el texto de los mensajes */
+  right: var(--space-3);
   bottom: var(--space-3);
-  transform: translateX(-50%);
+  opacity: 0.72;
   z-index: 2;
   width: 44px;
   height: 44px;
@@ -232,6 +233,7 @@
   -webkit-backdrop-filter: var(--surface-backdrop, none);
 }
 .chat-scrolldown[hidden] { display: none; }
+.chat-scrolldown:active { opacity: 1; }
 .chat-scrolldown:focus-visible { outline: 2px solid var(--color-accent-2); outline-offset: 2px; }
 .chat-scrolldown svg {
   width: 22px;
@@ -260,6 +262,9 @@
   max-height: 140px;
   line-height: 1.35;
 }
+/* UI-008: `textarea.inp` (base.css) fija min-height: 90px, que gana por especificidad. El compositor empieza con la
+   altura de UNA línea (48px, igual que el botón de enviar) y crece con el texto hasta max-height (autosizeInput). */
+textarea.chat-composer__input { min-height: 48px; }
 .chat-send {
   width: 48px;
   height: 48px;

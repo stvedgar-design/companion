@@ -36,10 +36,12 @@ posibles (eso está en `themes.css` mismo, es la fuente de verdad).
 | `--color-danger` | errores, acciones destructivas | `#f0566a` |
 | `--color-ok` | estados correctos | `#6ee7a8` |
 | `--color-overlay` | capa oscura detrás de la hoja inferior | `rgba(6,6,12,.6)` |
-| `--color-muted-on-accent` | *asteriscos* sobre una superficie con acento (hoy: burbuja del usuario) | `rgba(255,255,255,.72)` |
+| `--color-muted-on-accent` | *cursiva* sobre la burbuja del usuario (la regla de chat.css ya la respeta; UI-008 dejó de forzar `rgba(255,255,255,.72)`) — blanco casi opaco (.95-.96) salvo iMessage claro (negro .85, coherente con su texto negro) | `rgba(255,255,255,.72)` |
 | `--grad-user` | fondo de la burbuja del usuario — degradado o color plano según el skin | `linear-gradient(135deg,#7a12d6,#9b3ff0)` |
 | `--grad-avatar` | fondo del avatar por defecto | `linear-gradient(135deg,#5b1fa8,#c04bd6)` |
 | `--font` | familia tipográfica — varía por skin (Literata en Nomi/Glass, fuente del sistema en iMessage) | `'Literata', Georgia, 'Times New Roman', serif` |
+| `--color-em` | *cursiva* del PERSONAJE sobre su burbuja (UI-008); por defecto cae en `--color-muted`. Solo Nomi claro (`#6a677e`) e iMessage claro (`#69696d`) la redefinen, para llegar a 4,5:1 | *(sin definir)* |
+| `--color-on-user` | texto normal sobre la burbuja del USUARIO (UI-008); por defecto cae en `--color-text`. Blanco en Nomi (claro y oscuro) y Glass claro | *(sin definir)* |
 | `--surface-backdrop` | `backdrop-filter` de burbujas, botones, chips, tarjetas y hojas (UI-007) — `none` salvo en Glass (`blur(var(--glass-blur))`) | `none` |
 | `--bars-backdrop` | `backdrop-filter` solo de la barra superior y el compositor — igual que arriba | `none` |
 | `--sheet-surface` | fondo de la hoja inferior; por defecto `--color-surface`. Glass con "Efecto de vidrio" en *solo barras*/*desactivado* la hace casi opaca | *(sin definir)* |

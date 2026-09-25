@@ -43,7 +43,8 @@
   --color-danger: #f0566a;
   --color-ok: #6ee7a8;
   --color-overlay: rgba(6, 6, 12, 0.6);
-  --color-muted-on-accent: rgba(255, 255, 255, 0.72);
+  --color-muted-on-accent: rgba(255, 255, 255, 0.96);
+  --color-on-user: #ffffff; /* UI-008: texto sobre la burbuja del usuario (por defecto = --color-text) */
   --grad-user: linear-gradient(135deg, #7a12d6, #9b3ff0);
   --grad-avatar: linear-gradient(135deg, #5b1fa8, #c04bd6);
   --font: 'Literata', Georgia, 'Times New Roman', serif;
@@ -64,7 +65,9 @@
   --color-danger: #d6335a;
   --color-ok: #1f9d63;
   --color-overlay: rgba(20, 10, 35, 0.35);
-  --color-muted-on-accent: rgba(255, 255, 255, 0.85);
+  --color-em: #6a677e; /* UI-008: cursiva del personaje sobre su burbuja (por defecto = --color-muted) */
+  --color-muted-on-accent: rgba(255, 255, 255, 0.96);
+  --color-on-user: #ffffff; /* UI-008: texto sobre la burbuja del usuario (por defecto = --color-text) */
   --grad-user: linear-gradient(135deg, #7a12d6, #9b3ff0);
   --grad-avatar: linear-gradient(135deg, #5b1fa8, #c04bd6);
   --font: 'Literata', Georgia, 'Times New Roman', serif;
@@ -97,7 +100,7 @@
   --color-danger: #f0566a;
   --color-ok: #6ee7a8;
   --color-overlay: rgba(6, 6, 12, 0.45);
-  --color-muted-on-accent: rgba(255, 255, 255, 0.72);
+  --color-muted-on-accent: rgba(255, 255, 255, 0.9);
   --grad-user: linear-gradient(135deg, rgba(122, 18, 214, 0.8), rgba(155, 63, 240, 0.8));
   --grad-avatar: linear-gradient(135deg, #5b1fa8, #c04bd6);
   --font: 'Literata', Georgia, 'Times New Roman', serif;
@@ -123,7 +126,8 @@
   --color-danger: #d6335a;
   --color-ok: #1f9d63;
   --color-overlay: rgba(20, 10, 35, 0.3);
-  --color-muted-on-accent: rgba(255, 255, 255, 0.85);
+  --color-muted-on-accent: rgba(255, 255, 255, 0.96);
+  --color-on-user: #ffffff; /* UI-008: texto sobre la burbuja del usuario (por defecto = --color-text) */
   --grad-user: linear-gradient(135deg, rgba(122, 18, 214, 0.85), rgba(155, 63, 240, 0.85));
   --grad-avatar: linear-gradient(135deg, #5b1fa8, #c04bd6);
   --font: 'Literata', Georgia, 'Times New Roman', serif;
@@ -183,7 +187,7 @@
   --color-danger: #ff453a;
   --color-ok: #32d74b;
   --color-overlay: rgba(0, 0, 0, 0.6);
-  --color-muted-on-accent: rgba(255, 255, 255, 0.72);
+  --color-muted-on-accent: rgba(255, 255, 255, 0.95);
   --grad-user: #0a84ff;
   --grad-avatar: linear-gradient(135deg, #48484a, #636366);
   --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
@@ -204,7 +208,8 @@
   --color-danger: #ff3b30;
   --color-ok: #34c759;
   --color-overlay: rgba(0, 0, 0, 0.35);
-  --color-muted-on-accent: rgba(255, 255, 255, 0.8);
+  --color-em: #69696d; /* UI-008: cursiva del personaje sobre su burbuja (por defecto = --color-muted) */
+  --color-muted-on-accent: rgba(0, 0, 0, 0.85);
   --grad-user: #007aff;
   --grad-avatar: linear-gradient(135deg, #c7c7cc, #aeaeb2);
   --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;

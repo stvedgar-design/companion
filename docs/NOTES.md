@@ -37,7 +37,7 @@ primera versión falló en el CI, ARQ-002 re-firma el APK explícitamente con
 solo en `www/js/state.js` (IndexedDB `companion`, versión 2, stores
 `settings`, `characters`, `chats` [legado], `chatMeta`, `chatMsgs`). `fetch`
 solo en `www/js/api/kobold.js`. Skins = solo tokens en `www/css/themes.css`
-(3 skins × claro/oscuro). Vistas: `lock` (solo al arrancar, fuera de la
+(3 skins × claro/oscuro; tipografía Literata incluida en `www/fonts/`, sin red). Vistas: `lock` (solo al arrancar, fuera de la
 navegación), `setup`, `home`, `chats`, `chat`. Versión: `APP_VERSION`
 (`www/js/version.js`) y `package.json` coinciden (`1.1.0`).
 
@@ -226,6 +226,7 @@ personajes: segunda iteración visual"; auditoría de recuperabilidad →
 | MEM-006 | "Estado de la relación" en "Ver lorebook" | Autorizado — **versión final LOCAL implementada el 2026-09-25** (sesión Q2/G): sin modelo ni servidor (el intento con el modelo inventaba datos y se descartó); verificado en el navegador; **pendiente de probar en el teléfono** | `api/relationship.js`: frase fija por cantidad de recuerdos + "siempre presentes" + fecha; sin campo nuevo ni botón. Ver "MEM-006" (en `HISTORIAL.md`). |
 | UI-006 | Menú de mensaje compacto (un solo menú reutilizado) | Autorizado — **implementado el 2026-09-25** (sesión G3); verificado en el navegador con 252 mensajes; **pendiente de probar en el teléfono** | Sin botones por fila: 1 menú que se mueve al mensaje tocado; `ui/msgmenu.js` (puro). Ver "UI-006" (en `HISTORIAL.md`). |
 | UI-007 | Efecto de vidrio ajustable (`Settings.glassEffect`) | Autorizado — **implementado el 2026-09-25** (sesión G3); Nomi/iMessage sin `backdrop-filter` y sin cambios de layout/color (medido); **pendiente de probar en el teléfono** | Tokens `--surface-backdrop`/`--bars-backdrop`; selector en Apariencia, solo con Glass. Sin medición de rendimiento (UI-005 no ejecutado). Ver "UI-007" (en `HISTORIAL.md`). |
+| UI-008 | Tipografía incluida, contraste, compositor de una línea y botón "volver abajo" | Autorizado — **implementado el 2026-09-25** (sesión G3); verificado en el navegador (sin peticiones de fuentes externas); **pendiente de probar en el teléfono** | Literata (OFL) en `www/fonts/` (~239 KB); `ui/contrast.js` + tabla de contraste con test; tokens `--color-em`/`--color-on-user`. Ver "UI-008" (en `HISTORIAL.md`). |
 | BKP-001 | Importación de copias segura: confirmar, no pisar datos nuevos, todo o nada | **Autorizado; sin implementar** (sesión posterior a MEM-001 v2, solo cuando el usuario lo pida) | Punto de partida: hallazgos 2 y 10 de VER-001. |
 | MEM-001 (v1) | (Anulado) versión anterior de MEM-001 | **ANULADO**, reemplazado por MEM-001 v2 | Asumía que el servidor podía devolver una lista larga con saltos de línea. |
 | (previos) | `CONTRACT-LOREBOOK.md` (implementado, parcialmente superado), `CONTRACT-CHARACTER-CREATOR.md` (propuesta, no autorizada), `CONTRACT-HANDOFF.md` (briefing) | — | Ver los avisos al inicio de cada uno. |
@@ -249,15 +250,13 @@ personajes: segunda iteración visual"; auditoría de recuperabilidad →
   actualización manual funcionó.
 - **FMT-001 (2026-09-24), un solo párrafo y sin vacías.** `stop` incluye `"\n"`;
   `generateReplyNonEmpty` reintenta una vez. Medido: estrés 10/12 → 0/12; card de Mia
-  1/80 → 0/80. Pendiente sin contrato: `Settings.maxLen` (>160) y `temp` no tienen efecto.
+  1/80 → 0/80. (`maxLen`/`temp` sin efecto: sus deslizadores se quitaron en UI-011.)
 - **MEM-002 (2026-09-24), memoria automática apagada por defecto** (`Settings.lorebookAuto`):
   cada extracción cuesta ~20 s en la SIGUIENTE respuesta. Opciones 2 y 4 (VER-004) pendientes.
-
 - **MEM-003 (2026-09-24), calidad de la memoria.** Prompt de hechos concretos con nombres y keys de una
   palabra; `normalizeLoreKeys` limpia (sin genéricas ni nombres, máx. 4); sin hechos con pronombre suelto; fusión de
   casi-repetidas (≥0,6 y ≥2 palabras); inyección por palabra completa; botón "Limpiar recuerdos" (deshacible).
   Medido: entradas con nombre 73 % → 100 %, keys-frase 34/70 → 0/95.
-
 - **MEM-004 (2026-09-24), "siempre presentes" y colocación.** Medido: cambiar el bloque de
   lorebook en la CABECERA cuesta +22 s (chat de 2 440 tokens) / +40 s (4 020) en la siguiente
   respuesta; al FINAL del prompt, +1 s. Por eso el bloque "por tema" va al final (solo en el
@@ -265,13 +264,11 @@ personajes: segunda iteración visual"; auditoría de recuperabilidad →
   "siempre presentes" (`LoreEntry.always`, tope 500 caracteres; suma con "por tema" ≤1200)
   van en la cabecera: son estables. Hoja con secciones, contador e interruptor. Sin entradas,
   el prompt es idéntico al anterior. Editar un "siempre presente" cuesta UNA respuesta lenta.
-
 - **MEM-005 (2026-09-24), keys y fusión.** La fusión fallaba porque "invite"/"invited" no coincidían
   (`stemLite` mejorado; con las mismas 2+ keys basta 0,5 de solapamiento). El prompt pide una key copiada
   del usuario: keys literales en sus mensajes 88 % → 96 % (18 corridas). Se descartan hechos en primera persona.
 - **FMT-004 (2026-09-24), variedad.** Detector puro (`api/variety.js`) y nota genérica al final del prompt
   (proactiva). Apagada por defecto: la medición con 18 turnos no reprodujo el problema; falta probar 40+ turnos.
-
 - **FMT-002 (2026-09-25), fallos de formato: medición y mitigación.** Con mensajes largos y ricos en acciones el modelo (plantilla)
   falla el formato en el 64 % de las respuestas (sobre todo `**…**` y narración sin cursiva; asteriscos impares o sin narración: 15 %, y solo 2 % con mensajes cortos).
   **Arrancar la respuesta en `*` (`formatAssist`) lo lleva a 0/135, sin cambiar latencia** y quita las comillas del habla. Un

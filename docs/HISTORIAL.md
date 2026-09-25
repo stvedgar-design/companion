@@ -2173,3 +2173,33 @@ El contrato manda parar y reportar si el resumen tiende a inventar información 
   Glass `full` idéntico a antes (`blur(20px)` en topbar, burbujas, composer, send, scrolldown, hoja, toast, input, chip); `bars` → solo `.topbar` y `.chat-composer`; `off` → ninguno. El selector aparece solo con Glass, guarda y aplica.
 - **Nota técnica:** `blur(0px)` creaba contexto de apilamiento; `none` no. Sin efectos visibles en la comparación de posiciones/colores, y en el navegador la pantalla se ve igual.
 - Tests: 1 nuevo (`state.test.mjs`, `glassEffect`) y se actualizó el de valores por defecto.
+
+## UI-008: contraste, tipografía local, compositor y botón flotante (2026-09-25)
+
+**Estado:** implementado; verificado en el navegador integrado (375×812). **NO probado en el teléfono ni en modo avión real.**
+- **Tipografía (Hecho, leído):** `index.html` descargaba Literata de Google Fonts (`fonts.googleapis.com`, pesos 400/500/600 SOLO romanos) en cada arranque; nunca hubo cursiva real: la *acción* del personaje se dibujaba con cursiva sintetizada.
+  Ahora: `www/fonts/` con 12 `woff2` (Literata romana e itálica real, pesos 400/500/600, subconjuntos `latin` y `latin-ext`), `@font-face` en `css/tokens.css` (`font-display: block`), enlaces externos eliminados del `index.html`.
+  **Origen y licencia:** paquete npm público `@fontsource/literata` 5.3.0 (fuentes de github.com/googlefonts/literata), archivos SIN modificar; **SIL Open Font License 1.1**, "Copyright 2017 The Literata Project Authors", sin Reserved Font Name (verificado en el archivo `LICENSE` del paquete,
+  copiado a `www/fonts/OFL-Literata.txt`; origen y huellas SHA-256 en `www/fonts/README.md`). **Aumento del APK: ~239 KB** (245 104 bytes con la licencia y el README). Cirílico/griego/vietnamita no incluidos (caen a Georgia).
+  iMessage sigue con la fuente del sistema. `www/dev/design-preview.html` (página de desarrollo, no es el punto de entrada) aún enlaza Google Fonts; no se tocó.
+  **Verificado (Hecho):** al abrir el chat las peticiones de fuentes son solo `/fonts/literata-latin-{400,500,600}-normal.woff2` y `…-400-italic.woff2` (locales, 200 OK), ninguna a servidores externos; `document.fonts` los da como `loaded`; el `<em>` usa `italic` real.
+- **Contraste (función pura `ui/contrast.js`: `parseColor`, `composite`, `luminance`, `contrastRatio`; test `contrast.test.mjs` que calcula la tabla desde el CSS real y falla si baja del umbral de cada skin).**
+  Fondos de burbuja: personaje = `--color-surface-2` compuesto sobre `--color-bg`; usuario = el PEOR de los tramos de `--grad-user`.
+
+| skin/modo | texto/personaje antes→después | cursiva/personaje | texto/usuario | cursiva/usuario |
+|---|---|---|---|---|
+| Nomi oscuro | 11,92 → 11,92 | 5,01 → 5,01 | 4,35 → **4,81** | 3,22 → **4,56** |
+| Nomi claro | 13,44 → 13,44 | 4,00 → **4,51** | **2,23** → **4,81** | 3,22 → **4,56** |
+| Glass oscuro | 15,78 → 15,78 | 6,63 → 6,63 | 5,73 → 5,73 | 4,07 → **5,45** |
+| Glass claro | 14,67 → 14,67 | 4,84 → 4,84 | **2,81** → 3,88* | 2,75 → 3,70* |
+| iMessage oscuro | 15,21 → 15,21 | 4,67 → 4,67 | 3,65 → 3,65* | 2,58 → 3,44* |
+| iMessage claro | 17,32 → 17,32 | **2,69** → **4,51** | 5,23 → 5,23 | 2,77 → **4,68** |
+
+  \* Excepciones documentadas: es el MÁXIMO alcanzable con texto blanco sobre la burbuja del usuario sin cambiar su color (identidad del skin: violeta claro de Glass claro, azul de iOS en iMessage oscuro). El test las fija como umbrales propios (3,8 / 3,6 / 3,4).
+- **Cambios de CSS (solo tokens y la regla que los ignoraba):** (1) la regla `.chat-row--user .chat-bubble em { color: rgba(255,255,255,.72) }` ignoraba el token de cada skin (los tres modos claros definían .8/.85): ahora usa `var(--color-muted-on-accent)`;
+  (2) `--color-muted-on-accent` sube a blanco casi opaco (.95-.96; iMessage claro: negro .85, coherente con su texto negro; antes mostraba cursiva BLANCA junto a texto NEGRO); (3) token nuevo `--color-em` (cursiva del personaje): solo Nomi claro `#6a677e` (antes `--color-muted` `#726f87`) e iMessage claro `#69696d` (antes `#8e8e93`, gris de iOS) lo redefinen; no cambia el resto del texto secundario del skin;
+  (4) **ampliación de alcance (decisión de Claude Code, fácil de revertir):** token nuevo `--color-on-user` (texto normal sobre la burbuja del usuario, por defecto `--color-text`): en **Nomi claro y Glass claro el texto que el usuario escribe salía OSCURO sobre la burbuja violeta (2,23:1 y 2,81:1)**; ahora es blanco (4,81 y 3,88). También blanco en Nomi oscuro (4,35→4,81). No se tocaron fondos, acentos ni radios. Es texto principal, no secundario: si el arquitecto prefiere no cambiarlo, basta borrar `--color-on-user` de esos tres bloques.
+  Nota de identidad: Nomi oscuro ("el look original") cambia apenas (texto `#f3f3f8`→`#fff`; cursiva del usuario más nítida).
+- **Compositor:** `textarea.inp` (base.css) fijaba `min-height: 90px` y ganaba por especificidad; ahora `textarea.chat-composer__input { min-height: 48px }`. Medido: vacío 49 px, una línea 49, tres líneas 96, doce líneas 140 (el máximo de siempre).
+- **Botón "volver abajo":** de centrado a la esquina inferior derecha (`right: var(--space-3)`), `opacity: .72` (1 al pulsarlo); mismo tamaño táctil de 44 px. Medido a 375 px: x=319–363, y=691–735.
+- Tests nuevos (6, `contrast.test.mjs`): valores conocidos de WCAG, `parseColor`, composición de translúcidos, tabla de los 6 skins/modos con sus umbrales y las dos reglas de CSS.
