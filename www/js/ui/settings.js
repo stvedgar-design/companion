@@ -1,5 +1,7 @@
 // www/js/ui/settings.js
-// Hoja de ajustes: servidor, nombre, generación, formato del prompt y copia de seguridad.
+// Hoja de ajustes: servidor, nombre, formato del prompt y copia de seguridad.
+// UI-011: los deslizadores de longitud (Settings.maxLen) y creatividad (Settings.temp) se quitaron
+// de la pantalla; los campos siguen en state.js y api/kobold.js los sigue enviando igual.
 
 import { getSettings, saveSettings, exportBackup, importBackup } from '../state.js';
 import { connect } from '../api/kobold.js';
@@ -7,8 +9,6 @@ import { pickFiles, saveBlob } from '../platform.js';
 import { createPinHash, verifyPin } from '../lock.js';
 import { openAppearance } from './appearance.js';
 import { APP_VERSION } from '../version.js';
-
-const SLIDER_DEBOUNCE_MS = 400;
 
 export function openSettings(app) {
   const node = document.createElement('div');
@@ -29,16 +29,6 @@ export function openSettings(app) {
     <div class="field">
       <label class="field__label" for="settings-user">Tu nombre en el chat</label>
       <input class="inp" id="settings-user" type="text" autocomplete="off">
-    </div>
-
-    <div class="field">
-      <label class="field__label" for="settings-len">Longitud de respuesta: <span id="settings-len-v"></span> tokens</label>
-      <input class="inp" type="range" id="settings-len" min="60" max="500" step="10">
-    </div>
-
-    <div class="field">
-      <label class="field__label" for="settings-temp">Creatividad: <span id="settings-temp-v"></span></label>
-      <input class="inp" type="range" id="settings-temp" min="0.3" max="1.4" step="0.05">
     </div>
 
     <div class="field">
@@ -95,10 +85,6 @@ export function openSettings(app) {
     test: q('#settings-test'),
     status: q('#settings-status'),
     user: q('#settings-user'),
-    len: q('#settings-len'),
-    lenV: q('#settings-len-v'),
-    temp: q('#settings-temp'),
-    tempV: q('#settings-temp-v'),
     mode: q('#settings-mode'),
     variety: q('#settings-variety'),
     format: q('#settings-format'),
@@ -108,16 +94,9 @@ export function openSettings(app) {
     importBtn: q('#settings-import'),
   };
 
-  let lenTimer = null;
-  let tempTimer = null;
-
   getSettings().then((settings) => {
     els.url.value = settings.url;
     els.user.value = settings.user;
-    els.len.value = settings.maxLen;
-    els.lenV.textContent = settings.maxLen;
-    els.temp.value = settings.temp;
-    els.tempV.textContent = settings.temp;
     els.mode.value = settings.mode;
     els.variety.checked = settings.varietyAssist === true;
     els.format.checked = settings.formatAssist !== false;
@@ -188,20 +167,6 @@ export function openSettings(app) {
     saveSettings({ user: els.user.value.trim() });
   });
 
-  els.len.addEventListener('input', () => {
-    const value = clamp(Math.round(+els.len.value / 10) * 10, 60, 500);
-    els.lenV.textContent = value;
-    clearTimeout(lenTimer);
-    lenTimer = setTimeout(() => saveSettings({ maxLen: value }), SLIDER_DEBOUNCE_MS);
-  });
-
-  els.temp.addEventListener('input', () => {
-    const value = clamp(+els.temp.value, 0.3, 1.4);
-    els.tempV.textContent = value;
-    clearTimeout(tempTimer);
-    tempTimer = setTimeout(() => saveSettings({ temp: value }), SLIDER_DEBOUNCE_MS);
-  });
-
   els.mode.addEventListener('change', () => {
     saveSettings({ mode: els.mode.value });
   });
@@ -265,8 +230,4 @@ export function openSettings(app) {
   });
 
   app.openSheet(node);
-}
-
-function clamp(value, min, max) {
-  return Math.min(max, Math.max(min, value));
 }

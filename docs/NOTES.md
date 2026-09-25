@@ -116,9 +116,8 @@ personajes guiado (solo propuesta, no autorizado). Añadido por DOC-002
   (2026-09-25; implementados, sin probar en el teléfono).** Ver Resumen y `HISTORIAL.md`.
 - ~~El modo "plantilla del modelo" no corta en `\n` (posibles dos párrafos)~~:
   **corregido por FMT-001** (2026-09-24): `stop` incluye `"\n"` y una respuesta
-  vacía se reintenta una vez. Ver "FMT-001" en `HISTORIAL.md`. Pendiente relacionado, sin
-  contrato: `Settings.maxLen` (>160) y `Settings.temp` no tienen efecto real con
-  este servidor (recorta a 160 tokens e impone su muestreo); informarlo en Ajustes.
+  vacía se reintenta una vez. Ver "FMT-001" en `HISTORIAL.md`.
+- ~~`Settings.maxLen`/`temp` no tienen efecto con este servidor~~: **resuelto por UI-011** (los deslizadores se ocultaron).
 
 ## Perfil del servidor y principios de producto (contrato DOC-002, 2026-09-24)
 
@@ -225,6 +224,7 @@ personajes: segunda iteración visual"; auditoría de recuperabilidad →
 | FMT-004 | Reducir el eje temático repetido del personaje | Autorizado — **implementado el 2026-09-24** (sesión E2); ayuda **apagada por defecto**; medición no concluyente | Ver "FMT-004" (en `HISTORIAL.md`). `Settings.varietyAssist`; detector en `api/variety.js`. |
 | FMT-002 | Medir y reducir los fallos de asteriscos en la generación | Autorizado — **implementado el 2026-09-25** (sesión F2); medido contra el servidor real (ronda 1: 4×60, ronda 2: 4×75); `formatAssist` activa por defecto; **pendiente de probar en el teléfono** | Ver "FMT-002" (en `HISTORIAL.md`). La respuesta arranca en `*` (plantilla: mensaje assistant final). Validador en `api/formatcheck.js`. |
 | FMT-003 | Renderizado tolerante de asteriscos (solo visual) | Autorizado — **implementado el 2026-09-25** (sesión F2); verificado en el navegador integrado; **pendiente de probar en el teléfono** | Ver "FMT-003" (en `HISTORIAL.md`). `formatMessage(text, {role})`; no toca lo guardado. |
+| UI-011 | Quitar los deslizadores de longitud y creatividad de Ajustes | Autorizado — **implementado el 2026-09-25** (sesión Q1); **pendiente de probar en el teléfono** | Solo desaparece el control; `Settings.maxLen`/`temp` siguen en `state.js` y `kobold.js` los sigue enviando. Ver "UI-011" (en `HISTORIAL.md`). |
 | BKP-001 | Importación de copias segura: confirmar, no pisar datos nuevos, todo o nada | **Autorizado; sin implementar** (sesión posterior a MEM-001 v2, solo cuando el usuario lo pida) | Punto de partida: hallazgos 2 y 10 de VER-001. |
 | MEM-001 (v1) | (Anulado) versión anterior de MEM-001 | **ANULADO**, reemplazado por MEM-001 v2 | Asumía que el servidor podía devolver una lista larga con saltos de línea. |
 | (previos) | `CONTRACT-LOREBOOK.md` (implementado, parcialmente superado), `CONTRACT-CHARACTER-CREATOR.md` (propuesta, no autorizada), `CONTRACT-HANDOFF.md` (briefing) | — | Ver los avisos al inicio de cada uno. |

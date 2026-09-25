@@ -777,3 +777,33 @@ test('FMT-002: con formatAssist, la respuesta vacía se reintenta una vez (gener
     server.close();
   }
 });
+
+// ---------- UI-011: maxLen/temp ya no tienen control en Ajustes, pero se siguen enviando ----------
+
+test('generateReply sigue enviando settings.maxLen y settings.temp (modo texto simple y plantilla)', async () => {
+  for (const mode of ['plain', 'chat']) {
+    let capturedBody = null;
+    const server = http.createServer(async (req, res) => {
+      const chunks = [];
+      for await (const chunk of req) chunks.push(chunk);
+      capturedBody = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+      res.end(mode === 'chat'
+        ? 'data: {"choices":[{"delta":{"content":"Hola"}}]}\n\ndata: [DONE]\n\n'
+        : 'data: {"token":"Hola"}\n\n');
+    });
+    const base = await listen(server);
+    try {
+      await generateReply({
+        character: makeCharacter(),
+        messages: [{ role: 'user', text: 'Hola', ts: 1 }],
+        settings: makeSettings(base, { mode, maxLen: 310, temp: 0.55 }),
+        onToken: () => {}
+      });
+      assert.equal(capturedBody.temperature, 0.55, mode);
+      assert.equal(mode === 'chat' ? capturedBody.max_tokens : capturedBody.max_length, 310, mode);
+    } finally {
+      server.close();
+    }
+  }
+});

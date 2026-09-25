@@ -1995,3 +1995,15 @@ Scripts de medición desechables (fuera del repo); datos sintéticos, sin conten
   usuario, HTML escapado, mensajes congelados sin cambios, rendimiento.
 - **Rendimiento (Hecho, PC):** 200 mensajes de 700 caracteres: 0,69→1,59 ms (bien formados) y 0,55→2,01 ms (rotos): ≈+1,5 ms por lista completa.
 - Navegador integrado (375×812): mensajes con `*` rotos se ven limpios; "5 * 3" del usuario literal; la casilla de Ajustes guarda y restaura.
+
+## UI-011: quitar los deslizadores de longitud y creatividad de Ajustes (2026-09-25)
+
+**Estado:** implementado; verificado en el navegador integrado (375×812): Ajustes sin deslizadores, `maxLen`/`temp` intactos en el estado. **NO probado en el teléfono.**
+- `ui/settings.js`: se eliminaron los dos campos ("Longitud de respuesta" y "Creatividad"), sus referencias, los temporizadores de
+  guardado, `clamp` y `SLIDER_DEBOUNCE_MS` (ya sin uso). Nada más de Ajustes cambió.
+- **NO se tocó** `state.js` (esquema y valores por defecto iguales: `maxLen` 220, `temp` 0.85 y lo que cada usuario ya tuviera
+  guardado) ni `api/kobold.js` (sigue enviando `settings.maxLen`/`settings.temp` en cada petición, líneas ~163, 250, 352, 368) ni
+  el formato de backup: las copias v1/v2 con estos campos importan igual. Para reintroducir el control basta volver a pintar
+  los dos `<input type="range">` y guardar con `saveSettings({ maxLen })` / `({ temp })`.
+- Test nuevo (`kobold.test.mjs`): `generateReply` sigue enviando `maxLen`/`temp` en modo plantilla y texto simple.
+- Motivo (decisión del usuario): el servidor los ignora (medido en MEM-001 v2, Paso 0) y nunca los usa.
