@@ -2105,3 +2105,23 @@ Scripts de medición desechables (fuera del repo); datos sintéticos, sin conten
   sea el personaje (FMT-002 no distingue). A un personaje sin asteriscos (Ani) le empezaría cada respuesta dentro de una acción. Conviene decidir si
   el arranque en `*` debe depender del personaje (p. ej. por su `mes_example`) antes de que el usuario chatee con Ani con el interruptor encendido.
 - **Riesgo conocido de la regla 2 (según contrato):** un mensaje sin asteriscos que cite algo entre comillas (`I love the "Mona Lisa" painting`) mostrará el resto en cursiva.
+
+## MEM-006: "Estado de la relación": DETENIDO por su condición de parada (2026-09-25)
+
+**Estado:** NO implementado en `main`. El contrato manda parar y reportar si el resumen tiende a inventar información que no está en el lorebook. **Hecho (medido)**: ocurre.
+- **Qué se probó:** contra el KoboldCpp real (Mahou-1.5-mistral-nemo-12B, contexto 6144, 160 tokens), con recuerdos SINTÉTICOS de "Sam" y "Mia" (3, 2 y 7 entradas). Prompt: "escribe 2-4 frases en tercera persona usando SOLO las notas, sin
+  inventar nada", con la frase inicial "Mia and Sam" ya escrita (prefill, para evitar la respuesta vacía por `\n`). Latencia 2,5-6,8 s por llamada. 8 corridas con el prompt A y 12 con dos prompts más estrictos (V2, V3).
+- **Ejemplos (notas → resumen):**
+  - Notas: "Sam le contó a Mia que su perro Bruno teme a los truenos" + "Sam trabaja en una fábrica". Resumen: "han estado más cerca **desde que empezaron a trabajar juntos en la fábrica**… **comentan sus mascotas en el almuerzo**…" (Mia no trabaja en la fábrica; lo del almuerzo no existe).
+  - Con 7 notas: "**se consuelan mutuamente**" (solo Mia consoló a Sam); "Sam **aún no cumple** su promesa… **simboliza un deseo de escape**" (invención); "el prompt V3: **Sam comforted Mia** … to ease her fear" (los papeles al revés).
+  - "Mia and Sam, **who are coworkers**" (V3); "Sam's revelation about his dog **caused Mia anxiety** when they first touched hands" (V2: une dos hechos que no tienen relación).
+  - Añadidos de opinión sin base: "tensión subyacente", "nueva relación", "confianza", "rutina reconfortante".
+- **Prompts más estrictos (V2/V3: "cada frase debe repetir algo de las notas", prohibir palabras como "bond/trust", 1-2 frases) reducen las invenciones pero NO las eliminan**: siguen
+  apareciendo cambios de quién hizo qué y detalles nuevos. El servidor impone su propio muestreo (`--gendefaultsoverwrite`), así que la temperatura baja de la petición no ayuda.
+- **Por qué importa:** es un texto sobre "cómo va la relación" que el usuario leería como cierto; un dato falso (o un papel invertido) en un tema emocional es peor que no tener resumen.
+- **Trabajo parcial conservado (NO en `main`):** rama local `mem-006-en-espera` (1 commit, sin subir): `www/js/api/relationship.js` (prompt, limpieza, "hace 2 días",
+  `createRelationshipUpdater` con cancelación) y `state.js` (`Character.relationshipStatus` saneado a `null`, `saveCharacterRelationship`). Falta: botón y vista en la hoja "Ver lorebook",
+  cancelación al enviar un mensaje, tests y verificación en el navegador.
+- **Opciones para el arquitecto (sin implementar):** (a) NO usar el modelo: mostrar un "resumen" armado solo con las propias entradas (p. ej. las 3-5 más recientes/importantes, tal cual), sin riesgo de invención;
+  (b) seguir con el modelo pero enseñando SIEMPRE junto al resumen las entradas de origen y el aviso "puede contener errores", o pedir que el usuario lo revise/edite antes de guardarlo;
+  (c) aceptar el riesgo con un aviso visible; (d) posponerlo hasta contar con un modelo más fiable. Recomendación: (a) o (b).
