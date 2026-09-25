@@ -51,6 +51,14 @@ export function openSettings(app) {
     </div>
 
     <div class="field">
+      <label class="field__label" style="display:flex;align-items:center;gap:var(--space-2, 8px)">
+        <input type="checkbox" id="settings-variety" style="accent-color:var(--color-accent, #8b1fe0)">
+        <span>Ayuda a que las respuestas no se repitan</span>
+      </label>
+      <div class="field__hint">Si tu personaje empieza a repetir las mismas palabras o temas, la siguiente respuesta lleva una nota breve pidiéndole variar. No hace el chat más lento.</div>
+    </div>
+
+    <div class="field">
       <label class="field__label">Bloqueo con PIN</label>
       <div id="settings-pin-body"></div>
     </div>
@@ -84,6 +92,7 @@ export function openSettings(app) {
     temp: q('#settings-temp'),
     tempV: q('#settings-temp-v'),
     mode: q('#settings-mode'),
+    variety: q('#settings-variety'),
     pinBody: q('#settings-pin-body'),
     appearanceBtn: q('#settings-appearance'),
     exportBtn: q('#settings-export'),
@@ -101,6 +110,7 @@ export function openSettings(app) {
     els.temp.value = settings.temp;
     els.tempV.textContent = settings.temp;
     els.mode.value = settings.mode;
+    els.variety.checked = settings.varietyAssist === true;
     renderPinBody(settings);
   });
 
@@ -184,6 +194,10 @@ export function openSettings(app) {
 
   els.mode.addEventListener('change', () => {
     saveSettings({ mode: els.mode.value });
+  });
+
+  els.variety.addEventListener('change', () => {
+    saveSettings({ varietyAssist: els.variety.checked });
   });
 
   els.appearanceBtn.addEventListener('click', () => {

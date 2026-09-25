@@ -46,7 +46,8 @@ navegación), `setup`, `home`, `chats`, `chat`. Versión: `APP_VERSION`
   `mode` (`'chat'` por defecto | `'plain'`), `ctx`, `pinSalt`, `pinHash`,
   `theme` (`nomi|glass|imessage`), `themeMode` (`dark|light`), `lorebookAuto`
   (boolean, `false` por defecto; MEM-002: solo `true` activa la extracción
-  automática de memoria).
+  automática de memoria), `varietyAssist` (boolean, `false` por defecto; FMT-004:
+  nota de variedad al final del prompt si el personaje se repite).
 - `Character` (store `characters`): `id`, `name`, `avatar` (data URL),
   `card` (Card normalizada), `avatarMode`, `created`, `lorebook: LoreEntry[]`
   (por personaje, compartido entre sus chats), `lorebookPrevious: LoreEntry[]` y
@@ -76,7 +77,7 @@ personaje (MEM-001 v2: extracción aditiva de una línea vía KoboldCpp, inyecci
 por keyword, hoja "Ver lorebook" con editar/borrar/deshacer y "Actualizar memoria
 ahora"; MEM-002: la actualización automática cada 20 mensajes está APAGADA por
 defecto y se activa con un interruptor en esa hoja); 3 skins × claro/oscuro; fondo
-de chat por personaje; CI con gate de tests; versión visible en Ajustes; 226
+de chat por personaje; CI con gate de tests; versión visible en Ajustes; 245
 tests (`node --test tests/*.test.mjs`).
 
 **Verificado en un teléfono real (Hecho, reportado por el tester, 2026-09-24):**
@@ -117,6 +118,8 @@ personajes guiado (solo propuesta, no autorizado). Añadido por DOC-002
   prompt. **Candidatos a contrato futuro (SIN autorizar):** higiene de keys
   (palabras sueltas, sin genéricas); fusión de casi-duplicados aunque las keys
   difieran; recuerdos "siempre presentes" con tope de caracteres.
+- **Pendiente (FMT-004):** medir FMT-004 con conversaciones largas (40+ turnos) antes de
+  decidir si activar `varietyAssist` por defecto (la medición de 18 turnos no fue concluyente).
 - **Formato del personaje (Hecho, observado varias veces por el tester, también en
   versiones antiguas):** a veces la narración sale SIN asteriscos y parece
   diálogo, y a veces queda un asterisco suelto que se ve literal ("...sincere.*").
@@ -231,6 +234,8 @@ personajes: segunda iteración visual"; auditoría de recuperabilidad →
 | DOC-003 | Reducir el costo de leer la documentación: dividir NOTES.md y registrar principios y hoja de ruta | Autorizado — ejecutado el 2026-09-24 (sesión C; solo `docs/`) | Historia movida tal cual a `HISTORIAL.md`; este archivo queda como punto de partida. Añade principios 8 y 9 y la hoja de ruta. |
 | MEM-003 | Calidad de los recuerdos: concretos, keys útiles, sin duplicados, "Limpiar recuerdos" | Autorizado — **implementado el 2026-09-24** (sesión E); probado contra el servidor real (15+15 corridas) y en el navegador; **pendiente de probar en el teléfono** | Ver "MEM-003" (en `HISTORIAL.md`). Umbral de fusión 0,6; la inyección pasó de subcadena a palabra completa. |
 | MEM-004 | Recuerdos "siempre presentes" y colocación que no invalida la caché del servidor | Autorizado — **implementado el 2026-09-24** (sesión E); Paso 0 medido (bloque en la cabecera: +22 s / +40 s; al final: +1 s); **pendiente de probar en el teléfono** | Ver "MEM-004" (en `HISTORIAL.md`). El bloque "por tema" va al FINAL del prompt; "siempre presentes" en la cabecera. |
+| MEM-005 | Keys que reflejan el habla del usuario; fusión de paráfrasis; primera persona | Autorizado — **implementado el 2026-09-24** (sesión E2); medido contra el servidor real (18+18 corridas); **pendiente de probar en el teléfono** | Ver "MEM-005" (en `HISTORIAL.md`). Causa del bug: "invite"/"invited" eran palabras distintas. |
+| FMT-004 | Reducir el eje temático repetido del personaje | Autorizado — **implementado el 2026-09-24** (sesión E2); ayuda **apagada por defecto**; medición no concluyente | Ver "FMT-004" (en `HISTORIAL.md`). `Settings.varietyAssist`; detector en `api/variety.js`. |
 | BKP-001 | Importación de copias segura: confirmar, no pisar datos nuevos, todo o nada | **Autorizado; sin implementar** (sesión posterior a MEM-001 v2, solo cuando el usuario lo pida) | Punto de partida: hallazgos 2 y 10 de VER-001. |
 | MEM-001 (v1) | (Anulado) versión anterior de MEM-001 | **ANULADO**, reemplazado por MEM-001 v2 | Asumía que el servidor podía devolver una lista larga con saltos de línea. |
 | (previos) | `CONTRACT-LOREBOOK.md` (implementado, parcialmente superado), `CONTRACT-CHARACTER-CREATOR.md` (propuesta, no autorizada), `CONTRACT-HANDOFF.md` (briefing) | — | Ver los avisos al inicio de cada uno. |
@@ -258,14 +263,10 @@ personajes: segunda iteración visual"; auditoría de recuperabilidad →
 - **MEM-002 (2026-09-24), memoria automática apagada por defecto** (`Settings.lorebookAuto`):
   cada extracción cuesta ~20 s en la SIGUIENTE respuesta. Opciones 2 y 4 (VER-004) pendientes.
 
-- **MEM-003 (2026-09-24), calidad de la memoria.** El prompt de extracción pide hechos
-  concretos que nombran a los dos y keys de una palabra; `normalizeLoreKeys` limpia las
-  keys (sin genéricas ni nombres, máx. 4); no se guardan hechos sin sujeto con nombre
-  ("He…", "My…"); las casi-repetidas se fusionan (solapamiento ≥0,6 y ≥2 palabras); la
-  inyección compara por palabra completa (antes subcadena: "art" coincidía con "start");
-  botón "Limpiar recuerdos" (deshacible). Medido con el servidor real: entradas con
-  nombre 73 % → 100 %, keys-frase 34/70 → 0/95. Con las 7 entradas reales del tester:
-  7 → 4 (medido en el navegador).
+- **MEM-003 (2026-09-24), calidad de la memoria.** Prompt de hechos concretos con nombres y keys de una
+  palabra; `normalizeLoreKeys` limpia (sin genéricas ni nombres, máx. 4); sin hechos con pronombre suelto; fusión de
+  casi-repetidas (≥0,6 y ≥2 palabras); inyección por palabra completa; botón "Limpiar recuerdos" (deshacible).
+  Medido: entradas con nombre 73 % → 100 %, keys-frase 34/70 → 0/95.
 
 - **MEM-004 (2026-09-24), "siempre presentes" y colocación.** Medido: cambiar el bloque de
   lorebook en la CABECERA cuesta +22 s (chat de 2 440 tokens) / +40 s (4 020) en la siguiente
@@ -274,6 +275,12 @@ personajes: segunda iteración visual"; auditoría de recuperabilidad →
   "siempre presentes" (`LoreEntry.always`, tope 500 caracteres; suma con "por tema" ≤1200)
   van en la cabecera: son estables. Hoja con secciones, contador e interruptor. Sin entradas,
   el prompt es idéntico al anterior. Editar un "siempre presente" cuesta UNA respuesta lenta.
+
+- **MEM-005 (2026-09-24), keys y fusión.** La fusión fallaba porque "invite"/"invited" no coincidían
+  (`stemLite` mejorado; con las mismas 2+ keys basta 0,5 de solapamiento). El prompt pide una key copiada
+  del usuario: keys literales en sus mensajes 88 % → 96 % (18 corridas). Se descartan hechos en primera persona.
+- **FMT-004 (2026-09-24), variedad.** Detector puro (`api/variety.js`) y nota genérica al final del prompt
+  (proactiva). Apagada por defecto: la medición con 18 turnos no reprodujo el problema; falta probar 40+ turnos.
 
 ## Hoja de ruta acordada (propuesta, NO autorizada)
 
@@ -322,3 +329,4 @@ implementan sin un contrato del arquitecto. Sin datos personales del usuario.
 - **MEM-002** — decisión de apagar la memoria automática, cambios y limitación conocida.
 - **MEM-003** — prompt de extracción, higiene de keys, fusión, palabra completa, "Limpiar recuerdos" y la medición contra el servidor real.
 - **MEM-004** — Paso 0 (latencia por colocación), decisión, ejemplo de prompt, pruebas de estilo.
+- **MEM-005** — causa del bug de fusión, prompt de keys final, tabla antes/después. **FMT-004** — detector, medición no concluyente, ronda detenida por memoria.

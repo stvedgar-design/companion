@@ -59,6 +59,7 @@ test('getSettings devuelve valores por defecto cuando no hay nada guardado', asy
     pinSalt: '', pinHash: '',
     theme: 'nomi', themeMode: 'dark',
     lorebookAuto: false,
+    varietyAssist: false,
   });
 });
 
@@ -780,4 +781,19 @@ test('MEM-004: un personaje importado en una copia sin `always` conserva su lore
   const result = await state.importBackup({ text: async () => JSON.stringify(backup) });
   assert.ok(result);
   assert.deepEqual((await state.getCharacter('x')).lorebook, character.lorebook);
+});
+
+test('FMT-004: varietyAssist es false por defecto y solo acepta true estricto; copias previas cargan bien', async () => {
+  const state = createState(createMemoryBackend());
+  assert.equal((await state.getSettings()).varietyAssist, false);
+  assert.equal((await state.saveSettings({ varietyAssist: 'true' })).varietyAssist, false);
+  assert.equal((await state.saveSettings({ varietyAssist: 1 })).varietyAssist, false);
+  assert.equal((await state.saveSettings({ varietyAssist: true })).varietyAssist, true);
+  // Un registro guardado antes de este ajuste (sin el campo) carga con el valor por defecto.
+  const backend = createMemoryBackend();
+  await backend.put('settings', 'main', { url: 'http://x', user: 'Sam', lorebookAuto: true });
+  const old = await createState(backend).getSettings();
+  assert.equal(old.varietyAssist, false);
+  assert.equal(old.lorebookAuto, true);
+  assert.equal(old.user, 'Sam');
 });

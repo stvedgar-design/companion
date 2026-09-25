@@ -169,6 +169,14 @@ function formatTopicBlock(topicBlock) {
   return `[${String(topicBlock).trim()}]`;
 }
 
+// Todo lo que va al FINAL del prompt (MEM-004 "por tema" + FMT-004 nota de variedad), en este orden.
+// '' si no hay nada: sin ambos, el prompt es idéntico al de antes.
+function endBlock(topicBlock, varietyNote) {
+  return [topicBlock ? formatTopicBlock(topicBlock) : '', varietyNote ? formatTopicBlock(varietyNote) : '']
+    .filter(Boolean)
+    .join('\n');
+}
+
 // Conserva los items más recientes dentro de un presupuesto de caracteres.
 // Nunca devuelve menos de 1 item si items no está vacío.
 function pickHistory(items, budget, lengthOf) {
@@ -194,9 +202,11 @@ function pickHistory(items, budget, lengthOf) {
  * @param {string} [topicBlock] MEM-004: bloque "por tema" (varía turno a turno). Va al FINAL, justo antes de la
  *   última línea del usuario, y solo en el prompt construido (nunca se guarda ni se muestra). En la cabecera
  *   invalidaría la caché de prompt del servidor (ver docs/HISTORIAL.md, "MEM-004").
+ * @param {string} [varietyNote] FMT-004: nota breve para que el personaje varíe su vocabulario. Va junto al bloque
+ *   "por tema", al FINAL y solo en el prompt construido.
  * @returns {{ prompt: string, stop: string[] }}
  */
-export function buildPlainPrompt(card, messages, settings, chatScenario = '', loreBlock = '', topicBlock = '') {
+export function buildPlainPrompt(card, messages, settings, chatScenario = '', loreBlock = '', topicBlock = '', varietyNote = '') {
   const N = card.name;
   const U = (settings && settings.user) || 'User';
   const ctx = (settings && settings.ctx) || 4096;
@@ -208,7 +218,7 @@ export function buildPlainPrompt(card, messages, settings, chatScenario = '', lo
     : '';
   const cue = `\n${N}:`;
 
-  const topic = topicBlock ? formatTopicBlock(topicBlock) : '';
+  const topic = endBlock(topicBlock, varietyNote);
   const budget = Math.max(
     MIN_HISTORY_BUDGET,
     (ctx - maxLen - 64) * CHARS_PER_TOKEN - head.length - post.length - cue.length - topic.length
@@ -245,9 +255,10 @@ export function buildPlainPrompt(card, messages, settings, chatScenario = '', lo
  * @param {string} [topicBlock] MEM-004: bloque "por tema". Se antepone al contenido del ÚLTIMO mensaje del usuario
  *   en la copia que se envía (no se asume que la plantilla del modelo admita mensajes `system` intercalados);
  *   los mensajes guardados no se tocan. Ver `buildPlainPrompt`.
+ * @param {string} [varietyNote] FMT-004: nota de variedad; va junto al bloque "por tema". Ver `buildPlainPrompt`.
  * @returns {{ messages: {role:'system'|'user'|'assistant', content:string}[], stop: string[] }}
  */
-export function buildChatMessages(card, messages, settings, chatScenario = '', loreBlock = '', topicBlock = '') {
+export function buildChatMessages(card, messages, settings, chatScenario = '', loreBlock = '', topicBlock = '', varietyNote = '') {
   const N = card.name;
   const U = (settings && settings.user) || 'User';
   const ctx = (settings && settings.ctx) || 4096;
@@ -258,7 +269,7 @@ export function buildChatMessages(card, messages, settings, chatScenario = '', l
     head += '\n\n' + subMacros(card.post_history_instructions, N, U);
   }
 
-  const topic = topicBlock ? formatTopicBlock(topicBlock) : '';
+  const topic = endBlock(topicBlock, varietyNote);
   const budget = Math.max(MIN_HISTORY_BUDGET, (ctx - maxLen - 64) * CHARS_PER_TOKEN - head.length - topic.length);
   const kept = pickHistory(messages, budget, (m) => m.text.length);
 

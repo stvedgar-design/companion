@@ -1793,3 +1793,121 @@ idéntico sin entradas y colocación en ambos modos con mensajes guardados intac
 (375×812): secciones, contador, aviso de desborde, interruptor guardado, indicador de contexto
 con la reserva. **No probado:** teléfono/APK; otras plantillas de modelo; el efecto real en Mia.
 **Sugerencia para la card (no aplicada):** ninguna.
+
+## MEM-005: keys que reflejan cómo habla el usuario y fusión de paráfrasis (2026-09-24)
+
+**Estado:** implementado; 245 tests en verde (226 + 19 entre MEM-005 y FMT-004). Medido contra el servidor
+real (KoboldCpp 1.121, Mahou 12B, `/api/v1/generate`). **NO probado en el teléfono/APK.**
+
+### Bug de fusión: causa real (Hecho, reproducido con datos sintéticos)
+El contrato suponía que la fusión estaba condicionada a "sin key en común". **No es así**: `applyExtraction` ya
+comparaba por contenido también con la misma key, y `mergeNearDuplicates` ignora las keys. La causa era que la
+comparación de contenido veía "invite" e "invited" como palabras distintas (`stemLite` solo quitaba `s`). Caso
+mínimo, mismas keys `coffee, date`: "Sam did not invite Mia to a coffee date" / "Sam has never invited Mia out
+for coffee" → 1 palabra compartida de 3 (0,33 < 0,6) → dos entradas. Con el mismo caso y "invited" en ambas,
+sí se fusionaba. **Límite:** no vi las dos entradas reales del tester (solo su captura descrita), así que la
+causa está reproducida con frases sintéticas equivalentes (Inferencia de que era esa en su caso).
+
+### Corrección (`www/js/api/lorebook.js`)
+1. `stemLite` (solo para comparar, nunca se guarda) ahora también quita `ed`/`ing`, una `e` final y desdobla la
+   consonante doble: invite/invited/inviting → "invit". Con eso el caso mínimo da 2/3 y se fusiona.
+2. Mismas keys (2 o más, en cualquier orden) → umbral de solapamiento 0,5 en vez de 0,6
+   (`LOREBOOK_MERGE_OVERLAP_SAME_KEYS`; `areNearDuplicates(a, b, names, {keysA, keysB})`), tanto al extraer
+   (`applyExtraction`) como en "Limpiar recuerdos" (`mergeNearDuplicates`). Con UNA sola key no cambia nada.
+3. **Caso obligatorio de MEM-003 intacto:** los 226 tests anteriores pasan sin tocarlos; hechos distintos
+   ("Bruno barks loudly" / "Bruno sleeps all day", perro vs. lago) siguen sin fusionarse.
+
+### Prompt de extracción (final)
+Sobre el de MEM-003 solo cambia la instrucción de keys: "1 to 3 keywords about its topic: single lowercase words…
+Then, if {U}'s own lines in the excerpt contain a distinctive noun or verb about that fact, add 1 more keyword
+copied EXACTLY as {U} wrote it; if there is no clear one, skip it." El ejemplo pasó a
+`{"k":["bruno","thunder","hides"],…}`. Máximo de keys: 4 (3 del tema + 1 del usuario).
+`normalizeLoreKeys` NO necesitó cambios (verificado con test: hands, kiss, touch, whisper, squeeze, hug no son
+genéricas; nombres y palabras de 1 letra siguen fuera). Nota: "love"/"like" siguen siendo genéricas a propósito.
+
+### Residual de primera persona
+Medido: 0 de 87 hechos con I/my/me/we en las 18+18 corridas (MEM-003 ya descartaba el sujeto pronombre sin
+nombre). Como red de seguridad añadí `hasFirstPersonVoice` (I, me, my, we, our, yo, mi, nosotros…, FUERA de
+comillas): `normalizeIncoming` descarta un hecho `auto` que la cumple aunque nombre a ambos ("Sam told Mia that my
+dog…"). Con test de falsos positivos ("Milan", "mint", una cita entre comillas). Es una decisión mía, no medida.
+
+### Medición contra el servidor real (Hecho)
+3 conversaciones SINTÉTICAS de 12 mensajes (Sam, frases cortas en 2.ª persona con acciones físicas; Mia), 6 rondas
+× 3 conversaciones = **18 corridas por prompt**, alternando prompts, sin entradas previas, misma higiene para juzgar.
+Métrica: qué fracción de las keys resultantes aparece literalmente (sin acentos, plural/`ed`/`ing`) en los mensajes
+del USUARIO.
+
+| | Anterior | Nuevo (final) | Variante B* |
+|---|---|---|---|
+| Corridas / sin parsear | 18 / 0 | 18 / 0 | 18 / 0 |
+| Entradas (por corrida) | 43 (2,4) | 44 (2,4) | 39 (2,2) |
+| Keys por entrada | 2,2 | 2,9 | 2,5 |
+| Keys literales en mensajes del usuario (ventana) | 84/95 = **88 %** | 124/129 = **96 %** | 86/98 = 88 % |
+| Keys literales en los ÚLTIMOS 3 mensajes del usuario | 20/95 = **21 %** | 36/129 = **28 %** | 12/98 = 12 % |
+| Entradas que nombran a Sam o Mia | 100 % | 98 % | 100 % |
+| Hechos en primera persona | 0 | 0 | 0 |
+| Extracción media | 7,3 s | 7,0 s | 5,5 s |
+
+*Variante B: "prefiere las palabras exactas de Sam sobre sinónimos"; peor, se descartó.
+**Lectura honesta:** la mejora es real pero moderada (+8 y +7 puntos, muestra chica). La mayoría de las keys ya
+salían de la conversación; y el límite mayor es que los hechos suelen venir de mensajes antiguos, así que una key
+no reaparece en los 3 últimos mensajes aunque sea literal. Los datos sintéticos no incluyen "hands/kiss/touch"
+como hechos; el efecto sobre el habla real del usuario **no está medido**. Los scripts eran desechables (en `/tmp`).
+
+### Tests nuevos (`tests/lorebook.test.mjs`)
+Paráfrasis coffee/date en dos extracciones, en la misma pasada y en "Limpiar recuerdos" (con un hecho distinto
+que se conserva); umbral 0,5 solo con 2+ keys iguales; `hasFirstPersonVoice`; key literal del usuario conservada.
+Tests antiguos ajustados: ninguno. **Pendiente:** probar en el teléfono; medir con habla real del usuario.
+**Sugerencia para la card:** ninguna.
+
+## FMT-004: repetición temática del personaje — detector y ayuda opcional (2026-09-24)
+
+**Estado:** implementado y **apagado por defecto** (`Settings.varietyAssist`); medición **no concluyente**.
+Tests en verde (incluidos `tests/variety.test.mjs`, 11, y el saneado en `state.test.mjs`). **NO probado en el teléfono.**
+
+### Qué se hizo
+- `www/js/api/variety.js` (puro): `themeWords` deriva del propio personaje las palabras que aparecen en ≥2 de sus
+  últimos 3 turnos (raíces de 4+ letras, sin stopwords ni nombres; sin lista fija); `detectRepetition` marca una
+  respuesta si reutiliza ≥2 de esas palabras; `varietyNeeded(messages)` mira el ÚLTIMO turno contra los 3 anteriores.
+  Con menos de 3 turnos previos no marca nada. Calibrado con tests: eje repetido → sí; otro tema → no; un rasgo
+  constante con una sola palabra suelta ("curious") → no; otro personaje (cocinero) → igual.
+- **Opción implementada: (a) proactiva.** Si `varietyAssist` está activo y `varietyNeeded`, `generateReply` añade
+  `[Note: vary your wording…]` (`VARIETY_NOTE`, genérica, sin nombrar a nadie) al FINAL del prompt, junto al bloque
+  "por tema" (`prompt.js`, 7.º parámetro `varietyNote`). Solo en el prompt construido; los mensajes guardados no se
+  tocan; sin nota el prompt es idéntico (test). **(b) regenerar** no se implementó en la app: obligaría a mostrar
+  texto en streaming y luego reemplazarlo; solo se simuló en la medición.
+- Ajustes: casilla "Ayuda a que las respuestas no se repitan" (`settings.js`); `state.js` la sanea (solo `true`
+  estricto; copias previas cargan en `false`).
+- **Toqué `www/js/api/kobold.js`** (no estaba en el alcance escrito, pero `generateReply` es quien arma los prompts).
+- Card de Mia: NO tocada.
+
+### Medición (Hecho, pequeña) — card SINTÉTICA "Tessa" (bibliotecaria "curiosa", `mes_example` con explore/learn/discover)
+18 turnos de usuario que cambian de tema, `/v1/chat/completions`, formato del chat real. Eje = explor/learn/discover/
+grow/understand/journey/curio/wonder/adventure/fascinat. Ronda 1 completa (4 condiciones × 18 turnos; se miden los
+turnos ≥3 → 15 respuestas por condición):
+
+| Condición | Con ≥1 palabra del eje | Con ≥2 | Media por respuesta | Marcadas por el detector | Largo | Formato ok |
+|---|---|---|---|---|---|---|
+| Base (sin nota) | 40 % | 7 % | 0,47 | 0 % | 233 | 100 % |
+| Proactivo (con detector) | 33 % | 20 % | 0,73 | 0 % | 255 | 93 % |
+| Nota siempre puesta | 33 % | 13 % | 0,53 | 100 % nota | 315 | 87 % |
+| Regenerar una vez | 27 % | 7 % | 0,33 | 0 % | 224 | 100 % |
+
+Ninguna respuesta repitió el texto de la nota. El proactivo nunca se activó (el detector no marcó ningún turno),
+así que sus números son ruido. **Conclusión: no concluyente.** Una primera pasada con otra card sintética (botánica,
+antes del cierre del PC; solo se conservan los números de la consola) dio base 45 respuestas: 56 % con ≥1 palabra del
+eje y 2 % marcadas: tampoco reproduce el problema de Mia (~2 palabras del eje por respuesta hacia el mensaje 20–40).
+La ronda 2 NO se ejecutó (ver abajo). Latencia: la nota va al final; la generación tardó 2,9 s (base) vs 4,6 s
+(nota siempre; respuestas más largas), no medí el efecto de caché (no hace falta: solo aparece si se activa).
+
+### Ronda detenida por memoria (decisión del usuario, 2026-09-24)
+Un cierre del PC durante una medición anterior llevó a vigilar `free -m` entre pasadas (una sola petición a la
+vez, escritura a disco tras cada respuesta). Memoria usada (MB): antes 5072 → base 5133 → proactive 5165 → always
+5209 → regen 5215 (+143 en 4 pasadas, frenándose: +6 en la última). Cada pasada era un proceso nuevo, así que no es
+una fuga del script; sospecha (Inferencia) de otros programas del PC. Se paró por la regla acordada y no se siguió:
+con esta card 18 turnos no reproducen el problema, y repetir la ronda no lo arreglaría.
+
+### Conclusión y sugerencias
+`varietyAssist` queda apagado por defecto. Para decidir hace falta una prueba con conversaciones largas (40+ turnos)
+(ver Pendientes de `NOTES.md`). **Sugerencia para la card de Mia (NO aplicada, no medida):** un segundo `mes_example`
+con otro tono (sin explore/learn/understand) probablemente reduciría el sesgo del vocabulario a coste cero de código.
