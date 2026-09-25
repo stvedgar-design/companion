@@ -5,6 +5,7 @@ import { getSettings, listCharacters, listChats, deleteCharacter } from '../stat
 import { importCardFile } from '../cards/import.js';
 import { connect } from '../api/kobold.js';
 import { pickFiles } from '../platform.js';
+import { continueTarget } from '../nav.js';
 import { openSettings } from './settings.js';
 
 const ICON_SETTINGS = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>';
@@ -15,6 +16,7 @@ let app = null;
 let els = {};
 let characters = [];
 let lastByCharacter = {};
+let chatsByCharacter = {}; // UI-013: para que "Continuar" sepa cuál es el chat más reciente
 let searchQuery = '';
 let searchOpen = false;
 let viewToken = 0; // se incrementa en hide(); invalida cualquier comprobación de conexión pendiente
@@ -95,12 +97,15 @@ export async function show() {
 }
 
 // Trae, para cada personaje, el `last` del chat más reciente (si tiene
-// alguno) para mostrarlo como vista previa en la tarjeta del hub.
+// alguno) para mostrarlo como vista previa en la tarjeta del hub. De paso
+// guarda la lista de chats (`chatsByCharacter`) para el botón "Continuar".
 async function buildLastPreviews(list) {
+  chatsByCharacter = {};
   const entries = await Promise.all(
     list.map(async (character) => {
       try {
         const chats = await listChats(character.id);
+        chatsByCharacter[character.id] = chats;
         return [character.id, chats.length ? chats[0].last : ''];
       } catch {
         return [character.id, ''];
@@ -144,7 +149,13 @@ function renderRow(character) {
   const card = document.createElement('div');
   card.className = 'home-card';
 
-  const open = () => app.navigate('chats', { characterId: character.id });
+  // El retrato abre la lista de chats; "Continuar" entra directo al chat más
+  // reciente (UI-013). Sin chats, `continueTarget` cae en la lista, que crea uno.
+  const openChats = () => app.navigate('chats', { characterId: character.id });
+  const openLatest = () => {
+    const target = continueTarget(character.id, chatsByCharacter[character.id]);
+    app.navigate(target.view, target.params);
+  };
 
   const avatar = document.createElement('div');
   avatar.className = 'home-card__avatar';
@@ -177,11 +188,11 @@ function renderRow(character) {
   scrim.appendChild(sub);
   avatar.appendChild(scrim);
 
-  avatar.addEventListener('click', open);
+  avatar.addEventListener('click', openChats);
   avatar.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
-      open();
+      openChats();
     }
   });
 
@@ -192,7 +203,7 @@ function renderRow(character) {
   continueBtn.className = 'btn btn--sm home-card__continue';
   continueBtn.type = 'button';
   continueBtn.textContent = 'Continuar';
-  continueBtn.addEventListener('click', open);
+  continueBtn.addEventListener('click', openLatest);
 
   const del = document.createElement('button');
   del.className = 'ib home-card__del';

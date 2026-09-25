@@ -2007,3 +2007,20 @@ Scripts de medición desechables (fuera del repo); datos sintéticos, sin conten
   los dos `<input type="range">` y guardar con `saveSettings({ maxLen })` / `({ temp })`.
 - Test nuevo (`kobold.test.mjs`): `generateReply` sigue enviando `maxLen`/`temp` en modo plantilla y texto simple.
 - Motivo (decisión del usuario): el servidor los ignora (medido en MEM-001 v2, Paso 0) y nunca los usa.
+
+## UI-013: hub, "Continuar" al chat más reciente y retrato a la lista de chats (2026-09-25)
+
+**Estado:** implementado; verificado en el navegador integrado (375×812). **NO probado en el teléfono.**
+- Antes: el retrato y "Continuar" llamaban al mismo `open` (`navigate('chats', …)`). Ahora (`ui/home.js`): el retrato
+  (`.home-card__avatar`, clic y teclado Enter/Espacio) sigue yendo a la lista de chats; "Continuar" llama a `continueTarget`.
+- `www/js/nav.js` (nuevo, puro): `continueTarget(characterId, chats)` devuelve `{view:'chat', params:{chatId}}` con el chat de
+  `updated` más reciente (empate: el primero de la lista, que `listChats` ya entrega ordenada) o, sin chats,
+  `{view:'chats', params:{characterId}}`: esa vista ya crea un chat y entra directo (`chats.js` `show()`), así que el caso
+  "personaje sin chats" se conserva sin tocar `chats.js`.
+- `home.js` guarda la lista de chats por personaje en `buildLastPreviews` (la misma consulta `listChats` que ya hacía para la vista
+  previa: sin consultas nuevas). El borrado y demás acciones de la tarjeta no cambiaron.
+- Historial: "Continuar" apila `home → chat`, así que "atrás" desde ese chat vuelve al hub; el menú del chat conserva
+  "Volver a los chats de este personaje".
+- **Verificado (Hecho, navegador integrado):** con un personaje de 2 chats, "Continuar" abrió el más reciente (no el primero
+  creado); el retrato abrió la lista con ambos; "atrás" volvió al hub; con un personaje sin chats "Continuar" creó 1 y entró.
+- Tests: 5 nuevos en `tests/nav.test.mjs` (varios chats, uno, ninguno/datos malos, empate).
