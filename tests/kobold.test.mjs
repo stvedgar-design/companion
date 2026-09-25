@@ -660,3 +660,120 @@ test('generateReplyNonEmpty con el servidor simulado: 1.ª respuesta vacía, 2.�
     server.close();
   }
 });
+
+// ---------- FMT-002: formatAssist (la respuesta arranca dentro de una acción) ----------
+
+function chatStreamer(chunks, capture) {
+  return async (res, body) => {
+    capture.body = body;
+    res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+    for (const c of chunks) res.write('data: ' + JSON.stringify({ choices: [{ delta: { content: c } }] }) + '\n\n');
+    res.write('data: [DONE]\n\n');
+    res.end();
+  };
+}
+
+test('FMT-002 (plantilla): con formatAssist envía el mensaje assistant "*" y antepone "*" al texto', async () => {
+  const seen = {};
+  const { server } = createFakeServer({ onChatStream: chatStreamer(['I smile', ' softly.* Hi!'], seen) });
+  const base = await listen(server);
+  try {
+    const tokens = [];
+    const result = await generateReply({
+      character: makeCharacter(),
+      messages: [{ role: 'user', text: 'Hola', ts: 1 }],
+      settings: makeSettings(base, { mode: 'chat', formatAssist: true }),
+      onToken: (c) => tokens.push(c)
+    });
+    assert.deepEqual(seen.body.messages.at(-1), { role: 'assistant', content: '*' });
+    assert.equal(result.text, '*I smile softly.* Hi!');
+    assert.equal(tokens.join(''), '*I smile softly.* Hi!');
+  } finally {
+    server.close();
+  }
+});
+
+test('FMT-002 (plantilla): sin formatAssist no envía assistant final ni cambia el texto', async () => {
+  const seen = {};
+  const { server } = createFakeServer({ onChatStream: chatStreamer(['Hola', ' mundo'], seen) });
+  const base = await listen(server);
+  try {
+    const result = await generateReply({
+      character: makeCharacter(),
+      messages: [{ role: 'user', text: 'Hola', ts: 1 }],
+      settings: makeSettings(base, { mode: 'chat' })
+    });
+    assert.equal(seen.body.messages.at(-1).role, 'user');
+    assert.equal(result.text, 'Hola mundo');
+  } finally {
+    server.close();
+  }
+});
+
+test('FMT-002 (texto simple): con formatAssist el prompt termina en " *" y el texto lleva el "*"', async () => {
+  let seen = null;
+  const { server } = createFakeServer({
+    onGenerateStream: async (res, body) => {
+      seen = body;
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+      res.write('data: {"token":"I wave."}\n\n');
+      res.write('data: {"token":"*"}\n\n');
+      res.end();
+    }
+  });
+  const base = await listen(server);
+  try {
+    const result = await generateReply({
+      character: makeCharacter(),
+      messages: [{ role: 'user', text: 'Hola', ts: 1 }],
+      settings: makeSettings(base, { formatAssist: true })
+    });
+    assert.ok(seen.prompt.endsWith('\nLuna: *'));
+    assert.equal(result.text, '*I wave.*');
+  } finally {
+    server.close();
+  }
+});
+
+test('FMT-002: si el modelo ya abre su propia acción con "*" no se duplica; una respuesta vacía sigue vacía', async () => {
+  const seen = {};
+  const a = createFakeServer({ onChatStream: chatStreamer(['*I nod.* Sure'], seen) });
+  const baseA = await listen(a.server);
+  const b = createFakeServer({ onChatStream: chatStreamer(['', '  '], seen) });
+  const baseB = await listen(b.server);
+  try {
+    const settingsA = makeSettings(baseA, { mode: 'chat', formatAssist: true });
+    const ra = await generateReply({ character: makeCharacter(), messages: [{ role: 'user', text: 'Hi', ts: 1 }], settings: settingsA });
+    assert.equal(ra.text, '*I nod.* Sure');
+    const rb = await generateReply({ character: makeCharacter(), messages: [{ role: 'user', text: 'Hi', ts: 1 }], settings: makeSettings(baseB, { mode: 'chat', formatAssist: true }) });
+    assert.equal(rb.text, '');
+  } finally {
+    a.server.close();
+    b.server.close();
+  }
+});
+
+test('FMT-002: con formatAssist, la respuesta vacía se reintenta una vez (generateReplyNonEmpty intacto)', async () => {
+  let calls = 0;
+  const { server } = createFakeServer({
+    onChatStream: async (res) => {
+      calls++;
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+      if (calls > 1) res.write('data: {"choices":[{"delta":{"content":"I smile.* Hi"}}]}\n\n');
+      res.write('data: [DONE]\n\n');
+      res.end();
+    }
+  });
+  const base = await listen(server);
+  try {
+    const result = await generateReplyNonEmpty({
+      character: makeCharacter(),
+      messages: [{ role: 'user', text: 'Hola', ts: 1 }],
+      settings: makeSettings(base, { mode: 'chat', formatAssist: true })
+    });
+    assert.equal(calls, 2);
+    assert.equal(result.text, '*I smile.* Hi');
+  } finally {
+    server.close();
+  }
+});

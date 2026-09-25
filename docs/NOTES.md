@@ -47,7 +47,8 @@ navegación), `setup`, `home`, `chats`, `chat`. Versión: `APP_VERSION`
   `theme` (`nomi|glass|imessage`), `themeMode` (`dark|light`), `lorebookAuto`
   (boolean, `false` por defecto; MEM-002: solo `true` activa la extracción
   automática de memoria), `varietyAssist` (boolean, `false` por defecto; FMT-004:
-  nota de variedad al final del prompt si el personaje se repite).
+  nota de variedad al final del prompt si el personaje se repite), `formatAssist`
+  (boolean, `true` por defecto; FMT-002: la respuesta arranca ya dentro de una acción `*`).
 - `Character` (store `characters`): `id`, `name`, `avatar` (data URL),
   `card` (Card normalizada), `avatarMode`, `created`, `lorebook: LoreEntry[]`
   (por personaje, compartido entre sus chats), `lorebookPrevious: LoreEntry[]` y
@@ -77,7 +78,7 @@ personaje (MEM-001 v2: extracción aditiva de una línea vía KoboldCpp, inyecci
 por keyword, hoja "Ver lorebook" con editar/borrar/deshacer y "Actualizar memoria
 ahora"; MEM-002: la actualización automática cada 20 mensajes está APAGADA por
 defecto y se activa con un interruptor en esa hoja); 3 skins × claro/oscuro; fondo
-de chat por personaje; CI con gate de tests; versión visible en Ajustes; 245
+de chat por personaje; CI con gate de tests; versión visible en Ajustes; 292
 tests (`node --test tests/*.test.mjs`).
 
 **Verificado en un teléfono real (Hecho, reportado por el tester, 2026-09-24):**
@@ -97,10 +98,8 @@ personajes guiado (solo propuesta, no autorizado). Añadido por DOC-002
   hallazgo 20).
 - Imágenes (avatar, fondo) fuera del registro del personaje (VER-001
   hallazgo 18).
-- ~~Prueba de la memoria (lorebook) contra el servidor real~~: hecha desde el PC
-  en MEM-001 v2 (Paso 0 y prueba de la hoja en el navegador integrado);
-  **en el teléfono, "Actualizar memoria ahora" funcionó** (1 nueva); sin probar
-  allí: el disparo automático.
+- ~~Prueba de la memoria contra el servidor real~~: hecha en MEM-001 v2; en el teléfono, "Actualizar memoria
+  ahora" funcionó (1 nueva); sin probar allí: el disparo automático.
 - Latencia de la memoria: cada actualización de memoria hace que la SIGUIENTE
   respuesta del chat tarde ~15–25 s más (invalida la caché de prompt del
   servidor). **Decisión (MEM-002, 2026-09-24):** la actualización automática
@@ -108,25 +107,13 @@ personajes guiado (solo propuesta, no autorizado). Añadido por DOC-002
   avisa el costo. Siguen pendientes de evaluar las opciones 2 (extraer sobre el
   prefijo del chat, VER-004) y 4 (espaciar o disparar al salir del chat); ver
   "MEM-001 v2 → Informe de latencia" (en `HISTORIAL.md`) y "MEM-002".
-- **Calidad de la memoria — atendida por MEM-003 (2026-09-24; implementado, sin probar en el
-  teléfono):** prompt de hechos concretos con nombres, higiene de keys, fusión de
-  casi-duplicados, coincidencia por palabra completa y botón "Limpiar recuerdos". Lo de
-  "siempre presente" lo hizo MEM-004. Observación original (Hecho, tester en teléfono): tras "Actualizar memoria
-  ahora" ("correcta, 1 nueva") la lista mostró 2 entradas casi duplicadas, con
-  keys "personality" y "person who loves physical touch". Con la inyección vigente
-  (solo si una key aparece en los últimos 3 mensajes) casi nunca llegarían al
-  prompt. **Candidatos a contrato futuro (SIN autorizar):** higiene de keys
-  (palabras sueltas, sin genéricas); fusión de casi-duplicados aunque las keys
-  difieran; recuerdos "siempre presentes" con tope de caracteres.
+- **Calidad de la memoria — atendida por MEM-003, MEM-004 y MEM-005 (2026-09-24; implementados, sin probar en
+  el teléfono):** hechos concretos con nombres, higiene de keys, fusión de casi-duplicados, palabra completa,
+  "Limpiar recuerdos" y "siempre presentes". Detalle en `HISTORIAL.md`.
 - **Pendiente (FMT-004):** medir FMT-004 con conversaciones largas (40+ turnos) antes de
   decidir si activar `varietyAssist` por defecto (la medición de 18 turnos no fue concluyente).
-- **Formato del personaje (Hecho, observado varias veces por el tester, también en
-  versiones antiguas):** a veces la narración sale SIN asteriscos y parece
-  diálogo, y a veces queda un asterisco suelto que se ve literal ("...sincere.*").
-  Regenerar suele arreglarlo. **Candidato a contrato futuro (SIN autorizar):**
-  medir la tasa de violaciones de formato; probar que la respuesta empiece ya
-  dentro de asteriscos o un recordatorio de formato al final del prompt (sin costo
-  de latencia).
+- **Formato del personaje (asteriscos sueltos, narración sin cursiva): atendido por FMT-002 y FMT-003
+  (2026-09-25; implementados, sin probar en el teléfono).** Ver Resumen y `HISTORIAL.md`.
 - ~~El modo "plantilla del modelo" no corta en `\n` (posibles dos párrafos)~~:
   **corregido por FMT-001** (2026-09-24): `stop` incluye `"\n"` y una respuesta
   vacía se reintenta una vez. Ver "FMT-001" en `HISTORIAL.md`. Pendiente relacionado, sin
@@ -236,6 +223,8 @@ personajes: segunda iteración visual"; auditoría de recuperabilidad →
 | MEM-004 | Recuerdos "siempre presentes" y colocación que no invalida la caché del servidor | Autorizado — **implementado el 2026-09-24** (sesión E); Paso 0 medido (bloque en la cabecera: +22 s / +40 s; al final: +1 s); **pendiente de probar en el teléfono** | Ver "MEM-004" (en `HISTORIAL.md`). El bloque "por tema" va al FINAL del prompt; "siempre presentes" en la cabecera. |
 | MEM-005 | Keys que reflejan el habla del usuario; fusión de paráfrasis; primera persona | Autorizado — **implementado el 2026-09-24** (sesión E2); medido contra el servidor real (18+18 corridas); **pendiente de probar en el teléfono** | Ver "MEM-005" (en `HISTORIAL.md`). Causa del bug: "invite"/"invited" eran palabras distintas. |
 | FMT-004 | Reducir el eje temático repetido del personaje | Autorizado — **implementado el 2026-09-24** (sesión E2); ayuda **apagada por defecto**; medición no concluyente | Ver "FMT-004" (en `HISTORIAL.md`). `Settings.varietyAssist`; detector en `api/variety.js`. |
+| FMT-002 | Medir y reducir los fallos de asteriscos en la generación | Autorizado — **implementado el 2026-09-25** (sesión F2); medido contra el servidor real (ronda 1: 4×60, ronda 2: 4×75); `formatAssist` activa por defecto; **pendiente de probar en el teléfono** | Ver "FMT-002" (en `HISTORIAL.md`). La respuesta arranca en `*` (plantilla: mensaje assistant final). Validador en `api/formatcheck.js`. |
+| FMT-003 | Renderizado tolerante de asteriscos (solo visual) | Autorizado — **implementado el 2026-09-25** (sesión F2); verificado en el navegador integrado; **pendiente de probar en el teléfono** | Ver "FMT-003" (en `HISTORIAL.md`). `formatMessage(text, {role})`; no toca lo guardado. |
 | BKP-001 | Importación de copias segura: confirmar, no pisar datos nuevos, todo o nada | **Autorizado; sin implementar** (sesión posterior a MEM-001 v2, solo cuando el usuario lo pida) | Punto de partida: hallazgos 2 y 10 de VER-001. |
 | MEM-001 (v1) | (Anulado) versión anterior de MEM-001 | **ANULADO**, reemplazado por MEM-001 v2 | Asumía que el servidor podía devolver una lista larga con saltos de línea. |
 | (previos) | `CONTRACT-LOREBOOK.md` (implementado, parcialmente superado), `CONTRACT-CHARACTER-CREATOR.md` (propuesta, no autorizada), `CONTRACT-HANDOFF.md` (briefing) | — | Ver los avisos al inicio de cada uno. |
@@ -281,6 +270,14 @@ personajes: segunda iteración visual"; auditoría de recuperabilidad →
   del usuario: keys literales en sus mensajes 88 % → 96 % (18 corridas). Se descartan hechos en primera persona.
 - **FMT-004 (2026-09-24), variedad.** Detector puro (`api/variety.js`) y nota genérica al final del prompt
   (proactiva). Apagada por defecto: la medición con 18 turnos no reprodujo el problema; falta probar 40+ turnos.
+
+- **FMT-002 (2026-09-25), fallos de formato: medición y mitigación.** Con mensajes largos y ricos en acciones el modelo (plantilla)
+  falla el formato en el 64 % de las respuestas (sobre todo `**…**` y narración sin cursiva; asteriscos impares o sin narración: 15 %, y solo 2 % con mensajes cortos).
+  **Arrancar la respuesta en `*` (`formatAssist`) lo lleva a 0/135, sin cambiar latencia** y quita las comillas del habla. Un
+  recordatorio al final del prompt empeora y añade ~0,5–0,9 s. En "texto simple" el fallo medido es 0/40. El corte a 160 tokens casi
+  nunca es la causa. Contagio del historial: sugerido, no demostrado.
+- **FMT-003 (2026-09-25), asteriscos en pantalla.** `formatMessage(text, {role:'char'})` repara solo en pantalla los `*` mal emparejados
+  (`**`=`*`, apertura dentro de cursiva abierta, `*` suelto oculto); usuario y datos guardados intactos.
 
 ## Hoja de ruta acordada (propuesta, NO autorizada)
 
@@ -330,3 +327,4 @@ implementan sin un contrato del arquitecto. Sin datos personales del usuario.
 - **MEM-003** — prompt de extracción, higiene de keys, fusión, palabra completa, "Limpiar recuerdos" y la medición contra el servidor real.
 - **MEM-004** — Paso 0 (latencia por colocación), decisión, ejemplo de prompt, pruebas de estilo.
 - **MEM-005** — causa del bug de fusión, prompt de keys final, tabla antes/después. **FMT-004** — detector, medición no concluyente, ronda detenida por memoria.
+- **FMT-002** — validador V1–V4, tablas A/B/C/D (2 rondas + texto simple), decisión, opciones descartadas. **FMT-003** — reglas de normalización visual y casos.

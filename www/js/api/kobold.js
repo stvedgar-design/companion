@@ -3,7 +3,7 @@
 // usuario (URL propia, típicamente por Tailscale) para conectar y generar
 // respuestas en streaming. No guarda nada en localStorage/IndexedDB.
 
-import { buildPlainPrompt, buildChatMessages, cleanReply, trimPartial } from './prompt.js';
+import { buildPlainPrompt, buildChatMessages, cleanReply, trimPartial, FORMAT_PREFILL } from './prompt.js';
 import { buildLoreBlocks } from './lorebook.js';
 import { VARIETY_NOTE, varietyNeeded } from './variety.js';
 
@@ -238,8 +238,8 @@ function canStream(res) {
 // Respaldo sin streaming: usa el endpoint nativo de generación de una sola
 // vez, con el prompt en formato de texto simple (es el único formato que
 // acepta este endpoint). Entrega el texto completo a `emit` de un tirón.
-async function nonStreamingGenerate(base, card, messages, settings, chatScenario, loreBlock, topicBlock, varietyNote, signal, emit) {
-  const { prompt } = buildPlainPrompt(card, messages, settings, chatScenario, loreBlock, topicBlock, varietyNote);
+async function nonStreamingGenerate(base, card, messages, settings, chatScenario, loreBlock, topicBlock, varietyNote, prefill, signal, emit) {
+  const { prompt } = buildPlainPrompt(card, messages, settings, chatScenario, loreBlock, topicBlock, varietyNote, prefill);
   const res = await fetch(base + '/api/v1/generate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -307,6 +307,8 @@ export async function generateReply({ character, chat, messages, settings, signa
   // bloque por tema: no invalida la caché del servidor).
   const varietyNote =
     settings.varietyAssist === true && varietyNeeded(messages, [card.name, settings.user]) ? VARIETY_NOTE : '';
+  // FMT-002: con `formatAssist` activo la respuesta arranca ya dentro de una acción (el prompt termina en `*`).
+  const prefill = settings.formatAssist === true;
   const genkey = makeGenKey();
   const mode = settings.mode === 'chat' ? 'chat' : 'plain';
   const maxLen = settings.maxLen || 220;
@@ -316,6 +318,14 @@ export async function generateReply({ character, chat, messages, settings, signa
   let usedFallback = false;
   const emit = (chunk) => {
     if (!chunk) return;
+    if (prefill && !fullText) {
+      // El servidor continúa DESPUÉS del `*` de arranque: se antepone al texto mostrado y guardado, pero solo
+      // cuando llega texto de verdad (una respuesta vacía sigue vacía y se reintenta). Si el modelo ya abre
+      // su propia acción con `*`, no se duplica.
+      chunk = chunk.trimStart();
+      if (!chunk) return;
+      if (chunk[0] !== FORMAT_PREFILL) chunk = FORMAT_PREFILL + chunk;
+    }
     fullText += chunk;
     tokenCount++;
     if (onToken) onToken(chunk);
@@ -332,7 +342,7 @@ export async function generateReply({ character, chat, messages, settings, signa
   try {
     let res;
     if (mode === 'chat') {
-      const { messages: chatMessages, stop } = buildChatMessages(card, messages, settings, chatScenario, loreBlock, topicBlock, varietyNote);
+      const { messages: chatMessages, stop } = buildChatMessages(card, messages, settings, chatScenario, loreBlock, topicBlock, varietyNote, prefill);
       res = await fetch(base + '/v1/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -347,7 +357,7 @@ export async function generateReply({ character, chat, messages, settings, signa
         })
       });
     } else {
-      const { prompt, stop } = buildPlainPrompt(card, messages, settings, chatScenario, loreBlock, topicBlock, varietyNote);
+      const { prompt, stop } = buildPlainPrompt(card, messages, settings, chatScenario, loreBlock, topicBlock, varietyNote, prefill);
       res = await fetch(base + '/api/extra/generate/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -371,12 +381,12 @@ export async function generateReply({ character, chat, messages, settings, signa
 
     if (res.status === 404) {
       usedFallback = true;
-      await nonStreamingGenerate(base, card, messages, settings, chatScenario, loreBlock, topicBlock, varietyNote, signal, emit);
+      await nonStreamingGenerate(base, card, messages, settings, chatScenario, loreBlock, topicBlock, varietyNote, prefill, signal, emit);
     } else if (!res.ok) {
       throw makeError(`El servidor respondió ${res.status}. ¿Es la URL de KoboldCpp?`, 'HTTP');
     } else if (!canStream(res)) {
       usedFallback = true;
-      await nonStreamingGenerate(base, card, messages, settings, chatScenario, loreBlock, topicBlock, varietyNote, signal, emit);
+      await nonStreamingGenerate(base, card, messages, settings, chatScenario, loreBlock, topicBlock, varietyNote, prefill, signal, emit);
     } else if (mode === 'chat') {
       await readSSE(res, (obj) => {
         const chunk = obj && obj.choices && obj.choices[0] && obj.choices[0].delta && obj.choices[0].delta.content;

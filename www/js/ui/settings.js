@@ -59,6 +59,14 @@ export function openSettings(app) {
     </div>
 
     <div class="field">
+      <label class="field__label" style="display:flex;align-items:center;gap:var(--space-2, 8px)">
+        <input type="checkbox" id="settings-format" style="accent-color:var(--color-accent, #8b1fe0)">
+        <span>Ayuda de formato de Mia</span>
+      </label>
+      <div class="field__hint">Hace que cada respuesta empiece ya dentro de una acción en cursiva, para que la narración no parezca diálogo ni queden asteriscos sueltos. No hace el chat más lento.</div>
+    </div>
+
+    <div class="field">
       <label class="field__label">Bloqueo con PIN</label>
       <div id="settings-pin-body"></div>
     </div>
@@ -93,6 +101,7 @@ export function openSettings(app) {
     tempV: q('#settings-temp-v'),
     mode: q('#settings-mode'),
     variety: q('#settings-variety'),
+    format: q('#settings-format'),
     pinBody: q('#settings-pin-body'),
     appearanceBtn: q('#settings-appearance'),
     exportBtn: q('#settings-export'),
@@ -111,6 +120,7 @@ export function openSettings(app) {
     els.tempV.textContent = settings.temp;
     els.mode.value = settings.mode;
     els.variety.checked = settings.varietyAssist === true;
+    els.format.checked = settings.formatAssist !== false;
     renderPinBody(settings);
   });
 
@@ -198,6 +208,10 @@ export function openSettings(app) {
 
   els.variety.addEventListener('change', () => {
     saveSettings({ varietyAssist: els.variety.checked });
+  });
+
+  els.format.addEventListener('change', () => {
+    saveSettings({ formatAssist: els.format.checked });
   });
 
   els.appearanceBtn.addEventListener('click', () => {

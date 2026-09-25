@@ -177,6 +177,11 @@ function endBlock(topicBlock, varietyNote) {
     .join('\n');
 }
 
+// FMT-002: la respuesta del personaje arranca ya dentro de una acción. En modo "texto simple" se añade al
+// final del prompt; en modo "plantilla" se envía como mensaje `assistant` final (KoboldCpp lo continúa;
+// verificado en FMT-002). La app antepone este mismo carácter al texto mostrado y guardado.
+export const FORMAT_PREFILL = '*';
+
 // Conserva los items más recientes dentro de un presupuesto de caracteres.
 // Nunca devuelve menos de 1 item si items no está vacío.
 function pickHistory(items, budget, lengthOf) {
@@ -204,9 +209,10 @@ function pickHistory(items, budget, lengthOf) {
  *   invalidaría la caché de prompt del servidor (ver docs/HISTORIAL.md, "MEM-004").
  * @param {string} [varietyNote] FMT-004: nota breve para que el personaje varíe su vocabulario. Va junto al bloque
  *   "por tema", al FINAL y solo en el prompt construido.
+ * @param {boolean} [prefill] FMT-002: si es true, el prompt termina con `FORMAT_PREFILL` (la respuesta arranca dentro de una acción).
  * @returns {{ prompt: string, stop: string[] }}
  */
-export function buildPlainPrompt(card, messages, settings, chatScenario = '', loreBlock = '', topicBlock = '', varietyNote = '') {
+export function buildPlainPrompt(card, messages, settings, chatScenario = '', loreBlock = '', topicBlock = '', varietyNote = '', prefill = false) {
   const N = card.name;
   const U = (settings && settings.user) || 'User';
   const ctx = (settings && settings.ctx) || 4096;
@@ -238,7 +244,7 @@ export function buildPlainPrompt(card, messages, settings, chatScenario = '', lo
     kept.splice(at, 0, topic);
   }
 
-  const prompt = head + '\n' + kept.join('\n') + post + cue;
+  const prompt = head + '\n' + kept.join('\n') + post + cue + (prefill ? ' ' + FORMAT_PREFILL : '');
   const stop = [`\n${U}:`, `${U}:`, `\n${N}:`];
 
   return { prompt, stop };
@@ -256,9 +262,11 @@ export function buildPlainPrompt(card, messages, settings, chatScenario = '', lo
  *   en la copia que se envía (no se asume que la plantilla del modelo admita mensajes `system` intercalados);
  *   los mensajes guardados no se tocan. Ver `buildPlainPrompt`.
  * @param {string} [varietyNote] FMT-004: nota de variedad; va junto al bloque "por tema". Ver `buildPlainPrompt`.
+ * @param {boolean} [prefill] FMT-002: si es true, se añade al final un mensaje `assistant` con `FORMAT_PREFILL`
+ *   (la respuesta arranca dentro de una acción). Solo en la copia enviada; los mensajes guardados no se tocan.
  * @returns {{ messages: {role:'system'|'user'|'assistant', content:string}[], stop: string[] }}
  */
-export function buildChatMessages(card, messages, settings, chatScenario = '', loreBlock = '', topicBlock = '', varietyNote = '') {
+export function buildChatMessages(card, messages, settings, chatScenario = '', loreBlock = '', topicBlock = '', varietyNote = '', prefill = false) {
   const N = card.name;
   const U = (settings && settings.user) || 'User';
   const ctx = (settings && settings.ctx) || 4096;
@@ -288,6 +296,8 @@ export function buildChatMessages(card, messages, settings, chatScenario = '', l
       }
     }
   }
+
+  if (prefill) out.push({ role: 'assistant', content: FORMAT_PREFILL });
 
   // "\n" primero: en /v1/chat/completions el corte en salto de línea de los
   // `gendefaults` del servidor NO se aplica si la petición trae su propio `stop`

@@ -87,6 +87,7 @@
  * @property {'dark'|'light'} themeMode        // claro/oscuro, aplica a cualquier skin
  * @property {boolean} lorebookAuto // MEM-002: extracción automática de memoria cada ~20 mensajes; false por defecto (cada extracción encarece la SIGUIENTE respuesta ~20 s)
  * @property {boolean} varietyAssist // FMT-004: nota de variedad al final del prompt cuando el personaje se repite
+ * @property {boolean} formatAssist // FMT-002: la respuesta del personaje arranca ya dentro de una acción (`*`); true por defecto
  */
 
 const DEFAULT_SETTINGS = Object.freeze({
@@ -105,6 +106,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   themeMode: 'dark',
   lorebookAuto: false,
   varietyAssist: false,
+  formatAssist: true,
 });
 
 // Por defecto de los campos de fondo de chat en Character (ver
@@ -151,6 +153,7 @@ function sanitizeSettings(raw) {
     themeMode: merged.themeMode === 'light' ? 'light' : DEFAULT_SETTINGS.themeMode,
     lorebookAuto: merged.lorebookAuto === true,
     varietyAssist: merged.varietyAssist === true,
+    formatAssist: merged.formatAssist !== false,
   };
 }
 

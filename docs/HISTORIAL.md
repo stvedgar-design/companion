@@ -1911,3 +1911,87 @@ con esta card 18 turnos no reproducen el problema, y repetir la ronda no lo arre
 `varietyAssist` queda apagado por defecto. Para decidir hace falta una prueba con conversaciones largas (40+ turnos)
 (ver Pendientes de `NOTES.md`). **Sugerencia para la card de Mia (NO aplicada, no medida):** un segundo `mes_example`
 con otro tono (sin explore/learn/understand) probablemente reduciría el sesgo del vocabulario a coste cero de código.
+
+## FMT-002: medir y reducir los fallos de asteriscos en la generación (2026-09-25)
+
+**Estado:** implementado; `Settings.formatAssist` **activa por defecto** (la medición lo justifica). **NO probado en el teléfono.**
+Tests en verde (292). Código: `api/formatcheck.js` (validador), `prompt.js` (parámetro `prefill`), `kobold.js` (`generateReply`),
+`state.js`, `ui/settings.js` (casilla "Ayuda de formato de Mia"). Card de Mia: NO tocada.
+
+### Validador (`www/js/api/formatcheck.js`, puro, 14 tests)
+V1 asteriscos simples impares (los `**` aparte; un `*` aislado entre espacios no cuenta); V2 ≥2 frases sin ningún asterisco;
+V3 hay `**`; M1 `startsOutside` (métrica, no error); **V4 (heurística)** la respuesta empieza fuera de asteriscos con una
+frase que parece narración ("My eyes widen and I smile."). V4 medida: **0 falsos positivos en 83 tramos de habla** (`mes_example` y
+`first_mes` de la card de Mia + tramos fuera de asteriscos de las respuestas bien formadas de la condición B) y los dos
+ejemplos del contrato se distinguen (narración inicial → V4; "Oh dear, I hope I didn't cause any confusion!" → no). Recall ≈63 %
+(26 de 41 respuestas que empezaban fuera de asteriscos; el resto, en su mayoría, ambiguas o habla): es una COTA INFERIOR.
+
+### Paso 0 — medición contra el servidor real (Hecho; conversaciones SINTÉTICAS y neutras, card de Mia, KoboldCpp local)
+Modo por defecto ("plantilla"), `ctx` 6144, autojuego (cada respuesta entra al historial). Ronda 1: 6 charlas × 10 turnos,
+mensajes de usuario cortos. **Ronda 2 (más parecida al uso real):** 3 charlas × 25 turnos, mensajes de usuario largos con
+acciones. C2 = recordatorio reformulado tras ver que C empeoraba. `finish=length` (cortada por el límite de 160 tokens): solo 1 de
+los 11 V1 de A en la ronda 2 → el corte por longitud NO es la causa principal.
+
+| Ronda 2 (n=75) | V1 | V2 | V3 (`**`) | V4 | **V1+V2** | **algún fallo** | empieza fuera (M1) | largo | 1.er token | total |
+|---|---|---|---|---|---|---|---|---|---|---|
+| A base | 11 | 0 | 39 | 10 | 11 (15 %) | 48 (64 %) | 56 % | 293 | 609 ms | 3,96 s |
+| **B arranca en `*`** | **0** | **0** | **0** | **0** | **0 (0 %)** | **0 (0 %)** | 0 % | 286 | 603 ms | 3,85 s |
+| C2 recordatorio al final | 15 | 0 | 40 | 4 | 15 (20 %) | 43 (57 %) | 43 % | 235 | 1492 ms | 4,20 s |
+| D historial contaminado (n=66) | 13 | 1 | 35 | 10 | 14 (21 %) | 48 (73 %) | 61 % | 295 | 2524 ms* | 5,88 s* |
+
+| Ronda 1 (n=60; D n=42) | V1 | V2 | V3 | V4 | V1+V2 | algún fallo | largo | 1.er token |
+|---|---|---|---|---|---|---|---|---|
+| A base | 1 | 0 | 4 | 23 | 1 (2 %) | 27 (45 %) | 271 | 379 ms |
+| B arranca en `*` | 0 | 0 | 0 | 0 | 0 | 0 (0 %) | 250 | 380 ms |
+| C recordatorio (1.ª redacción) | 6 | 3 | 22 | 3 | 9 (15 %) | 30 (50 %) | 225 | 1151 ms |
+| D contaminado | 5 | 1 | 4 | 13 | 6 (14 %) | 20 (48 %) | 297 | 1829 ms* |
+
+\* D cambia un mensaje antiguo del historial, así que invalida la caché del servidor: su latencia NO es representativa.
+**Modo "texto simple"** (2 charlas × 20 turnos, n=40 por condición): A 0/40 fallos y B 0/40; largo 202 vs 246. En ese modo
+el modelo ya arranca bien solo (M1 0 %); el prefill no hace falta ahí, pero no daña.
+
+Lectura (Hecho salvo donde se indica):
+- **B elimina TODOS los tipos de fallo medidos** (0/135 respuestas en las dos rondas) y además elimina las comillas del habla
+  (A usó comillas en 35 de 75 respuestas; la card pide "sin comillas") y las envolturas `**…**` (V3, 52 % de A en la ronda 2).
+  Sin cambio de latencia (1.er token 603 vs 609 ms; total 3,85 vs 3,96 s) ni de largo (286 vs 293; −8 % en la ronda 1).
+- **C (recordatorio) empeora**: más `**`, respuestas que "reconocen" el recordatorio ("[Reminder acknowledged.]"), y el
+  1.er token tarda +0,5–0,9 s (el texto extra en el último mensaje del usuario rompe la caché de prefijo) → descartado.
+- **La tasa de V1+V2 (contrato) depende mucho de la muestra:** 2 % con mensajes cortos, 15 % con los largos y ricos en
+  acciones. En ambos B llega a 0 y la reducción (≥ la mitad) se cumple; con la ronda 1 sola no habría poder para decidirlo.
+- **Contagio (D):** ronda 1 14 % frente a 0 % de A en los mismos turnos (6/42 vs 0/42); ronda 2 21 % frente a 17 % (14/66 vs
+  11/66). Sugiere un contagio leve, pero NO lo demuestra (muestra pequeña, resultados dispares). No hay efecto claro de la
+  posición: V1+V2 en la ronda 2 por tercios 3/24, 4/27, 4/24 (sin tendencia; los datos reales del usuario tampoco son concluyentes).
+- **Coste de B (Inferencia, a vigilar en el teléfono):** toda respuesta ahora empieza con una acción (el formato Nomi permite
+  empezar con habla). Puede sentirse más uniforme; por eso hay interruptor.
+
+### Implementación
+`formatAssist` (`true` por defecto; copias y ajustes antiguos sin el campo cargan en `true`; solo un `false` estricto la apaga).
+Con ella: en modo plantilla se envía un último mensaje `assistant` con `*` (KoboldCpp 1.121 lo CONTINÚA: verificado, incluso con
+un texto de prueba); en texto simple el prompt termina en `\nMia: *`. `generateReply` antepone el `*` al texto mostrado y
+guardado solo cuando llega texto (una respuesta vacía sigue vacía y `generateReplyNonEmpty` la reintenta igual; si el modelo
+ya abre su propia `*` no se duplica). El `stop` con `"\n"` no cambia. Los mensajes guardados no se tocan en el prompt.
+### Opciones descartadas / para el arquitecto
+- **Regeneración automática** por fallo de formato: NO implementada (costaría ~4-6 s en las respuestas afectadas; con B ya no hace falta).
+- Recordatorio al final del prompt (C/C2): descartado (empeora y añade latencia).
+- **Hallazgo:** en "texto simple" los fallos medidos fueron 0/40 frente a 64 % en plantilla (ronda 2). Es una alternativa, pero el
+  usuario eligió plantilla por calidad de rol y no se midió esa calidad; no se cambia el defecto.
+- **Sugerencia para la card de Mia (NO aplicada):** más turnos de `mes_example` que muestren la alternancia acción/diálogo sin `**`.
+- El corte a 160 tokens casi nunca es la causa de un `*` impar (1 de 11), así que no se añadió recorte por `finish_reason`.
+Scripts de medición desechables (fuera del repo); datos sintéticos, sin contenido de chats reales.
+
+## FMT-003: renderizado tolerante de asteriscos (2026-09-25)
+
+**Estado:** implementado, SOLO visual. Verificado en el navegador integrado; **NO probado en el teléfono.**
+- `format.js`: `formatMessage(text, { role })` y `normalizeCharAsterisks(text)` (pura, lineal, sin regex con retroceso).
+  Con `role:'char'`: N1 `**`→`*`; N2 una `*` que parece apertura (tras `.`/`!`/`?`/`…` y espacio, y antes de una letra) dentro
+  de una cursiva abierta cierra la anterior; un cierre sin apertura y una `*` suelta al principio o al final se ocultan. Solo
+  se repara si hay número impar de `*` o una apertura dentro de otra (el resto queda como antes). "5 * 3" sigue literal; una
+  cursiva abierta al final (streaming) sigue en cursiva. Usuario o sin rol: comportamiento anterior (incluidas las negritas).
+- `chat.js`: pasa el rol en las 2 llamadas (burbuja normal y burbuja en streaming). No se toca `messages` ni lo enviado al modelo (test).
+- **Decisión** (leve ampliación del contrato): la regla "apertura dentro de una cursiva abierta" también se aplica con número
+  PAR de asteriscos (`*A. *B.* C.*`); si no, durante el streaming el par se invertía hasta que llegaba el siguiente `*`.
+- Casos (23 tests nuevos: 16 casos de tabla + 7 pruebas): impar a mitad de mensaje, par con nueva apertura tras `.`/`…`, envoltura `**…**` con simples, `*` suelto
+  al final / al principio, "5 * 3", streaming (cursiva abierta, apertura vacía, par roto), sin asteriscos, formato correcto, `**` en
+  usuario, HTML escapado, mensajes congelados sin cambios, rendimiento.
+- **Rendimiento (Hecho, PC):** 200 mensajes de 700 caracteres: 0,69→1,59 ms (bien formados) y 0,55→2,01 ms (rotos): ≈+1,5 ms por lista completa.
+- Navegador integrado (375×812): mensajes con `*` rotos se ven limpios; "5 * 3" del usuario literal; la casilla de Ajustes guarda y restaura.

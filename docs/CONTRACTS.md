@@ -158,6 +158,7 @@ Los imports son ESM relativos y siempre con extensión `.js`. Los tests importan
  * @property {'nomi'|'glass'|'imessage'} theme  // skin visual (www/css/themes.css), por defecto 'nomi'
  * @property {'dark'|'light'} themeMode         // claro/oscuro, aplica a cualquier skin, por defecto 'dark'
  * @property {boolean} lorebookAuto              // MEM-002: extracción automática de memoria (cada ~20 mensajes); false por defecto; solo `=== true` la activa
+ * @property {boolean} formatAssist              // FMT-002: la respuesta del personaje arranca dentro de una acción (`*`); TRUE por defecto; solo un `false` estricto la apaga (copias antiguas sin el campo cargan en true)
  *
  * Los antiguos `chatBackground*` YA NO están en Settings (pasaron a Character).
  */
@@ -323,7 +324,19 @@ formatLoreBlock(entries: LoreEntry[]): string
 ```js
 // format.js
 escapeHtml(text: string): string
-formatMessage(text: string): string     // HTML seguro: *acción* => <em>, **x** => <strong>, \n => <br>; tolera un asterisco sin cerrar (streaming)
+formatMessage(text: string, opts?: { role?: 'user'|'char' }): string
+  // HTML seguro: *acción* => <em>, **x** => <strong>, \n => <br>; tolera un asterisco sin cerrar (streaming).
+  // FMT-003: con role:'char' normaliza antes los asteriscos mal emparejados (`**`=`*`; apertura dentro de cursiva abierta
+  // cierra la anterior; cierre sin apertura y `*` suelto al principio/final se ocultan). SOLO visual; sin rol no cambia nada.
+normalizeCharAsterisks(text: string): string   // FMT-003: la normalización anterior, pura y testeable
+// api/formatcheck.js (FMT-002; puro)
+validateFormat(text: string): { ok, violations: ('V1'|'V2'|'V3'|'V4')[], startsOutside: boolean, singles, doubles }
+  // V1 asteriscos simples en número impar; V2 2+ frases sin ningún asterisco; V3 hay `**`; V4 (heurística) empieza fuera de
+  // asteriscos con una frase que parece narración. startsOutside = métrica M1 (no es error). Hoy solo mide; no altera lo mostrado.
+looksLikeNarration(segment: string): boolean   // la heurística de V4
+countAsterisks(text: string): { singles: number, doubles: number }
+// api/prompt.js (FMT-002): buildPlainPrompt(..., varietyNote, prefill?) y buildChatMessages(..., varietyNote, prefill?) — con
+// prefill=true el prompt termina en " *" (texto simple) o en un mensaje assistant "*" (plantilla); `FORMAT_PREFILL` = '*'.
 // settings.js
 openSettings(app: AppApi): void         // abre la hoja de ajustes con app.openSheet
 ```

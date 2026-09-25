@@ -8,7 +8,8 @@ import {
   buildChatMessages,
   estimateContextUsage,
   cleanReply,
-  trimPartial
+  trimPartial,
+  FORMAT_PREFILL
 } from '../www/js/api/prompt.js';
 
 function makeCard(overrides = {}) {
@@ -416,4 +417,32 @@ test('MEM-004: estimateContextUsage reserva el espacio del bloque por tema', () 
   const reserved = estimateContextUsage(card, msgs, settings, '', '', 660);
   assert.ok(Math.abs(reserved.approxTokens - base.approxTokens - 200) <= 1); // 660 caracteres ≈ 200 tokens (3,3 car./token)
   assert.equal(estimateContextUsage(card, msgs, settings, '', '', 0).approxTokens, base.approxTokens);
+});
+
+// ---------- FMT-002: la respuesta arranca dentro de una acción (prefill) ----------
+
+test('FMT-002 (texto simple): con prefill el prompt termina en "Nombre: *"; sin él, queda igual que antes', () => {
+  const msgs = [{ role: 'user', text: 'Hola', ts: 1 }];
+  const base = buildPlainPrompt(makeCard(), msgs, makeSettings());
+  const withPrefill = buildPlainPrompt(makeCard(), msgs, makeSettings(), '', '', '', '', true);
+  assert.ok(base.prompt.endsWith('\nLuna:'));
+  assert.equal(withPrefill.prompt, base.prompt + ' ' + FORMAT_PREFILL);
+  assert.deepEqual(withPrefill.stop, base.stop);
+});
+
+test('FMT-002 (plantilla): con prefill se añade al final un mensaje assistant con "*"; sin él, igual que antes', () => {
+  const msgs = [{ role: 'user', text: 'Hola', ts: 1 }];
+  const base = buildChatMessages(makeCard(), msgs, makeSettings());
+  const withPrefill = buildChatMessages(makeCard(), msgs, makeSettings(), '', '', '', '', true);
+  assert.deepEqual(withPrefill.messages.slice(0, -1), base.messages);
+  assert.deepEqual(withPrefill.messages.at(-1), { role: 'assistant', content: '*' });
+  assert.deepEqual(withPrefill.stop, base.stop);
+});
+
+test('FMT-002: el prefill no modifica los mensajes guardados', () => {
+  const msgs = [{ role: 'user', text: 'Hola', ts: 1 }, { role: 'char', text: '*Hi.* Hello', ts: 2 }, { role: 'user', text: 'Ok', ts: 3 }];
+  const before = JSON.stringify(msgs);
+  buildChatMessages(makeCard(), msgs, makeSettings(), '', '', 'topic', '', true);
+  buildPlainPrompt(makeCard(), msgs, makeSettings(), '', '', 'topic', '', true);
+  assert.equal(JSON.stringify(msgs), before);
 });

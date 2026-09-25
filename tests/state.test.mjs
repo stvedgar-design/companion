@@ -60,6 +60,7 @@ test('getSettings devuelve valores por defecto cuando no hay nada guardado', asy
     theme: 'nomi', themeMode: 'dark',
     lorebookAuto: false,
     varietyAssist: false,
+    formatAssist: true,
   });
 });
 
@@ -796,4 +797,37 @@ test('FMT-004: varietyAssist es false por defecto y solo acepta true estricto; c
   assert.equal(old.varietyAssist, false);
   assert.equal(old.lorebookAuto, true);
   assert.equal(old.user, 'Sam');
+});
+
+// ---------- FMT-002: Settings.formatAssist ----------
+
+test('FMT-002: formatAssist es true por defecto y solo un false estricto lo apaga', async () => {
+  const state = createState(createMemoryBackend());
+  assert.equal((await state.getSettings()).formatAssist, true);
+  assert.equal((await state.saveSettings({ formatAssist: 0 })).formatAssist, true);
+  assert.equal((await state.saveSettings({ formatAssist: 'false' })).formatAssist, true);
+  assert.equal((await state.saveSettings({ formatAssist: false })).formatAssist, false);
+  // merge parcial: otro cambio no lo vuelve a encender
+  assert.equal((await state.saveSettings({ temp: 1.0 })).formatAssist, false);
+  assert.equal((await state.saveSettings({ formatAssist: true })).formatAssist, true);
+});
+
+test('FMT-002: Settings guardados sin el campo (instalación o copia anterior) cargan con formatAssist=true', async () => {
+  const backend = createMemoryBackend();
+  await backend.put('settings', 'main', { url: 'http://100.1.1.1:5001', user: 'Ada', theme: 'glass' });
+  const state = createState(backend);
+  const settings = await state.getSettings();
+  assert.equal(settings.formatAssist, true);
+  assert.equal(settings.user, 'Ada');
+});
+
+test('FMT-002: una copia v2 sin formatAssist sigue importando', async () => {
+  const state = createState(createMemoryBackend());
+  const backup = {
+    app: 'companion', version: 2, exported: 1, settings: { url: '', user: 'Ada' },
+    characters: [{ id: 'c1', name: 'Mia', card: {}, created: 1 }], chats: [], chatMessages: {},
+  };
+  await state.importBackup({ text: async () => JSON.stringify(backup) });
+  assert.equal((await state.listCharacters()).length, 1);
+  assert.equal((await state.getSettings()).formatAssist, true);
 });
