@@ -111,8 +111,8 @@
   line-height: 1.5;
   word-wrap: break-word;
   overflow-wrap: anywhere;
-  backdrop-filter: blur(var(--surface-blur, 0px));
-  -webkit-backdrop-filter: blur(var(--surface-blur, 0px));
+  backdrop-filter: var(--surface-backdrop, none);
+  -webkit-backdrop-filter: var(--surface-backdrop, none);
 }
 .chat-row--char .chat-bubble {
   background: var(--color-surface-2);
@@ -169,8 +169,8 @@
   border-radius: var(--radius-pill);
   font-size: var(--fs-sm);
   color: var(--color-muted);
-  backdrop-filter: blur(var(--surface-blur, 0px));
-  -webkit-backdrop-filter: blur(var(--surface-blur, 0px));
+  backdrop-filter: var(--surface-backdrop, none);
+  -webkit-backdrop-filter: var(--surface-backdrop, none);
 }
 .chat-actionbtn[hidden] { display: none; } /* UI-006: el menú es único; "Regenerar" solo se muestra en el último mensaje del personaje */
 .chat-actionbtn:active { color: var(--color-text); }
@@ -188,8 +188,8 @@
   border-radius: var(--radius-pill);
   color: var(--color-text);
   font-size: var(--fs-md);
-  backdrop-filter: blur(var(--surface-blur, 0px));
-  -webkit-backdrop-filter: blur(var(--surface-blur, 0px));
+  backdrop-filter: var(--surface-backdrop, none);
+  -webkit-backdrop-filter: var(--surface-backdrop, none);
 }
 .chat-retry:focus-visible { outline: 2px solid var(--color-accent-2); outline-offset: 2px; }
 
@@ -228,8 +228,8 @@
   border: 1px solid var(--color-line);
   color: var(--color-text);
   box-shadow: 0 2px 10px rgba(0, 0, 0, .35);
-  backdrop-filter: blur(var(--surface-blur, 0px));
-  -webkit-backdrop-filter: blur(var(--surface-blur, 0px));
+  backdrop-filter: var(--surface-backdrop, none);
+  -webkit-backdrop-filter: var(--surface-backdrop, none);
 }
 .chat-scrolldown[hidden] { display: none; }
 .chat-scrolldown:focus-visible { outline: 2px solid var(--color-accent-2); outline-offset: 2px; }
@@ -250,8 +250,8 @@
   gap: var(--space-3);
   padding: var(--space-2) var(--space-3) calc(var(--sab) + var(--space-2));
   flex: none;
-  backdrop-filter: blur(var(--surface-blur, 0px));
-  -webkit-backdrop-filter: blur(var(--surface-blur, 0px));
+  backdrop-filter: var(--bars-backdrop, none);
+  -webkit-backdrop-filter: var(--bars-backdrop, none);
 }
 .chat-composer__input {
   flex: 1;
@@ -270,8 +270,8 @@
   background: var(--color-surface-2);
   color: var(--color-muted);
   transition: background var(--dur-fast), color var(--dur-fast);
-  backdrop-filter: blur(var(--surface-blur, 0px));
-  -webkit-backdrop-filter: blur(var(--surface-blur, 0px));
+  backdrop-filter: var(--surface-backdrop, none);
+  -webkit-backdrop-filter: var(--surface-backdrop, none);
 }
 .chat-send--ready, .chat-send--stop { background: var(--color-accent); color: #fff; }
 .chat-send--stop svg { fill: currentColor; stroke: none; }

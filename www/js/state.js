@@ -88,6 +88,7 @@
  * @property {string} pinHash   // '' si el bloqueo con PIN está desactivado (SHA-256 salteado, ver lock.js)
  * @property {'nomi'|'glass'|'imessage'} theme // skin visual, ver www/css/themes.css
  * @property {'dark'|'light'} themeMode        // claro/oscuro, aplica a cualquier skin
+ * @property {'full'|'bars'|'off'} glassEffect // UI-007: efecto de vidrio del skin Glass (blur completo / solo barra superior y compositor / ninguno); 'full' por defecto = como siempre. Otros skins lo ignoran
  * @property {boolean} lorebookAuto // MEM-002: extracción automática de memoria cada ~20 mensajes; false por defecto (cada extracción encarece la SIGUIENTE respuesta ~20 s)
  * @property {boolean} varietyAssist // FMT-004: nota de variedad al final del prompt cuando el personaje se repite
  * @property {boolean} formatAssist // FMT-002: la respuesta del personaje arranca ya dentro de una acción (`*`); true por defecto
@@ -107,6 +108,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   pinHash: '',
   theme: 'nomi',
   themeMode: 'dark',
+  glassEffect: 'full',
   lorebookAuto: false,
   varietyAssist: false,
   formatAssist: true,
@@ -154,6 +156,7 @@ function sanitizeSettings(raw) {
     pinHash: typeof merged.pinHash === 'string' ? merged.pinHash : DEFAULT_SETTINGS.pinHash,
     theme: ['nomi', 'glass', 'imessage'].includes(merged.theme) ? merged.theme : DEFAULT_SETTINGS.theme,
     themeMode: merged.themeMode === 'light' ? 'light' : DEFAULT_SETTINGS.themeMode,
+    glassEffect: ['full', 'bars', 'off'].includes(merged.glassEffect) ? merged.glassEffect : DEFAULT_SETTINGS.glassEffect,
     lorebookAuto: merged.lorebookAuto === true,
     varietyAssist: merged.varietyAssist === true,
     formatAssist: merged.formatAssist !== false,

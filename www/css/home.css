@@ -42,8 +42,8 @@
   margin: var(--space-3) var(--space-4);
   border: none;
   cursor: pointer;
-  backdrop-filter: blur(var(--surface-blur, 0px));
-  -webkit-backdrop-filter: blur(var(--surface-blur, 0px));
+  backdrop-filter: var(--surface-backdrop, none);
+  -webkit-backdrop-filter: var(--surface-backdrop, none);
 }
 
 .home-search {
@@ -253,8 +253,8 @@
   background-repeat: no-repeat;
   border: 1.5px solid var(--color-line);
   margin-bottom: var(--space-2);
-  backdrop-filter: blur(var(--surface-blur, 0px));
-  -webkit-backdrop-filter: blur(var(--surface-blur, 0px));
+  backdrop-filter: var(--surface-backdrop, none);
+  -webkit-backdrop-filter: var(--surface-backdrop, none);
 }
 .appearance-preview__empty {
   position: absolute;

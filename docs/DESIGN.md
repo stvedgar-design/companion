@@ -40,7 +40,9 @@ posibles (eso está en `themes.css` mismo, es la fuente de verdad).
 | `--grad-user` | fondo de la burbuja del usuario — degradado o color plano según el skin | `linear-gradient(135deg,#7a12d6,#9b3ff0)` |
 | `--grad-avatar` | fondo del avatar por defecto | `linear-gradient(135deg,#5b1fa8,#c04bd6)` |
 | `--font` | familia tipográfica — varía por skin (Literata en Nomi/Glass, fuente del sistema en iMessage) | `'Literata', Georgia, 'Times New Roman', serif` |
-| `--surface-blur` | blur de vidrio (`backdrop-filter`) — 0px salvo en Glass | `0px` |
+| `--surface-backdrop` | `backdrop-filter` de burbujas, botones, chips, tarjetas y hojas (UI-007) — `none` salvo en Glass (`blur(var(--glass-blur))`) | `none` |
+| `--bars-backdrop` | `backdrop-filter` solo de la barra superior y el compositor — igual que arriba | `none` |
+| `--sheet-surface` | fondo de la hoja inferior; por defecto `--color-surface`. Glass con "Efecto de vidrio" en *solo barras*/*desactivado* la hace casi opaca | *(sin definir)* |
 | `--app-bg` | fondo de `.app` — solo Glass lo redefine (con su resplandor); el resto cae en `--color-bg` | *(sin definir)* |
 | `--fs-xs..--fs-3xl` | escala tipográfica, 12 a 34px |
 | `--radius-sm/md/lg/pill` | 10 / 16 / 26 / 999px |
@@ -72,3 +74,9 @@ posibles (eso está en `themes.css` mismo, es la fuente de verdad).
 | `.toast` | aviso flotante arriba, con `aria-live` |
 
 `select` e `input[type=range]` llevan estilo propio sin necesitar clase adicional. Todo respeta `:active`, `:focus-visible` (anillo `--color-accent-2`) y `:disabled`; `prefers-reduced-motion: reduce` desactiva animaciones. Este módulo no define clases opcionales adicionales.
+
+## Efecto de vidrio (UI-007)
+
+`Settings.glassEffect` (`full` por defecto | `bars` | `off`) se aplica como `data-glass` en `<html>` (`shell.applyGlassEffect`). Solo actúa con el skin Glass (`[data-theme="glass"][data-glass=…]` en `themes.css`);
+Nomi e iMessage no tienen ningún `backdrop-filter` (antes `blur(0px)`, ahora `none`). `bars`: blur solo en `.topbar` y `.chat-composer`. `off`: ninguno. Con `bars`/`off` la opacidad de las superficies de Glass sube
+(oscuro: superficie .46→.62, superficie-2 .6→.78, hoja .94; claro: .5→.66, .68→.84, hoja .95) para que el texto se lea sin el desenfoque. El selector vive en Ajustes → Apariencia y solo se muestra con Glass activo.

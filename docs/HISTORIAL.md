@@ -2157,3 +2157,19 @@ El contrato manda parar y reportar si el resumen tiende a inventar información 
 - Tests (4 nuevos, `msgmenu.test.mjs`): acciones y orden, condiciones de Regenerar, sin menú con respuesta en curso, equivalencia con la condición anterior.
 - **Para el arquitecto (fuera de contrato, NO tocado):** "Regenerar" quita la respuesta anterior ANTES de pedir la nueva (`regenerate()` en `chat.js`). Si el servidor está apagado, la respuesta anterior se pierde
   (comprobado: sin servidor, el último mensaje del personaje desapareció y quedó guardado así). Es lógica de regeneración (NO TOCAR en este contrato), pero conviene un contrato aparte por la sensibilidad a pérdida de datos.
+
+## UI-007: calidad de efectos visuales ajustable (2026-09-25)
+
+**Estado:** implementado; verificado en el navegador integrado (375×812). **NO probado en el teléfono. Sin medición de rendimiento** (UI-005 aún no se ejecutó: se implementa igual y la medición queda para después, como permite el contrato).
+- **Antes (Hecho, `grep`):** 21 declaraciones `backdrop-filter: blur(var(--surface-blur, 0px))` (+ sus `-webkit-`): `base.css` (topbar, .ib:active, .btn--ghost, .inp, .chip, .list-row:active, .sheet__card, .menu-item:active, .toast),
+  `chat.css` (.chat-bubble, .chat-actionbtn, .chat-retry, .chat-scrolldown, .chat-composer, .chat-send), `home.css` (.home-chip, .appearance-preview). Nomi/iMessage: `blur(0px)`; Glass: `blur(20px)`.
+- **Tokens:** `--surface-backdrop` (todo menos barras) y `--bars-backdrop` (solo `.topbar` y `.chat-composer`): `none` en Nomi/iMessage, `blur(var(--glass-blur))` en Glass; reemplazan a `--surface-blur` en las 21 declaraciones. Añadido `--sheet-surface` (fondo de la hoja; por defecto `--color-surface`).
+- **Ajuste:** `Settings.glassEffect` `'full'|'bars'|'off'`, saneado (`'full'` por defecto; copias y registros anteriores sin el campo cargan en `'full'`; valores raros → `'full'`). `shell.applyGlassEffect` lo pone como `data-glass` en `<html>` (también al arrancar);
+  `themes.css` lo aplica solo con `[data-theme="glass"]`. `full` = como siempre; `bars` = blur solo en barra superior y compositor; `off` = ninguno.
+- **Opacidad (el contrato permite ajustarla):** sin blur las superficies translúcidas dejan ver el chat (comprobado en captura: la hoja de Apariencia se leía mal). En `bars`/`off` sube el alfa de Glass: oscuro superficie .46→.62, superficie-2 .60→.78; claro .50→.66, .68→.84; la hoja
+  inferior (que tapa el chat) usa `--sheet-surface` .94/.95. `full` no cambia nada.
+- **Selector:** Ajustes → Apariencia → "Efecto de vidrio" (Completo / Solo en barras / Desactivado) con la nota de que lo más ligero puede ir mejor en teléfonos modestos. **Decisión:** solo se muestra con el skin Glass activo (en los demás, oculto).
+- **Verificado (Hecho):** comparación antes/después en los 6 skins/modos con 8 elementos del chat: 0 diferencias de posición/tamaño y 0 de color de fondo; en TODO el DOM de Nomi e iMessage (claro y oscuro) 0 elementos con `backdrop-filter` (antes: `blur(0px)`);
+  Glass `full` idéntico a antes (`blur(20px)` en topbar, burbujas, composer, send, scrolldown, hoja, toast, input, chip); `bars` → solo `.topbar` y `.chat-composer`; `off` → ninguno. El selector aparece solo con Glass, guarda y aplica.
+- **Nota técnica:** `blur(0px)` creaba contexto de apilamiento; `none` no. Sin efectos visibles en la comparación de posiciones/colores, y en el navegador la pantalla se ve igual.
+- Tests: 1 nuevo (`state.test.mjs`, `glassEffect`) y se actualizó el de valores por defecto.

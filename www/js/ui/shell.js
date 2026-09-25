@@ -68,6 +68,13 @@ export function applyTheme(theme) {
   syncThemeColorMeta();
 }
 
+// UI-007: efecto de vidrio de Glass ('full' | 'bars' | 'off'). Solo un atributo en <html>: themes.css lo
+// aplica únicamente al skin Glass, así que en los demás skins no cambia nada.
+export const GLASS_EFFECTS = ['full', 'bars', 'off'];
+export function applyGlassEffect(value) {
+  document.documentElement.dataset.glass = GLASS_EFFECTS.includes(value) ? value : 'full';
+}
+
 // Claro/oscuro, aplica sobre cualquier skin (ver themes.css).
 export function applyThemeMode(mode) {
   document.documentElement.dataset.mode = mode === 'light' ? 'light' : 'dark';

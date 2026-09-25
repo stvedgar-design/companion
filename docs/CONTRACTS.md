@@ -424,7 +424,7 @@ El módulo 02 mantiene actualizadas en `:root` las variables `--vh` (alto visibl
 --color-bg  --color-surface  --color-surface-2  --color-line  --color-text  --color-muted
 --color-accent  --color-accent-2  --color-accent-soft  --color-danger  --color-ok  --color-overlay
 --grad-user  --grad-avatar  --color-muted-on-accent
---surface-blur  --app-bg  --glass-tint-rgb     (materiales de skin; ver docs/DESIGN.md)
+--surface-backdrop  --bars-backdrop  --sheet-surface  --app-bg  --glass-tint-rgb     (materiales de skin; ver docs/DESIGN.md)
 --font
 --fs-xs --fs-sm --fs-md --fs-lg --fs-xl --fs-2xl --fs-3xl
 --radius-sm --radius-md --radius-lg --radius-pill

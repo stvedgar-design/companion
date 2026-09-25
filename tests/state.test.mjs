@@ -58,6 +58,7 @@ test('getSettings devuelve valores por defecto cuando no hay nada guardado', asy
     url: '', user: '', maxLen: 220, temp: 0.85, mode: 'chat', ctx: 4096,
     pinSalt: '', pinHash: '',
     theme: 'nomi', themeMode: 'dark',
+    glassEffect: 'full', // UI-007
     lorebookAuto: false,
     varietyAssist: false,
     formatAssist: true,
@@ -887,4 +888,23 @@ test('UI-010: importBackup v2 acepta mensajes con y sin loreUsed', async () => {
   assert.equal(msgs.length, 2);
   assert.equal('loreUsed' in msgs[0], false);
   assert.equal(msgs[1].loreUsed[0].always, true);
+});
+
+// ---------- UI-007: Settings.glassEffect ----------
+
+test('UI-007: glassEffect es "full" por defecto y solo acepta full/bars/off (copias previas sin el campo cargan en "full")', async () => {
+  const state = createState(createMemoryBackend());
+  assert.equal((await state.getSettings()).glassEffect, 'full');
+  for (const v of ['full', 'bars', 'off']) {
+    assert.equal((await state.saveSettings({ glassEffect: v })).glassEffect, v);
+  }
+  for (const bad of ['blur', '', null, 3, undefined, true]) {
+    assert.equal((await state.saveSettings({ glassEffect: bad })).glassEffect, 'full', String(bad));
+  }
+  // un registro guardado por una versión anterior (sin el campo)
+  const backend = createMemoryBackend();
+  await backend.put('settings', 'main', { url: 'http://x:5001', user: 'Sam', theme: 'glass', themeMode: 'dark' });
+  const old = await createState(backend).getSettings();
+  assert.equal(old.glassEffect, 'full');
+  assert.equal(old.theme, 'glass');
 });

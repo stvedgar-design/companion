@@ -4,7 +4,7 @@
 // es por personaje, se edita desde el menú ⋮ del chat (ver ui/chat-background.js).
 
 import { getSettings, saveSettings } from '../state.js';
-import { applyTheme, applyThemeMode } from './shell.js';
+import { applyTheme, applyThemeMode, applyGlassEffect } from './shell.js';
 
 const SKINS = [
   { value: 'nomi', label: 'Nomi' },
@@ -38,6 +38,16 @@ export function openAppearance(app) {
       </div>
     </div>
 
+    <div class="field" id="appearance-glass-field" style="display:none">
+      <label class="field__label" for="appearance-glass">Efecto de vidrio</label>
+      <select class="inp" id="appearance-glass">
+        <option value="full">Completo</option>
+        <option value="bars">Solo en barras</option>
+        <option value="off">Desactivado</option>
+      </select>
+      <div class="field__hint">Solo para el skin Glass. Las opciones más ligeras pueden ir mejor en teléfonos modestos; las superficies siguen siendo translúcidas.</div>
+    </div>
+
     <div class="field__hint">El fondo de chat (imagen, brillo, etc.) es por personaje — se edita desde el menú ⋮ dentro de cada chat.</div>
   `;
 
@@ -45,6 +55,8 @@ export function openAppearance(app) {
   const els = {
     modeBtns: Array.from(node.querySelectorAll('[data-mode-value]')),
     skinBtns: Array.from(node.querySelectorAll('[data-value]')),
+    glassField: q('#appearance-glass-field'),
+    glass: q('#appearance-glass'),
   };
 
   function renderMode(themeMode) {
@@ -63,11 +75,20 @@ export function openAppearance(app) {
     els.skinBtns.forEach((btn) => {
       btn.classList.toggle('appearance-skin--active', btn.dataset.value === theme);
     });
+    // UI-007: el efecto de vidrio solo tiene sentido con Glass; en los demás skins no se muestra.
+    els.glassField.style.display = theme === 'glass' ? '' : 'none';
   }
 
   getSettings().then((settings) => {
     renderMode(settings.themeMode);
     renderSkin(settings.theme);
+    els.glass.value = settings.glassEffect;
+  });
+
+  els.glass.addEventListener('change', async () => {
+    const glassEffect = els.glass.value;
+    await saveSettings({ glassEffect });
+    applyGlassEffect(glassEffect);
   });
 
   els.modeBtns.forEach((btn) => {

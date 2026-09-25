@@ -251,6 +251,7 @@ async function boot() {
 
   shell.applyTheme(settings.theme);
   shell.applyThemeMode(settings.themeMode);
+  shell.applyGlassEffect(settings.glassEffect);
   // El tinte del skin "glass" (ver themes.css) ya no se calcula acá: el
   // fondo de chat es por personaje (ver docs/NOTES.md, "Fondo de chat por
   // personaje"), así que lo aplica ui/chat.js al entrar a un chat, y lo
