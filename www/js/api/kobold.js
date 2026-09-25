@@ -286,7 +286,8 @@ function makeGenKey() {
  *   signal?: AbortSignal,
  *   onToken?: (chunk: string) => void
  * }} opts
- * @returns {Promise<{ text: string, truncated: boolean, aborted: boolean }>}
+ * @returns {Promise<{ text: string, truncated: boolean, aborted: boolean, loreUsed: import('./lorebook.js').LoreUsed[] }>}
+ *   `loreUsed`: recuerdos que viajaron en ESTE prompt (UI-010), para guardarlos en el mensaje.
  */
 export async function generateReply({ character, chat, messages, settings, signal, onToken }) {
   const base = normUrl(settings && settings.url);
@@ -301,7 +302,7 @@ export async function generateReply({ character, chat, messages, settings, signa
   // MEM-004: dos bloques. `loreBlock` = recuerdos "siempre presentes" (estable, va en la
   // cabecera); `topicBlock` = los "por tema" (varía turno a turno, va al FINAL del prompt
   // para no invalidar la caché de prompt del servidor: ver docs/HISTORIAL.md, "MEM-004").
-  const { always: loreBlock, topic: topicBlock } = buildLoreBlocks((character && character.lorebook) || [], messages);
+  const { always: loreBlock, topic: topicBlock, used: loreUsed } = buildLoreBlocks((character && character.lorebook) || [], messages);
   // FMT-004: con `varietyAssist` activo, si el último turno del personaje ya repitió las palabras de sus
   // turnos anteriores, la respuesta siguiente lleva al FINAL una nota breve de variedad (mismo sitio que el
   // bloque por tema: no invalida la caché del servidor).
@@ -401,13 +402,13 @@ export async function generateReply({ character, chat, messages, settings, signa
     const wasAborted = (signal && signal.aborted) || (err && err.name === 'AbortError');
     if (wasAborted) {
       notifyAbort();
-      return { text: cleanReply(fullText, card.name), truncated: false, aborted: true };
+      return { text: cleanReply(fullText, card.name), truncated: false, aborted: true, loreUsed };
     }
     if (err && KNOWN_CODES.has(err.code)) throw err;
     // Fallo de red genérico: fetch rechazado, o el stream se cortó a mitad
     // de camino. Si ya había texto recibido, no se pierde.
     if (fullText) {
-      return { text: trimPartial(cleanReply(fullText, card.name)), truncated: true, aborted: false };
+      return { text: trimPartial(cleanReply(fullText, card.name)), truncated: true, aborted: false, loreUsed };
     }
     throw makeError(STREAM_NETWORK_MSG, 'NETWORK');
   }
@@ -420,7 +421,7 @@ export async function generateReply({ character, chat, messages, settings, signa
     text = trimPartial(text);
     truncated = true;
   }
-  return { text, truncated, aborted: false };
+  return { text, truncated, aborted: false, loreUsed };
 }
 
 /**

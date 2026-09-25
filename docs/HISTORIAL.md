@@ -2050,3 +2050,28 @@ Scripts de medición desechables (fuera del repo); datos sintéticos, sin conten
 - **NO verificado (requiere el teléfono):** que el APK lleve el plugin y que `Capacitor.Plugins.App` se rellene como los otros
   plugins; que un gesto de "atrás" real llegue al listener; salir de la app desde el hub; el comportamiento con el teclado abierto.
 - Tests: 3 nuevos en `tests/nav.test.mjs` (`decideBack`).
+
+## UI-010: indicador de memoria usada por mensaje (2026-09-25)
+
+**Estado:** implementado; **NO probado en el teléfono.** Sin cambios de latencia: la selección ya se calculaba antes de llamar al servidor; solo se guarda.
+- **Captura** (`api/lorebook.js`): `buildLoreBlocks` devuelve además `used: LoreUsed[]` = las "siempre presentes" que caben en su tope y las
+  "por tema" que coinciden y caben en el presupuesto, o sea lo que REALMENTE viaja en el prompt (no las candidatas). Son COPIAS
+  (`toLoreUsed`: `{id, keys, content, always}`). La lógica de selección y de presupuestos (MEM-004) no se tocó. `generateReply` lo
+  devuelve como `loreUsed` en sus 3 salidas (normal, abortada, cortada por red); `generateReplyNonEmpty` lo propaga.
+- **Guardado** (`ui/chat.js`, `generate()`): `reply.loreUsed = result.loreUsed` (`[]` si ninguno). Regenerar lo recalcula. Si la respuesta se
+  cancela antes de que `generateReply` devuelva, el mensaje queda sin `loreUsed` (sin dato → sin icono).
+- **Esquema** (`state.js`): `Message.loreUsed?`. `sanitizeLoreUsed` (exportada) se aplica AL LEER en `getChatMessages` y solo toca ese campo:
+  no es un array → sin dato; entradas inválidas se descartan; un array no vacío sin ninguna entrada válida → sin dato (mejor sin
+  icono que uno falso); en mensajes de usuario se quita. El resto de campos y los mensajes sin el campo pasan idénticos; lo guardado en
+  IndexedDB no se reescribe al leer. Copias v1/v2 sin el campo importan igual (test).
+- **Visualización** (`chat.js` + `chat.css`): `loreIndicatorState(msg)` → `none` (sin icono: mensajes anteriores, del usuario), `muted`
+  (`loreUsed:[]`, gris `--color-muted` con opacidad .55) o `active` (`--color-accent-2` del skin, relleno). Marcapáginas de 15 px bajo la burbuja,
+  zona táctil 44×32 px. Tocarlo abre `app.openSheet` con el detalle: "Siempre presente"/"Por tema", contenido guardado, palabras clave y,
+  si `compareLoreUsed` lo detecta contra el lorebook actual del personaje, "Este recuerdo fue editado o borrado después." (también si solo
+  se marcó/desmarcó "siempre presente"). Tocar el icono no selecciona el mensaje.
+- **Verificado (Hecho, navegador 375×812):** mensaje antiguo sin icono; `loreUsed:[]` gris; con recuerdos, de acento (nomi/glass `rgb(162,76,242)`, iMessage azul
+  `rgb(64,156,255)`/`rgb(51,157,255)`, claro y oscuro); la hoja muestra los 3 recuerdos con los avisos de editado/borrado. **De punta a punta** con un
+  servidor KoboldCpp simulado local: al enviar "Cuéntame de Bruno y el café" el mensaje nuevo se guardó con `loreUsed` = [l1 siempre presente, l2 por tema].
+- Tests nuevos (9): `used` sin/con coincidencias y como copia; recorte por presupuesto (tema y siempre presentes); `loreIndicatorState`;
+  `compareLoreUsed` (editado, borrado, contenido original conservado); guardado/lectura y saneado en `state`; `importBackup` con y sin campo;
+  `generateReply` devuelve `loreUsed` (`[]` / entradas enviadas). Los tests con DOM (icono gris/coloreado) se cubren con la función pura + el navegador.

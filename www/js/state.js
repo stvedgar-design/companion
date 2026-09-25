@@ -71,6 +71,9 @@
  * @property {'user'|'char'} role
  * @property {string} text
  * @property {number} ts
+ * @property {{ id: string, keys: string[], content: string, always: boolean }[]} [loreUsed]
+ *   UI-010, solo mensajes del personaje: copia de los recuerdos que viajaron en el prompt de ESE mensaje
+ *   (`[]` = ninguno). Ausente = mensaje anterior a UI-010 / sin dato (no se muestra icono).
  */
 
 /**
@@ -171,6 +174,35 @@ function sanitizeCharacterBackground(raw) {
     chatBackgroundFade: !!merged.chatBackgroundFade,
     chatBackgroundFit: merged.chatBackgroundFit === 'stretch' ? 'stretch' : DEFAULT_CHARACTER_BACKGROUND.chatBackgroundFit,
   };
+}
+
+// UI-010: valida `loreUsed` de un mensaje. Devuelve un array (posiblemente vacío) o `undefined` = "sin dato".
+// Un array no vacío donde ninguna entrada es válida también es "sin dato": mejor sin icono que un dato falso.
+export function sanitizeLoreUsed(raw) {
+  if (!Array.isArray(raw)) return undefined;
+  const clean = raw
+    .map((e) => {
+      if (!e || typeof e !== 'object') return null;
+      const content = typeof e.content === 'string' ? e.content.trim() : '';
+      if (!content) return null;
+      return {
+        id: typeof e.id === 'string' ? e.id : '',
+        keys: Array.isArray(e.keys) ? e.keys.map((k) => String(k || '')).filter(Boolean) : [],
+        content,
+        always: e.always === true,
+      };
+    })
+    .filter(Boolean);
+  if (raw.length && !clean.length) return undefined;
+  return clean;
+}
+
+// Solo toca el campo `loreUsed`; cualquier otro campo del mensaje (y los mensajes sin él) pasan tal cual.
+function sanitizeMessage(m) {
+  if (!m || typeof m !== 'object' || !('loreUsed' in m)) return m;
+  const { loreUsed, ...rest } = m;
+  const clean = m.role === 'char' ? sanitizeLoreUsed(loreUsed) : undefined;
+  return clean === undefined ? rest : { ...rest, loreUsed: clean };
 }
 
 function previewLast(messages) {
@@ -359,7 +391,7 @@ export function createState(backend) {
 
   async function getChatMessages(chatId) {
     const found = await backend.get('chatMsgs', chatId);
-    return Array.isArray(found) ? found : null;
+    return Array.isArray(found) ? found.map(sanitizeMessage) : null;
   }
 
   async function saveChatMessages(chatId, messages) {

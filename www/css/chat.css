@@ -132,6 +132,25 @@
 .chat-row--user .chat-bubble em { color: rgba(255, 255, 255, 0.72); }
 .chat-bubble strong { font-weight: 600; }
 
+/* --- UI-010: indicador de memoria usada (gris = ningún recuerdo, acento del skin = usó alguno) --- */
+.chat-row__meta { margin-top: 2px; }
+.chat-lore {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 32px;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--color-muted);
+  opacity: 0.55;
+}
+.chat-lore svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.chat-lore--active { color: var(--color-accent-2); opacity: 1; }
+.chat-lore--active svg { fill: currentColor; }
+.chat-lore:focus-visible { outline: 2px solid var(--color-accent-2); outline-offset: 2px; }
+
 /* --- acciones al tocar un mensaje --- */
 .chat-row__actions {
   display: none;

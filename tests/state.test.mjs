@@ -1,7 +1,7 @@
 // tests/state.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createState } from '../www/js/state.js';
+import { createState, sanitizeLoreUsed } from '../www/js/state.js';
 import { cleanStoredLorebook } from '../www/js/api/lorebook.js';
 
 // ---------- backend en memoria, implementa el mismo contrato que el backend de IndexedDB ----------
@@ -830,4 +830,61 @@ test('FMT-002: una copia v2 sin formatAssist sigue importando', async () => {
   await state.importBackup({ text: async () => JSON.stringify(backup) });
   assert.equal((await state.listCharacters()).length, 1);
   assert.equal((await state.getSettings()).formatAssist, true);
+});
+
+
+// ---------- UI-010: `loreUsed` en los mensajes ----------
+
+test('UI-010: un mensaje con loreUsed se guarda y se lee igual; sin el campo carga sin él (mensajes anteriores)', async () => {
+  const state = createState(createMemoryBackend());
+  await state.saveCharacter(makeCharacter({ id: 'x' }));
+  const chat = await state.createChat('x', {});
+  const used = [{ id: 'l1', keys: ['café'], content: 'Se conocieron en un café.', always: false }];
+  await state.saveChatMessages(chat.id, [
+    { role: 'user', text: 'hola', ts: 1 },
+    { role: 'char', text: 'viejo', ts: 2 },
+    { role: 'char', text: 'con recuerdos', ts: 3, loreUsed: used },
+    { role: 'char', text: 'sin recuerdos', ts: 4, loreUsed: [] },
+  ]);
+  const msgs = await state.getChatMessages(chat.id);
+  assert.equal('loreUsed' in msgs[1], false);
+  assert.deepEqual(msgs[2].loreUsed, used);
+  assert.deepEqual(msgs[3].loreUsed, []);
+});
+
+test('UI-010: loreUsed malformado se descarta (sin dato) sin tocar el resto del mensaje', async () => {
+  assert.equal(sanitizeLoreUsed('x'), undefined);
+  assert.equal(sanitizeLoreUsed(undefined), undefined);
+  assert.equal(sanitizeLoreUsed([null, 3, { content: '' }]), undefined); // todo inválido: mejor sin icono que un dato falso
+  assert.deepEqual(sanitizeLoreUsed([]), []);
+  assert.deepEqual(sanitizeLoreUsed([{ content: ' Hecho. ' }, null]), [{ id: '', keys: [], content: 'Hecho.', always: false }]);
+  const state = createState(createMemoryBackend());
+  await state.saveCharacter(makeCharacter({ id: 'x' }));
+  const chat = await state.createChat('x', {});
+  await state.saveChatMessages(chat.id, [
+    { role: 'char', text: 'a', ts: 1, loreUsed: 'basura', extra: 42 },
+    { role: 'user', text: 'b', ts: 2, loreUsed: [] }, // el usuario nunca lleva loreUsed
+  ]);
+  const msgs = await state.getChatMessages(chat.id);
+  assert.deepEqual(msgs[0], { role: 'char', text: 'a', ts: 1, extra: 42 });
+  assert.deepEqual(msgs[1], { role: 'user', text: 'b', ts: 2 });
+});
+
+test('UI-010: importBackup v2 acepta mensajes con y sin loreUsed', async () => {
+  const state = createState(createMemoryBackend());
+  const backup = {
+    app: 'companion', version: 2, exported: 1, settings: {},
+    characters: [makeCharacter({ id: 'x' })],
+    chats: { c1: { id: 'c1', characterId: 'x', title: '', scenario: '', created: 1, updated: 1, last: '', lastExportAt: 0 } },
+    chatMessages: { c1: [
+      { role: 'char', text: 'viejo', ts: 1 },
+      { role: 'char', text: 'nuevo', ts: 2, loreUsed: [{ id: 'l', keys: ['k'], content: 'Un hecho.', always: true }] },
+    ] },
+  };
+  const file = { async text() { return JSON.stringify(backup); } };
+  await state.importBackup(file);
+  const msgs = await state.getChatMessages('c1');
+  assert.equal(msgs.length, 2);
+  assert.equal('loreUsed' in msgs[0], false);
+  assert.equal(msgs[1].loreUsed[0].always, true);
 });

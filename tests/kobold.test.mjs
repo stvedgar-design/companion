@@ -807,3 +807,33 @@ test('generateReply sigue enviando settings.maxLen y settings.temp (modo texto s
     }
   }
 });
+
+// ---------- UI-010: generateReply informa qué recuerdos viajaron en el prompt ----------
+
+test('generateReply devuelve loreUsed: [] sin coincidencias y las entradas realmente enviadas con ellas', async () => {
+  const { server } = createFakeServer();
+  const base = await listen(server);
+  const lore = [
+    { id: 'a', keys: ['x'], content: 'Sam le contó a Mia que su perro Bruno le teme a los truenos.', updated: 1, source: 'manual', always: true },
+    { id: 'b', keys: ['café'], content: 'Se conocieron en un café.', updated: 1, source: 'auto' },
+    { id: 'c', keys: ['playa'], content: 'Sam nunca fue a la playa.', updated: 1, source: 'auto' },
+  ];
+  try {
+    const none = await generateReply({
+      character: makeCharacter({ lorebook: [lore[1], lore[2]] }),
+      messages: [{ role: 'user', text: 'Hola', ts: 1 }],
+      settings: makeSettings(base),
+    });
+    assert.deepEqual(none.loreUsed, []);
+
+    const some = await generateReply({
+      character: makeCharacter({ lorebook: lore }),
+      messages: [{ role: 'user', text: 'Vamos a tomar un café', ts: 1 }],
+      settings: makeSettings(base),
+    });
+    assert.deepEqual(some.loreUsed.map((u) => [u.id, u.always]), [['a', true], ['b', false]]);
+    assert.equal(some.loreUsed[1].content, 'Se conocieron en un café.');
+  } finally {
+    server.close();
+  }
+});

@@ -11,6 +11,8 @@ import {
   parseKeysInput,
   cleanStoredLorebook,
   loreBudgetPreview,
+  loreIndicatorState,
+  compareLoreUsed,
   LOREBOOK_UPDATE_EVERY_MESSAGES,
   LOREBOOK_MAX_ENTRY_CHARS,
   LOREBOOK_ALWAYS_CHAR_BUDGET,
@@ -26,6 +28,8 @@ import { setGlassTint } from './shell.js';
 
 const ICON_BACK = '<svg viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>';
 const ICON_MENU = '<svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/></svg>';
+// UI-010: marcapáginas pequeño; gris = ningún recuerdo usado, color de acento = usó alguno.
+const ICON_LORE = '<svg viewBox="0 0 24 24"><path d="M7 4h10a1 1 0 0 1 1 1v15l-6-3.5L6 20V5a1 1 0 0 1 1-1z"/></svg>';
 const ICON_SEND = '<svg viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg>';
 const ICON_STOP = '<svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2.5"/></svg>';
 const ICON_DOWN = '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12l7 7 7-7"/></svg>';
@@ -320,6 +324,28 @@ function buildMessageRow(m, i) {
   }
   row.appendChild(bubble);
 
+  // UI-010: indicador de memoria usada (solo mensajes del personaje con dato; los anteriores no muestran nada).
+  const loreState = loreIndicatorState(m);
+  if (loreState !== 'none' && m.text) {
+    const meta = document.createElement('div');
+    meta.className = 'chat-row__meta';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'chat-lore chat-lore--' + (loreState === 'active' ? 'active' : 'muted');
+    btn.dataset.lore = loreState;
+    btn.setAttribute(
+      'aria-label',
+      loreState === 'active' ? `Este mensaje usó ${m.loreUsed.length} recuerdo(s). Ver cuáles` : 'Este mensaje no usó ningún recuerdo'
+    );
+    btn.innerHTML = ICON_LORE;
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openLoreUsedSheet(m);
+    });
+    meta.appendChild(btn);
+    row.appendChild(meta);
+  }
+
   const actions = document.createElement('div');
   actions.className = 'chat-row__actions';
   if (!busy) {
@@ -366,7 +392,7 @@ function buildRetryButton() {
 
 function onMessagesClick(e) {
   if (busy) return;
-  if (e.target.closest('.chat-row__actions')) return;
+  if (e.target.closest('.chat-row__actions') || e.target.closest('.chat-row__meta')) return;
   const row = e.target.closest('.chat-row');
   if (!row) {
     clearSelection();
@@ -560,6 +586,8 @@ async function generate() {
       },
     });
     reply.text = (result && result.text) || '';
+    // UI-010: qué recuerdos viajaron en el prompt de ESTE mensaje (copia; `[]` si ninguno).
+    if (result && Array.isArray(result.loreUsed)) reply.loreUsed = result.loreUsed;
     // Vacía tras el reintento automático: no se guarda nada (ver `finally`) y
     // el botón "Reintentar respuesta" queda visible.
     if (!reply.text && !(result && result.aborted)) {
@@ -737,6 +765,27 @@ function loreCleanMessage(result) {
 async function freshLorebook() {
   const fresh = await getCharacter(character.id);
   return (fresh && fresh.lorebook) || [];
+}
+
+// UI-010: detalle de los recuerdos que usó un mensaje. Muestra la COPIA guardada en el mensaje, y avisa si
+// el recuerdo se editó o se borró después en el lorebook actual del personaje.
+function openLoreUsedSheet(message) {
+  const wrap = loreEl('div');
+  wrap.appendChild(loreEl('h3', 'sheet__title', 'Recuerdos usados en este mensaje'));
+  const items = compareLoreUsed(message.loreUsed, character && character.lorebook);
+  if (!items.length) {
+    wrap.appendChild(loreEl('div', 'field__hint', 'Este mensaje no usó ningún recuerdo.'));
+  }
+  items.forEach((item) => {
+    const field = loreEl('div', 'field');
+    field.dataset.status = item.status;
+    field.appendChild(loreEl('div', 'field__label', item.always ? 'Siempre presente' : 'Por tema'));
+    field.appendChild(loreEl('div', '', item.content));
+    if (!item.always && item.keys.length) field.appendChild(loreEl('div', 'field__hint', 'Palabras clave: ' + item.keys.join(', ')));
+    if (item.status !== 'same') field.appendChild(loreEl('div', 'field__hint', 'Este recuerdo fue editado o borrado después.'));
+    wrap.appendChild(field);
+  });
+  app.openSheet(wrap);
 }
 
 // Cada pantalla de la hoja reemplaza a la anterior con `app.openSheet` (sin

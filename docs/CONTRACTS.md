@@ -143,6 +143,7 @@ Los imports son ESM relativos y siempre con extensión `.js`. Los tests importan
  * @property {'user'|'char'} role
  * @property {string} text          // texto crudo; los *asteriscos* se formatean solo al mostrar
  * @property {number} ts            // ms desde epoch
+ * @property {{ id: string, keys: string[], content: string, always: boolean }[]} [loreUsed]  // UI-010, solo 'char': COPIA de los recuerdos que viajaron en el prompt de ese mensaje ([] = ninguno; ausente = mensaje anterior, sin dato → sin icono). Saneado al leer (`sanitizeLoreUsed`).
  */
 
 /**
@@ -257,7 +258,7 @@ generateReply(opts: {
   settings: Settings,
   signal?: AbortSignal,
   onToken?: (chunk: string) => void
-}): Promise<{ text: string, truncated: boolean, aborted: boolean }>
+}): Promise<{ text: string, truncated: boolean, aborted: boolean, loreUsed: { id, keys, content, always }[] }>  // loreUsed (UI-010): recuerdos realmente enviados en este prompt
    // Si `signal` aborta: pide al servidor detener la generación y RESUELVE con lo recibido (aborted:true). Nunca lanza por abort.
    // Otros fallos: lanza Error con `message` en español apto para mostrar tal cual y `code` ('INVALID_URL'|'NETWORK'|'MIXED_CONTENT'|'HTTP'|'SERVER').
 generateReplyNonEmpty(opts: <los de generateReply>, generate?: typeof generateReply): Promise<{ text: string, truncated: boolean, aborted: boolean }>

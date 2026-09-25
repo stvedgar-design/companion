@@ -1164,14 +1164,70 @@ export function formatAlwaysBlock(entries) {
  * entradas devuelve ambos '' y el prompt queda IDÉNTICO al de siempre.
  * @param {LoreEntry[]} entries  `character.lorebook`
  * @param {import('../state.js').Message[]} recentMessages
- * @returns {{ always: string, topic: string, alwaysSelection: ReturnType<typeof selectAlwaysEntries> }}
+ * @returns {{ always: string, topic: string, alwaysSelection: ReturnType<typeof selectAlwaysEntries>, used: LoreUsed[] }}
  */
 export function buildLoreBlocks(entries, recentMessages) {
   const alwaysSelection = selectAlwaysEntries(entries);
   const topicEntries = selectLoreEntries(entries, recentMessages, {
     charBudget: loreTopicBudget(alwaysSelection.used),
   });
-  return { always: formatAlwaysBlock(alwaysSelection.entries), topic: formatLoreBlock(topicEntries), alwaysSelection };
+  // UI-010: `used` = lo que REALMENTE viaja en el prompt (ya recortado por presupuesto), no las candidatas.
+  const used = [...toLoreUsed(alwaysSelection.entries, true), ...toLoreUsed(topicEntries, false)];
+  return { always: formatAlwaysBlock(alwaysSelection.entries), topic: formatLoreBlock(topicEntries), alwaysSelection, used };
+}
+
+/* ---------- UI-010: qué recuerdos usó cada mensaje ---------- */
+
+/**
+ * @typedef {Object} LoreUsed  Copia, en el momento de generar, de un recuerdo enviado en el prompt.
+ * @property {string} id
+ * @property {string[]} keys
+ * @property {string} content
+ * @property {boolean} always  true = "siempre presente"; false = "por tema"
+ */
+
+/**
+ * Copia (no referencia) de las entradas enviadas, para guardarlas en el mensaje: si el recuerdo se
+ * edita o se borra después, el detalle sigue mostrando lo que se usó entonces.
+ * @param {LoreEntry[]} entries
+ * @param {boolean} always
+ * @returns {LoreUsed[]}
+ */
+export function toLoreUsed(entries, always) {
+  return (Array.isArray(entries) ? entries : []).map((e) => ({
+    id: String(e.id || ''),
+    keys: Array.isArray(e.keys) ? e.keys.map(String) : [],
+    content: String(e.content || ''),
+    always: !!always,
+  }));
+}
+
+/**
+ * Estado del icono de un mensaje del personaje: `'none'` (sin icono: no es del personaje o es un mensaje
+ * anterior a UI-010, sin dato), `'muted'` (no usó ningún recuerdo) o `'active'` (usó al menos uno).
+ * @param {{ role?: string, loreUsed?: unknown }} message
+ * @returns {'none'|'muted'|'active'}
+ */
+export function loreIndicatorState(message) {
+  if (!message || message.role !== 'char' || !Array.isArray(message.loreUsed)) return 'none';
+  return message.loreUsed.length ? 'active' : 'muted';
+}
+
+/**
+ * Cruza lo que usó un mensaje con el lorebook ACTUAL del personaje para avisar de los cambiados o borrados.
+ * @param {LoreUsed[]} loreUsed
+ * @param {LoreEntry[]} currentLorebook
+ * @returns {(LoreUsed & { status: 'same'|'edited'|'gone' })[]}
+ */
+export function compareLoreUsed(loreUsed, currentLorebook) {
+  const byId = new Map((Array.isArray(currentLorebook) ? currentLorebook : []).map((e) => [e.id, e]));
+  return (Array.isArray(loreUsed) ? loreUsed : []).map((u) => {
+    const now = byId.get(u.id);
+    let status = 'same';
+    if (!now) status = 'gone';
+    else if (now.content !== u.content || (now.always === true) !== u.always) status = 'edited';
+    return { ...u, status };
+  });
 }
 
 /**

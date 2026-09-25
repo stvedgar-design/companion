@@ -42,7 +42,10 @@ import {
   formatAlwaysBlock,
   buildLoreBlocks,
   loreBudgetPreview,
-  loreEntryCost
+  loreEntryCost,
+  toLoreUsed,
+  loreIndicatorState,
+  compareLoreUsed
 } from '../www/js/api/lorebook.js';
 
 function makeCharacter(overrides = {}) {
@@ -1056,4 +1059,65 @@ test('MEM-005: normalizeLoreKeys conserva una key "literal del usuario" de conte
   assert.equal(normalizeLoreKeys(['a1b', 'c2d', 'e3f', 'hands', 'kiss'], 'x', { names: NAMES2 }).length, LOREBOOK_KEYS_MAX);
   // El nombre de un personaje o una palabra de una letra siguen fuera.
   assert.deepEqual(normalizeLoreKeys(['sam', 'x', 'kiss'], 'Sam kissed Mia', { names: NAMES2 }), ['kiss']);
+});
+
+
+// ---------- UI-010: qué recuerdos usó cada mensaje ----------
+
+test('UI-010: buildLoreBlocks.used sin coincidencias es []', () => {
+  const recent = [{ role: 'user', text: 'nada que ver', ts: 1 }];
+  assert.deepEqual(buildLoreBlocks([makeEntry({ keys: ['café'] })], recent).used, []);
+  assert.deepEqual(buildLoreBlocks([], recent).used, []);
+});
+
+test('UI-010: buildLoreBlocks.used trae las "siempre presentes" y las "por tema" que coinciden, como copias', () => {
+  const entries = [
+    always('a', 'Bruno le teme a los truenos.'),
+    makeEntry({ id: 'b', keys: ['café'], content: 'Se conocieron en un café.' }),
+    makeEntry({ id: 'c', keys: ['playa'], content: 'Sam nunca fue a la playa.' }),
+  ];
+  const recent = [{ role: 'user', text: 'tomemos un café', ts: 1 }];
+  const { used } = buildLoreBlocks(entries, recent);
+  assert.deepEqual(used.map((u) => [u.id, u.always]), [['a', true], ['b', false]]);
+  assert.deepEqual(used[1], { id: 'b', keys: ['café'], content: 'Se conocieron en un café.', always: false });
+  // es una copia: editar la entrada original después no cambia lo guardado
+  entries[1].content = 'Otra cosa.';
+  entries[1].keys.push('nueva');
+  assert.equal(used[1].content, 'Se conocieron en un café.');
+  assert.deepEqual(used[1].keys, ['café']);
+});
+
+test('UI-010: `used` refleja lo que REALMENTE viaja (recortado por presupuesto), no todas las candidatas', () => {
+  const topics = ['uno', 'dos', 'tres', 'cuatro'].map((k, i) =>
+    makeEntry({ id: k, keys: [k], content: `${k} ` + 'x'.repeat(250 - k.length - 1), updated: 10 - i }));
+  const recent = [{ role: 'user', text: 'uno dos tres cuatro', ts: 1 }];
+  const { used, topic } = buildLoreBlocks(topics, recent);
+  assert.equal(used.length, 3); // los 4 coinciden pero solo caben 3 (ver el test de presupuesto de MEM-004)
+  assert.equal(used.length, topic.split('\n').length - 1);
+  assert.deepEqual(used.map((u) => u.id), ['uno', 'dos', 'tres']);
+  // "siempre presentes" que no caben en su tope tampoco cuentan
+  const marked = [always('a', 'a'.repeat(297)), always('b', 'b'.repeat(297))]; // 300 + 300 > 500
+  assert.deepEqual(buildLoreBlocks(marked, recent).used.map((u) => u.id), ['a']);
+});
+
+test('UI-010: loreIndicatorState — sin dato = sin icono; [] = apagado; con recuerdos = activo; solo mensajes del personaje', () => {
+  assert.equal(loreIndicatorState({ role: 'char', text: 'hola' }), 'none');
+  assert.equal(loreIndicatorState({ role: 'char', text: 'hola', loreUsed: undefined }), 'none');
+  assert.equal(loreIndicatorState({ role: 'char', text: 'hola', loreUsed: 'x' }), 'none');
+  assert.equal(loreIndicatorState({ role: 'char', text: 'hola', loreUsed: [] }), 'muted');
+  assert.equal(loreIndicatorState({ role: 'char', text: 'hola', loreUsed: toLoreUsed([makeEntry()], false) }), 'active');
+  assert.equal(loreIndicatorState({ role: 'user', text: 'hola', loreUsed: [] }), 'none');
+  assert.equal(loreIndicatorState(null), 'none');
+});
+
+test('UI-010: compareLoreUsed avisa de recuerdos editados o borrados después, y el detalle conserva el contenido original', () => {
+  const used = toLoreUsed([makeEntry({ id: 'x', content: 'Original.' }), makeEntry({ id: 'y', content: 'Se queda.' }), makeEntry({ id: 'z', content: 'Se borra.' })], false);
+  const now = [makeEntry({ id: 'x', content: 'Editado ahora.' }), makeEntry({ id: 'y', content: 'Se queda.' })];
+  const res = compareLoreUsed(used, now);
+  assert.deepEqual(res.map((r) => [r.id, r.status]), [['x', 'edited'], ['y', 'same'], ['z', 'gone']]);
+  assert.equal(res[0].content, 'Original.');  // lo que se usó entonces, no lo de ahora
+  assert.equal(res[2].content, 'Se borra.');  // borrado: el contenido sigue disponible
+  // marcar/desmarcar "siempre presente" también cuenta como cambio
+  assert.equal(compareLoreUsed(toLoreUsed([makeEntry({ id: 'x' })], false), [always('x', 'Se conocieron en un café.', { keys: ['café'] })])[0].status, 'edited');
+  assert.deepEqual(compareLoreUsed(undefined, undefined), []);
 });

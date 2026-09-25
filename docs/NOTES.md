@@ -63,7 +63,7 @@ navegación), `setup`, `home`, `chats`, `chat`. Versión: `APP_VERSION`
   `created`, `updated`, `last`, `lastExportAt`, `lorebookMessageCount`
   (marcador de disparo del lorebook; ya NO guarda entradas).
 - `Message` (store `chatMsgs`, un array por `chatId`): `role` (`user|char`),
-  `text`, `ts`.
+  `text`, `ts`, `loreUsed?` (UI-010, solo `char`: copia de los recuerdos usados; ausente = sin dato).
 - `LoreEntry`: `id`, `keys[]`, `content`, `updated`, `source` (`auto|manual`), `always?`
   (MEM-004: "siempre presente"; solo se guarda `true`; implica `manual`).
 - Backup manual: JSON `{app:'companion', version:2, exported, settings,
@@ -224,6 +224,7 @@ personajes: segunda iteración visual"; auditoría de recuperabilidad →
 | UI-011 | Quitar los deslizadores de longitud y creatividad de Ajustes | Autorizado — **implementado el 2026-09-25** (sesión Q1); **pendiente de probar en el teléfono** | Solo desaparece el control; `Settings.maxLen`/`temp` siguen en `state.js` y `kobold.js` los sigue enviando. Ver "UI-011" (en `HISTORIAL.md`). |
 | UI-013 | Hub: "Continuar" abre el chat más reciente; el retrato abre la lista de chats | Autorizado — **implementado el 2026-09-25** (sesión Q1); verificado en el navegador integrado; **pendiente de probar en el teléfono** | `nav.js` (`continueTarget`, puro). Sin chats, "Continuar" sigue creando uno (vía `chats.js`). Ver "UI-013" (en `HISTORIAL.md`). |
 | UI-014 | El botón "atrás" de Android navega dentro de la app | Autorizado — **implementado el 2026-09-25** (sesión Q1); probado solo con un Android simulado en el navegador; **pendiente de probar en el teléfono** | Plugin `@capacitor/app` + `backButton` en `main.js`; decisión pura en `nav.js` (`decideBack`). Ver "UI-014" (en `HISTORIAL.md`). |
+| UI-010 | Indicador de memoria usada por mensaje (marcapáginas gris / de acento) | Autorizado — **implementado el 2026-09-25** (sesión Q2); verificado en el navegador (4 skins) y de punta a punta con un servidor simulado; **pendiente de probar en el teléfono** | `Message.loreUsed`; `buildLoreBlocks().used`; hoja de detalle en `chat.js`. Ver "UI-010" (en `HISTORIAL.md`). |
 | BKP-001 | Importación de copias segura: confirmar, no pisar datos nuevos, todo o nada | **Autorizado; sin implementar** (sesión posterior a MEM-001 v2, solo cuando el usuario lo pida) | Punto de partida: hallazgos 2 y 10 de VER-001. |
 | MEM-001 (v1) | (Anulado) versión anterior de MEM-001 | **ANULADO**, reemplazado por MEM-001 v2 | Asumía que el servidor podía devolver una lista larga con saltos de línea. |
 | (previos) | `CONTRACT-LOREBOOK.md` (implementado, parcialmente superado), `CONTRACT-CHARACTER-CREATOR.md` (propuesta, no autorizada), `CONTRACT-HANDOFF.md` (briefing) | — | Ver los avisos al inicio de cada uno. |
