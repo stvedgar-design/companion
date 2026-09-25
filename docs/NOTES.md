@@ -37,14 +37,14 @@ primera versión falló en el CI, ARQ-002 re-firma el APK explícitamente con
 solo en `www/js/state.js` (IndexedDB `companion`, versión 2, stores
 `settings`, `characters`, `chats` [legado], `chatMeta`, `chatMsgs`). `fetch`
 solo en `www/js/api/kobold.js`. Skins = solo tokens en `www/css/themes.css`
-(3 skins × claro/oscuro; tipografía Literata incluida en `www/fonts/`, sin red). Vistas: `lock` (solo al arrancar, fuera de la
+(5 skins × claro/oscuro; tipografía Literata incluida en `www/fonts/`, sin red). Vistas: `lock` (solo al arrancar, fuera de la
 navegación), `setup`, `home`, `chats`, `chat`. Versión: `APP_VERSION`
 (`www/js/version.js`) y `package.json` coinciden (`1.1.0`).
 
 **Modelo de datos actual** (fuente de verdad: typedefs de `state.js`):
 - `Settings` (1 registro, clave `main`): `url`, `user`, `maxLen`, `temp`,
   `mode` (`'chat'` por defecto | `'plain'`), `ctx`, `pinSalt`, `pinHash`,
-  `theme` (`nomi|glass|imessage`), `themeMode` (`dark|light`), `glassEffect` (`full|bars|off`, UI-007), `lorebookAuto`
+  `theme` (`nomi|glass|imessage|penumbra|penumbra-claude`), `themeMode` (`dark|light`), `glassEffect` (`full|bars|off`, UI-007), `lorebookAuto`
   (boolean, `false` por defecto; MEM-002: solo `true` activa la extracción
   automática de memoria), `varietyAssist` (boolean, `false` por defecto; FMT-004:
   nota de variedad al final del prompt si el personaje se repite), `formatAssist`
@@ -77,8 +77,8 @@ contexto; hub de 2 columnas con lupa de búsqueda; lorebook automático por
 personaje (MEM-001 v2: extracción aditiva de una línea vía KoboldCpp, inyección
 por keyword, hoja "Ver lorebook" con editar/borrar/deshacer y "Actualizar memoria
 ahora"; MEM-002: la actualización automática cada 20 mensajes está APAGADA por
-defecto y se activa con un interruptor en esa hoja); 3 skins × claro/oscuro; fondo
-de chat por personaje; CI con gate de tests; versión visible en Ajustes; 332
+defecto y se activa con un interruptor en esa hoja); 5 skins × claro/oscuro; fondo
+de chat por personaje; CI con gate de tests; versión visible en Ajustes; 353
 tests (`node --test tests/*.test.mjs`).
 
 **Verificado en un teléfono real (Hecho, reportado por el tester, 2026-09-24):**
@@ -227,6 +227,7 @@ personajes: segunda iteración visual"; auditoría de recuperabilidad →
 | UI-006 | Menú de mensaje compacto (un solo menú reutilizado) | Autorizado — **implementado el 2026-09-25** (sesión G3); verificado en el navegador con 252 mensajes; **pendiente de probar en el teléfono** | Sin botones por fila: 1 menú que se mueve al mensaje tocado; `ui/msgmenu.js` (puro). Ver "UI-006" (en `HISTORIAL.md`). |
 | UI-007 | Efecto de vidrio ajustable (`Settings.glassEffect`) | Autorizado — **implementado el 2026-09-25** (sesión G3); Nomi/iMessage sin `backdrop-filter` y sin cambios de layout/color (medido); **pendiente de probar en el teléfono** | Tokens `--surface-backdrop`/`--bars-backdrop`; selector en Apariencia, solo con Glass. Sin medición de rendimiento (UI-005 no ejecutado). Ver "UI-007" (en `HISTORIAL.md`). |
 | UI-008 | Tipografía incluida, contraste, compositor de una línea y botón "volver abajo" | Autorizado — **implementado el 2026-09-25** (sesión G3); verificado en el navegador (sin peticiones de fuentes externas); **pendiente de probar en el teléfono** | Literata (OFL) en `www/fonts/` (~239 KB); `ui/contrast.js` + tabla de contraste con test; tokens `--color-em`/`--color-on-user`. Ver "UI-008" (en `HISTORIAL.md`). |
+| UI-009 | Dos skins nuevos: "Penumbra" y "Penumbra Claude" | Autorizado — **implementado el 2026-09-25** (sesión G4); verificados en el navegador (claro y oscuro, sin `backdrop-filter`); **pendiente de opinión del usuario en el teléfono** | Solo tokens en `themes.css` (+ `--bubble-edge`); contraste ≥4,5:1 en todos los roles, desde el diseño. Tokens en `DESIGN.md`. Ver "UI-009" (en `HISTORIAL.md`). |
 | BKP-001 | Importación de copias segura: confirmar, no pisar datos nuevos, todo o nada | **Autorizado; sin implementar** (sesión posterior a MEM-001 v2, solo cuando el usuario lo pida) | Punto de partida: hallazgos 2 y 10 de VER-001. |
 | MEM-001 (v1) | (Anulado) versión anterior de MEM-001 | **ANULADO**, reemplazado por MEM-001 v2 | Asumía que el servidor podía devolver una lista larga con saltos de línea. |
 | (previos) | `CONTRACT-LOREBOOK.md` (implementado, parcialmente superado), `CONTRACT-CHARACTER-CREATOR.md` (propuesta, no autorizada), `CONTRACT-HANDOFF.md` (briefing) | — | Ver los avisos al inicio de cada uno. |

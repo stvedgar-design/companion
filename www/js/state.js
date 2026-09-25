@@ -86,7 +86,7 @@
  * @property {number} ctx
  * @property {string} pinSalt   // '' si el bloqueo con PIN está desactivado
  * @property {string} pinHash   // '' si el bloqueo con PIN está desactivado (SHA-256 salteado, ver lock.js)
- * @property {'nomi'|'glass'|'imessage'} theme // skin visual, ver www/css/themes.css
+ * @property {'nomi'|'glass'|'imessage'|'penumbra'|'penumbra-claude'} theme // skin visual, ver www/css/themes.css
  * @property {'dark'|'light'} themeMode        // claro/oscuro, aplica a cualquier skin
  * @property {'full'|'bars'|'off'} glassEffect // UI-007: efecto de vidrio del skin Glass (blur completo / solo barra superior y compositor / ninguno); 'full' por defecto = como siempre. Otros skins lo ignoran
  * @property {boolean} lorebookAuto // MEM-002: extracción automática de memoria cada ~20 mensajes; false por defecto (cada extracción encarece la SIGUIENTE respuesta ~20 s)
@@ -154,7 +154,7 @@ function sanitizeSettings(raw) {
     ctx: Math.round(clampNumber(merged.ctx, 512, 200000, DEFAULT_SETTINGS.ctx)),
     pinSalt: typeof merged.pinSalt === 'string' ? merged.pinSalt : DEFAULT_SETTINGS.pinSalt,
     pinHash: typeof merged.pinHash === 'string' ? merged.pinHash : DEFAULT_SETTINGS.pinHash,
-    theme: ['nomi', 'glass', 'imessage'].includes(merged.theme) ? merged.theme : DEFAULT_SETTINGS.theme,
+    theme: ['nomi', 'glass', 'imessage', 'penumbra', 'penumbra-claude'].includes(merged.theme) ? merged.theme : DEFAULT_SETTINGS.theme,
     themeMode: merged.themeMode === 'light' ? 'light' : DEFAULT_SETTINGS.themeMode,
     glassEffect: ['full', 'bars', 'off'].includes(merged.glassEffect) ? merged.glassEffect : DEFAULT_SETTINGS.glassEffect,
     lorebookAuto: merged.lorebookAuto === true,

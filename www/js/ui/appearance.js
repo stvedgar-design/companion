@@ -1,5 +1,5 @@
 // www/js/ui/appearance.js
-// Hoja de apariencia: elegir el skin visual (Nomi/Glass/iMessage) y claro u
+// Hoja de apariencia: elegir el skin visual (Nomi/Glass/iMessage/Penumbra/Penumbra Claude) y claro u
 // oscuro. Global, aplica a toda la app. El fondo de chat es otra cosa —
 // es por personaje, se edita desde el menú ⋮ del chat (ver ui/chat-background.js).
 
@@ -10,6 +10,8 @@ const SKINS = [
   { value: 'nomi', label: 'Nomi' },
   { value: 'glass', label: 'Glass' },
   { value: 'imessage', label: 'iMessage' },
+  { value: 'penumbra', label: 'Penumbra' },
+  { value: 'penumbra-claude', label: 'Penumbra Claude' },
 ];
 
 export function openAppearance(app) {
@@ -28,7 +30,7 @@ export function openAppearance(app) {
 
     <div class="field">
       <div class="field__label">Skin</div>
-      <div class="appearance-skins">
+      <div class="appearance-skins appearance-skins--grid">
         ${SKINS.map((s) => `
           <button class="appearance-skin" type="button" data-value="${s.value}">
             <span class="appearance-skin__swatch appearance-skin__swatch--${s.value}" aria-hidden="true"></span>

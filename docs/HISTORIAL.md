@@ -2203,3 +2203,25 @@ El contrato manda parar y reportar si el resumen tiende a inventar información 
 - **Compositor:** `textarea.inp` (base.css) fijaba `min-height: 90px` y ganaba por especificidad; ahora `textarea.chat-composer__input { min-height: 48px }`. Medido: vacío 49 px, una línea 49, tres líneas 96, doce líneas 140 (el máximo de siempre).
 - **Botón "volver abajo":** de centrado a la esquina inferior derecha (`right: var(--space-3)`), `opacity: .72` (1 al pulsarlo); mismo tamaño táctil de 44 px. Medido a 375 px: x=319–363, y=691–735.
 - Tests nuevos (6, `contrast.test.mjs`): valores conocidos de WCAG, `parseColor`, composición de translúcidos, tabla de los 6 skins/modos con sus umbrales y las dos reglas de CSS.
+
+## UI-009: dos skins nuevos, "Penumbra" y "Penumbra Claude" (2026-09-25)
+
+**Estado:** implementado; verificado en el navegador integrado (375×812, claro y oscuro de los dos). **El usuario dará su opinión en el teléfono** (sin maqueta previa, como pidió); se ajusta en una siguiente iteración.
+- **Estructura:** solo tokens en `themes.css` (4 bloques nuevos: `penumbra` y `penumbra-claude`, claro y oscuro), como Nomi/Glass/iMessage; misma tipografía (Literata incluida en UI-008), formas y radios (vienen de `tokens.css`), sin `backdrop-filter`
+  (`--surface-backdrop`/`--bars-backdrop` = `none`; comprobado: 0 elementos con `backdrop-filter` en los 4). Burbujas OPACAS con degradado sutil (`--color-surface-2` y `--grad-user` como degradados, solo usados en `background`; el `--color-surface` sigue plano porque un componente lo usa como `background-color`).
+- **Penumbra:** ciruela/violeta muy oscuro (`#140d1c`) con acento violeta y acento cálido ámbar (`--color-em` `#e6ad82`) para las *acciones* del personaje; claro: hueso `#f4efe8` y lavanda, con las acciones en un marrón cálido (`#8e4626`).
+  **Penumbra Claude:** carbón cálido (`#1f1c19`) / crema (`#f5f0e8`) y terracota (`#b3512f`); inspirada SOLO en los colores de la interfaz de Claude, sin logotipo ni ningún elemento de marca. Tabla completa de tokens en `docs/DESIGN.md`.
+- **Excepciones a "solo tokens" (documentadas, mínimas):** (1) `.chat-bubble { box-shadow: var(--bubble-edge, none) }` en `chat.css`: el "borde fino de luz" no se puede lograr solo con los tokens existentes; el token nuevo es `none` en los otros skins (comprobado: sin cambio en Nomi/Glass/iMessage);
+  (2) `home.css`: muestras del selector (`.appearance-skin__swatch--penumbra[-claude]`, claro y oscuro) y la rejilla `.appearance-skins--grid` (3 columnas) porque 5 skins ya no caben en una fila; (3) **`state.js` y `shell.js` tenían la lista fija de 3 skins** (`sanitizeSettings` habría devuelto los nuevos a "nomi"): ahora aceptan los 5 (`state.js` no estaba en el alcance del contrato, pero era imprescindible).
+- **Contraste desde el diseño** (mismo `contrastRatio` de UI-008; peor tramo del degradado; `contrast.test.mjs` ahora cubre 10 skins/modos con umbral 4,5 en los nuevos):
+
+| skin/modo | texto/personaje | cursiva/personaje | texto/usuario | cursiva/usuario | blanco/acento | secundario/fondo |
+|---|---|---|---|---|---|---|
+| Penumbra oscuro | 13,12 | 7,84 | 5,69 | 5,38 | 5,28 | 7,35 |
+| Penumbra claro | 11,14 | 5,01 | 4,92 | 4,67 | 6,21 | 5,88 |
+| Penumbra Claude oscuro | 10,78 | 5,81 | 5,04 | 4,91 | 5,08 | 7,11 |
+| Penumbra Claude claro | 11,04 | 4,79 | 5,04 | 4,91 | 5,68 | 5,77 |
+
+  Todos ≥ 4,5:1, sin excepciones. Los valores de partida no pasaban (p. ej. cursiva del usuario en Claude 4,45): se ajustaron el degradado del usuario y el alfa antes de dar la paleta por buena.
+- **Selector** (Apariencia): "Penumbra" y "Penumbra Claude" junto a los demás; el ajuste de vidrio (UI-007) sigue oculto salvo con Glass. Verificado: elegir "Penumbra Claude" guarda `theme` y aplica `data-theme`; los tres skins antiguos mantienen `box-shadow: none` en las burbujas.
+- Tests: 2 nuevos (skins hermanos y sin blur) + el de guardado de skins ahora cubre los 5; 353 en total.

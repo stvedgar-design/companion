@@ -113,6 +113,7 @@
   overflow-wrap: anywhere;
   backdrop-filter: var(--surface-backdrop, none);
   -webkit-backdrop-filter: var(--surface-backdrop, none);
+  box-shadow: var(--bubble-edge, none); /* UI-009: borde fino de luz de Penumbra; `none` en los demás skins */
 }
 .chat-row--char .chat-bubble {
   background: var(--color-surface-2);

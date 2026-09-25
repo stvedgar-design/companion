@@ -55,7 +55,7 @@ export function showView(name) {
   }
 }
 
-const THEMES = ['nomi', 'glass', 'imessage'];
+const THEMES = ['nomi', 'glass', 'imessage', 'penumbra', 'penumbra-claude'];
 
 // Skin visual activo (ver www/css/themes.css). Puro atributo en <html>:
 // todo lo demás es CSS, así que cambiar de skin se refleja al instante en

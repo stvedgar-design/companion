@@ -5,8 +5,8 @@ discreto. Superficies sobrias, bordes muy redondeados, mucho aire. Cuerpo del
 chat a 17px; campos de formulario a 16px mínimo (evita el zoom de Android).
 Todo cabe en 360px sin scroll horizontal.
 
-**Skins**: desde 2026-09-23 la app tiene tres skins (Nomi, Glass, iMessage),
-cada uno en versión clara y oscura — ver "Rearquitectura del sistema de
+**Skins**: desde 2026-09-25 la app tiene cinco skins (Nomi, Glass, iMessage, Penumbra y
+Penumbra Claude), cada uno en versión clara y oscura — ver "Rearquitectura del sistema de
 skins" en `docs/HISTORIAL.md` para el detalle completo. Lo que sigue describe
 los tokens tal cual están definidos para **Nomi Dark** (el skin y modo por
 defecto, y el único que existía cuando se escribió este documento) — los
@@ -82,3 +82,25 @@ posibles (eso está en `themes.css` mismo, es la fuente de verdad).
 `Settings.glassEffect` (`full` por defecto | `bars` | `off`) se aplica como `data-glass` en `<html>` (`shell.applyGlassEffect`). Solo actúa con el skin Glass (`[data-theme="glass"][data-glass=…]` en `themes.css`);
 Nomi e iMessage no tienen ningún `backdrop-filter` (antes `blur(0px)`, ahora `none`). `bars`: blur solo en `.topbar` y `.chat-composer`. `off`: ninguno. Con `bars`/`off` la opacidad de las superficies de Glass sube
 (oscuro: superficie .46→.62, superficie-2 .6→.78, hoja .94; claro: .5→.66, .68→.84, hoja .95) para que el texto se lea sin el desenfoque. El selector vive en Ajustes → Apariencia y solo se muestra con Glass activo.
+
+## Penumbra y Penumbra Claude (UI-009)
+
+Dos skins hermanos: misma estructura, formas, radios y tipografía (Literata incluida); solo cambia la paleta. Se definen únicamente con los tokens de `themes.css`, sin `backdrop-filter`
+(burbujas opacas) y con un token nuevo `--bubble-edge` (borde fino de luz de las burbujas, aplicado como `box-shadow` en `.chat-bubble`; `none` en los demás skins). `--color-surface-2` y `--grad-user`
+son degradados sutiles (solo se usan en `background`). Nombres en el selector: "Penumbra" y "Penumbra Claude" (`data-theme="penumbra"` / `"penumbra-claude"`).
+
+| Token | Penumbra oscuro | Penumbra claro | Claude oscuro | Claude claro |
+|---|---|---|---|---|
+| `--color-bg` | `#140d1c` | `#f4efe8` | `#1f1c19` | `#f5f0e8` |
+| `--color-surface` | `#1e1429` | `#fbf8f3` | `#292521` | `#fbf7f0` |
+| `--color-surface-2` (degradado 160°) | `#2c1e3d → #251a34` | `#e9e1f4 → #e2d8f0` | `#38322c → #302b26` | `#ece3d3 → #e6dccb` |
+| `--color-line` | `#3a2a4d` | `#d9cfe6` | `#4a423a` | `#d9ccb8` |
+| `--color-text` | `#f1eaf6` | `#2a2233` | `#f3ece2` | `#2b2620` |
+| `--color-muted` | `#a99bbd` | `#61567a` | `#b3a695` | `#665c4e` |
+| `--color-accent` / `-2` | `#9146cf` / `#b47ae6` | `#7d3fc4` / `#9a63dc` | `#b3512f` / `#e08a66` | `#a94a29` / `#c8694a` |
+| `--color-em` (acciones del personaje) | `#e6ad82` | `#8e4626` | `#e5a07c` | `#9a4424` |
+| `--grad-user` (135°) | `#6b2fa3 → #8747c0` | `#7a3cc0 → #8e52d0` | `#a3462a → #b3522f` | `#a3462a → #b3522f` |
+| `--color-on-user` / `--color-muted-on-accent` | `#fff` / `.96` | `#fff` / `.96` | `#fff` / `.98` | `#fff` / `.98` |
+| `--bubble-edge` | `inset 0 0 0 1px rgba(255,238,255,.09)` | `inset 0 0 0 1px rgba(255,255,255,.7), 0 1px 2px rgba(60,40,90,.1)` | `inset 0 0 0 1px rgba(255,236,220,.09)` | `inset 0 0 0 1px rgba(255,255,255,.75), 0 1px 2px rgba(80,50,30,.1)` |
+
+Contraste logrado (WCAG, peor tramo del degradado; el test `contrast.test.mjs` los vigila): texto/personaje 10,8–13,1; cursiva/personaje 4,8–7,8; texto/usuario 4,9–5,7; cursiva/usuario 4,7–5,4; blanco sobre el acento (botón enviar) 5,1–6,2; texto secundario sobre el fondo 5,9–7,4.

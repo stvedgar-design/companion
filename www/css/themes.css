@@ -216,3 +216,112 @@
   --surface-backdrop: none;
   --bars-backdrop: none;
 }
+
+/* ---------- Penumbra y Penumbra Claude (UI-009) ---------- */
+/* Dos skins hermanos: MISMA estructura, formas y tipografía (Literata incluida en la app); solo cambia la paleta.
+   Definidos únicamente con los tokens existentes (+ --bubble-edge, el borde fino de luz de las burbujas, que
+   chat.css aplica como box-shadow y que el resto de skins deja en `none`). Sin backdrop-filter: burbujas OPACAS con un
+   degradado sutil (--color-surface-2 y --grad-user aceptan degradados: solo se usan en `background`). "Penumbra":
+   ciruela/violeta muy oscuro (claro: hueso y lavanda) con acento cálido para las *acciones* del personaje. "Penumbra
+   Claude": terracota, crema y carbón cálido, inspirada solo en la paleta de color de la interfaz de Claude (sin logotipo
+   ni elementos de marca). Contraste calculado desde el diseño: ver tests/contrast.test.mjs y docs/HISTORIAL.md. */
+
+[data-theme="penumbra"][data-mode="dark"] {
+  --color-bg: #140d1c;
+  --color-surface: #1e1429;
+  --color-surface-2: linear-gradient(160deg, #2c1e3d, #251a34);
+  --color-line: #3a2a4d;
+  --color-text: #f1eaf6;
+  --color-muted: #a99bbd;
+  --color-accent: #9146cf;
+  --color-accent-2: #b47ae6;
+  --color-accent-soft: rgba(145, 70, 207, 0.18);
+  --color-danger: #f0647c;
+  --color-ok: #7ee0b0;
+  --color-overlay: rgba(8, 4, 14, 0.65);
+  --color-muted-on-accent: rgba(255, 255, 255, 0.96);
+  --color-on-user: #ffffff;
+  --color-em: #e6ad82;
+  --grad-user: linear-gradient(135deg, #6b2fa3, #8747c0);
+  --grad-avatar: linear-gradient(135deg, #4a2470, #a04fc0);
+  --font: 'Literata', Georgia, 'Times New Roman', serif;
+  --surface-backdrop: none;
+  --bars-backdrop: none;
+  --bubble-edge: inset 0 0 0 1px rgba(255, 238, 255, 0.09);
+  --app-bg: radial-gradient(circle at 50% -15%, rgba(150, 80, 200, 0.2), transparent 60%), #140d1c;
+}
+
+[data-theme="penumbra"][data-mode="light"] {
+  --color-bg: #f4efe8;
+  --color-surface: #fbf8f3;
+  --color-surface-2: linear-gradient(160deg, #e9e1f4, #e2d8f0);
+  --color-line: #d9cfe6;
+  --color-text: #2a2233;
+  --color-muted: #61567a;
+  --color-accent: #7d3fc4;
+  --color-accent-2: #9a63dc;
+  --color-accent-soft: rgba(125, 63, 196, 0.12);
+  --color-danger: #c9304f;
+  --color-ok: #1f9d63;
+  --color-overlay: rgba(30, 15, 45, 0.32);
+  --color-muted-on-accent: rgba(255, 255, 255, 0.96);
+  --color-on-user: #ffffff;
+  --color-em: #8e4626;
+  --grad-user: linear-gradient(135deg, #7a3cc0, #8e52d0);
+  --grad-avatar: linear-gradient(135deg, #b490dc, #d9b7e6);
+  --font: 'Literata', Georgia, 'Times New Roman', serif;
+  --surface-backdrop: none;
+  --bars-backdrop: none;
+  --bubble-edge: inset 0 0 0 1px rgba(255, 255, 255, 0.7), 0 1px 2px rgba(60, 40, 90, 0.1);
+  --app-bg: radial-gradient(circle at 50% -15%, rgba(190, 160, 230, 0.35), transparent 60%), #f4efe8;
+}
+
+[data-theme="penumbra-claude"][data-mode="dark"] {
+  --color-bg: #1f1c19;
+  --color-surface: #292521;
+  --color-surface-2: linear-gradient(160deg, #38322c, #302b26);
+  --color-line: #4a423a;
+  --color-text: #f3ece2;
+  --color-muted: #b3a695;
+  --color-accent: #b3512f;
+  --color-accent-2: #e08a66;
+  --color-accent-soft: rgba(179, 81, 47, 0.2);
+  --color-danger: #f0647c;
+  --color-ok: #7ee0b0;
+  --color-overlay: rgba(12, 9, 6, 0.65);
+  --color-muted-on-accent: rgba(255, 255, 255, 0.98);
+  --color-on-user: #ffffff;
+  --color-em: #e5a07c;
+  --grad-user: linear-gradient(135deg, #a3462a, #b3522f);
+  --grad-avatar: linear-gradient(135deg, #7a3520, #c9714f);
+  --font: 'Literata', Georgia, 'Times New Roman', serif;
+  --surface-backdrop: none;
+  --bars-backdrop: none;
+  --bubble-edge: inset 0 0 0 1px rgba(255, 236, 220, 0.09);
+  --app-bg: radial-gradient(circle at 50% -15%, rgba(200, 110, 70, 0.16), transparent 60%), #1f1c19;
+}
+
+[data-theme="penumbra-claude"][data-mode="light"] {
+  --color-bg: #f5f0e8;
+  --color-surface: #fbf7f0;
+  --color-surface-2: linear-gradient(160deg, #ece3d3, #e6dccb);
+  --color-line: #d9ccb8;
+  --color-text: #2b2620;
+  --color-muted: #665c4e;
+  --color-accent: #a94a29;
+  --color-accent-2: #c8694a;
+  --color-accent-soft: rgba(169, 74, 41, 0.12);
+  --color-danger: #c9304f;
+  --color-ok: #1f9d63;
+  --color-overlay: rgba(40, 25, 12, 0.32);
+  --color-muted-on-accent: rgba(255, 255, 255, 0.98);
+  --color-on-user: #ffffff;
+  --color-em: #9a4424;
+  --grad-user: linear-gradient(135deg, #a3462a, #b3522f);
+  --grad-avatar: linear-gradient(135deg, #d9a58a, #e6c3ab);
+  --font: 'Literata', Georgia, 'Times New Roman', serif;
+  --surface-backdrop: none;
+  --bars-backdrop: none;
+  --bubble-edge: inset 0 0 0 1px rgba(255, 255, 255, 0.75), 0 1px 2px rgba(80, 50, 30, 0.1);
+  --app-bg: radial-gradient(circle at 50% -15%, rgba(225, 160, 120, 0.3), transparent 60%), #f5f0e8;
+}

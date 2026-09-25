@@ -51,12 +51,14 @@ const colorStops = (v) => [...v.matchAll(/(#[0-9a-f]{3,6}|rgba?\([^)]*\))/gi)].m
 
 function roles(t) {
   const bg = parseColor(t['--color-bg']);
-  const charBg = composite(parseColor(resolveVars(t['--color-surface-2'], t)), bg);
+  // --color-surface-2 puede ser un degradado (Penumbra): se mide contra el PEOR de sus tramos
+  const charStops = colorStops(resolveVars(t['--color-surface-2'], t)).map((c) => composite(parseColor(c), bg));
+  const worstOnChar = (fg) => Math.min(...charStops.map((b) => contrastRatio(fg, b)));
   const userStops = colorStops(resolveVars(t['--grad-user'], t)).map((c) => composite(parseColor(c), bg));
   const worstOnUser = (fg) => Math.min(...userStops.map((b) => contrastRatio(fg, b)));
   return {
-    charText: contrastRatio(t['--color-text'], charBg),
-    charEm: contrastRatio(t['--color-em'] || t['--color-muted'], charBg),
+    charText: worstOnChar(t['--color-text']),
+    charEm: worstOnChar(t['--color-em'] || t['--color-muted']),
     userText: worstOnUser(parseColor(t['--color-on-user'] || t['--color-text'])),
     userEm: worstOnUser(parseColor(t['--color-muted-on-accent'])),
   };
@@ -72,9 +74,14 @@ const FLOORS = {
   'glass/light':    { charText: 7, charEm: AA, userText: 3.8, userEm: 3.6 }, // burbuja violeta clara: blanco da 3.88 como máximo
   'imessage/dark':  { charText: 7, charEm: AA, userText: 3.6, userEm: 3.4 }, // azul de iOS con texto blanco: 3.65 como máximo
   'imessage/light': { charText: 7, charEm: AA, userText: AA,  userEm: AA },
+  // UI-009: los skins nuevos nacen con 4,5:1 en todos los roles (el contraste es parte del diseño de la paleta).
+  'penumbra/dark':         { charText: 7, charEm: AA, userText: AA, userEm: AA },
+  'penumbra/light':        { charText: 7, charEm: AA, userText: AA, userEm: AA },
+  'penumbra-claude/dark':  { charText: 7, charEm: AA, userText: AA, userEm: AA },
+  'penumbra-claude/light': { charText: 7, charEm: AA, userText: AA, userEm: AA },
 };
 
-test('UI-008: contraste de texto y cursiva sobre cada burbuja, en los 6 skins/modos', () => {
+test('UI-008/UI-009: contraste de texto y cursiva sobre cada burbuja, en los 10 skins/modos', () => {
   const skins = loadSkins();
   assert.deepEqual(Object.keys(skins).sort(), Object.keys(FLOORS).sort());
   for (const [key, t] of Object.entries(skins)) {
@@ -96,4 +103,35 @@ test('UI-008: ninguna regla fuerza un valor fijo para la cursiva del usuario: re
 
 test('UI-008: la burbuja del usuario usa el token de texto de cada skin', () => {
   assert.match(css('chat.css'), /\.chat-row--user \.chat-bubble\s*\{[^}]*color:\s*var\(--color-on-user, var\(--color-text\)\)/);
+});
+
+// ---- UI-009: Penumbra y Penumbra Claude ----
+
+test('UI-009: los skins nuevos usan solo tokens (sin backdrop-filter en ningún componente) y ambos modos existen', () => {
+  const skins = loadSkins();
+  for (const name of ['penumbra', 'penumbra-claude']) {
+    for (const mode of ['dark', 'light']) {
+      const t = skins[`${name}/${mode}`];
+      assert.ok(t, `${name}/${mode}`);
+      assert.equal(t['--surface-backdrop'], 'none');
+      assert.equal(t['--bars-backdrop'], 'none');
+      assert.ok(!/blur\(/.test(Object.values(t).join(' ')), 'sin blur en ningún token');
+    }
+  }
+  // themes.css no declara `backdrop-filter` como propiedad (solo tokens): los componentes lo leen de las variables
+  assert.ok(!/^\s*(-webkit-)?backdrop-filter\s*:/m.test(css('themes.css')));
+});
+
+test('UI-009: Penumbra y Penumbra Claude son hermanos: misma tipografía y mismas propiedades; solo cambia la paleta', () => {
+  const skins = loadSkins();
+  for (const mode of ['dark', 'light']) {
+    const a = skins[`penumbra/${mode}`];
+    const b = skins[`penumbra-claude/${mode}`];
+    assert.deepEqual(Object.keys(a).sort(), Object.keys(b).sort());
+    assert.equal(a['--font'], b['--font']);
+    assert.equal(a['--surface-backdrop'], b['--surface-backdrop']);
+    assert.match(a['--font'], /Literata/); // la fuente incluida en la app (UI-008)
+    assert.notEqual(a['--color-bg'], b['--color-bg']);
+    assert.notEqual(a['--grad-user'], b['--grad-user']);
+  }
 });

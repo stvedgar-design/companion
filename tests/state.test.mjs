@@ -75,9 +75,9 @@ test('saveSettings valida apariencia: skin y modo', async () => {
   assert.deepEqual(reloaded, saved);
 });
 
-test('saveSettings acepta los tres skins válidos', async () => {
+test('saveSettings acepta los cinco skins válidos (UI-009 añadió penumbra y penumbra-claude)', async () => {
   const state = createState(createMemoryBackend());
-  for (const theme of ['nomi', 'glass', 'imessage']) {
+  for (const theme of ['nomi', 'glass', 'imessage', 'penumbra', 'penumbra-claude']) {
     const saved = await state.saveSettings({ theme });
     assert.equal(saved.theme, theme);
   }
