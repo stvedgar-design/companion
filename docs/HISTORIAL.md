@@ -2106,9 +2106,12 @@ Scripts de medición desechables (fuera del repo); datos sintéticos, sin conten
   el arranque en `*` debe depender del personaje (p. ej. por su `mes_example`) antes de que el usuario chatee con Ani con el interruptor encendido.
 - **Riesgo conocido de la regla 2 (según contrato):** un mensaje sin asteriscos que cite algo entre comillas (`I love the "Mona Lisa" painting`) mostrará el resto en cursiva.
 
-## MEM-006: "Estado de la relación": DETENIDO por su condición de parada (2026-09-25)
+## MEM-006: "Estado de la relación" (2026-09-25)
 
-**Estado:** NO implementado en `main`. El contrato manda parar y reportar si el resumen tiende a inventar información que no está en el lorebook. **Hecho (medido)**: ocurre.
+**Estado final: implementado en su versión LOCAL, sin modelo (ver "Decisión final" al final de esta sección).** Primero se probó la versión con el modelo y se detuvo por la condición de parada del contrato; esa parte queda como historia.
+
+### Intento con el modelo (DESCARTADO)
+El contrato manda parar y reportar si el resumen tiende a inventar información que no está en el lorebook. **Hecho (medido)**: ocurre.
 - **Qué se probó:** contra el KoboldCpp real (Mahou-1.5-mistral-nemo-12B, contexto 6144, 160 tokens), con recuerdos SINTÉTICOS de "Sam" y "Mia" (3, 2 y 7 entradas). Prompt: "escribe 2-4 frases en tercera persona usando SOLO las notas, sin
   inventar nada", con la frase inicial "Mia and Sam" ya escrita (prefill, para evitar la respuesta vacía por `\n`). Latencia 2,5-6,8 s por llamada. 8 corridas con el prompt A y 12 con dos prompts más estrictos (V2, V3).
 - **Ejemplos (notas → resumen):**
@@ -2119,9 +2122,19 @@ Scripts de medición desechables (fuera del repo); datos sintéticos, sin conten
 - **Prompts más estrictos (V2/V3: "cada frase debe repetir algo de las notas", prohibir palabras como "bond/trust", 1-2 frases) reducen las invenciones pero NO las eliminan**: siguen
   apareciendo cambios de quién hizo qué y detalles nuevos. El servidor impone su propio muestreo (`--gendefaultsoverwrite`), así que la temperatura baja de la petición no ayuda.
 - **Por qué importa:** es un texto sobre "cómo va la relación" que el usuario leería como cierto; un dato falso (o un papel invertido) en un tema emocional es peor que no tener resumen.
-- **Trabajo parcial conservado (NO en `main`):** rama local `mem-006-en-espera` (1 commit, sin subir): `www/js/api/relationship.js` (prompt, limpieza, "hace 2 días",
-  `createRelationshipUpdater` con cancelación) y `state.js` (`Character.relationshipStatus` saneado a `null`, `saveCharacterRelationship`). Falta: botón y vista en la hoja "Ver lorebook",
-  cancelación al enviar un mensaje, tests y verificación en el navegador.
+- El código de ese intento (rama local `mem-006-en-espera`: prompt, limpieza, `Character.relationshipStatus`, actualizador con cancelación) NO se usó y la rama se eliminó al adoptar la decisión final.
 - **Opciones para el arquitecto (sin implementar):** (a) NO usar el modelo: mostrar un "resumen" armado solo con las propias entradas (p. ej. las 3-5 más recientes/importantes, tal cual), sin riesgo de invención;
   (b) seguir con el modelo pero enseñando SIEMPRE junto al resumen las entradas de origen y el aviso "puede contener errores", o pedir que el usuario lo revise/edite antes de guardarlo;
   (c) aceptar el riesgo con un aviso visible; (d) posponerlo hasta contar con un modelo más fiable. Recomendación: (a) o (b).
+
+### Decisión final (del usuario, 2026-09-25): opción (a), armado LOCAL sin modelo
+**Estado:** implementado; verificado en el navegador integrado (375×812). **NO probado en el teléfono.** Cero llamadas al servidor, cero latencia, nada inventado.
+- `www/js/api/relationship.js` (puro, sin imports ni red): `relationshipSummary(entries)` → `{ total, always[], lastUpdated, level, phrase }` y `relationshipAgeText` ("hace 2 días").
+  Frase fija por cantidad de recuerdos (umbrales elegidos por Claude Code, ajustables en 2 constantes): 0 → "Todavía no hay recuerdos guardados." (no afirma nada de la relación);
+  1-4 → "Todavía se están conociendo."; 5-11 → "Ya han compartido bastante."; 12 o más → "Tienen una relación con mucha historia acumulada." (el lorebook admite hasta 24).
+- `ui/chat.js`: `buildRelationshipBlock` pinta, arriba de la hoja "Ver lorebook" (justo bajo el estado de la última actualización), el bloque "Estado de la relación": la frase, "N recuerdos en total · M siempre presentes",
+  los "siempre presentes" con su texto exacto, "Última actualización de la memoria: hace X" (la fecha más reciente entre los recuerdos) y la nota "Se arma solo con tus recuerdos guardados (los de abajo); no usa el servidor".
+  Los recuerdos de origen siguen debajo en las listas "Siempre presentes" y "Por tema". Se calcula cada vez que se abre la hoja; NO se guarda nada.
+- **Diferencias con el contrato original (por la nueva decisión):** no hay botón "Actualizar estado de la relación", ni cancelación al enviar un mensaje, ni campo `Character.relationshipStatus` (no hay nada que persistir, así que no hay cambio de esquema ni riesgo para copias antiguas).
+- Tests (8 nuevos, `tests/relationship.test.mjs`): vacío/datos malos, umbrales en sus límites, las tres frases, total y "siempre presentes" con texto exacto, última fecha, pureza (no altera lo recibido) y que el módulo no usa red, texto de "hace X".
+- Navegador: con 7 recuerdos ("Ya han compartido bastante." / 7 en total · 1 siempre presente / hace 2 días), con 0 (solo "Todavía no hay recuerdos guardados.") y con 13 ("mucha historia acumulada", 2 siempre presentes, "hace 1 hora").

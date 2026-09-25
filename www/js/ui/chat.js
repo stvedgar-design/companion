@@ -17,6 +17,7 @@ import {
   LOREBOOK_MAX_ENTRY_CHARS,
   LOREBOOK_ALWAYS_CHAR_BUDGET,
 } from '../api/lorebook.js';
+import { relationshipSummary, relationshipAgeText } from '../api/relationship.js';
 import { openSettings } from './settings.js';
 import { openAppearance } from './appearance.js';
 import { openChatBackground } from './chat-background.js';
@@ -772,6 +773,32 @@ async function freshLorebook() {
   return (fresh && fresh.lorebook) || [];
 }
 
+// MEM-006: "Estado de la relación", armado en el momento con lo que ya está en el lorebook (sin servidor, sin
+// modelo y sin guardar nada): frase fija por cantidad de recuerdos, "siempre presentes" tal cual y última actualización.
+function buildRelationshipBlock(entries) {
+  const sum = relationshipSummary(entries);
+  const box = loreEl('div', 'field');
+  box.dataset.role = 'relationship';
+  box.appendChild(loreEl('h4', 'sheet__title', 'Estado de la relación'));
+  const phrase = loreEl('div', '', sum.phrase);
+  phrase.style.fontWeight = '600';
+  box.appendChild(phrase);
+  if (sum.total) {
+    box.appendChild(
+      loreEl('div', 'field__hint', `${sum.total} recuerdo${sum.total === 1 ? '' : 's'} en total · ${sum.always.length} siempre presente${sum.always.length === 1 ? '' : 's'}.`)
+    );
+    if (sum.always.length) {
+      box.appendChild(loreEl('div', 'field__label', 'Siempre presentes'));
+      sum.always.forEach((a) => box.appendChild(loreEl('div', '', '• ' + a.content)));
+    }
+    const age = relationshipAgeText(sum.lastUpdated);
+    if (age) box.appendChild(loreEl('div', 'field__hint', `Última actualización de la memoria: ${age}.`));
+  }
+  box.appendChild(loreEl('div', 'field__hint', 'Se arma solo con tus recuerdos guardados (los de abajo); no usa el servidor.'));
+  box.style.marginBottom = 'var(--space-3, 12px)';
+  return box;
+}
+
 // UI-010: detalle de los recuerdos que usó un mensaje. Muestra la COPIA guardada en el mensaje, y avisa si
 // el recuerdo se editó o se borró después en el lorebook actual del personaje.
 function openLoreUsedSheet(message) {
@@ -804,6 +831,7 @@ function openLorebookSheet(note = '') {
   status.appendChild(loreEl('div', 'field__hint', loreStatusText()));
   if (note) status.appendChild(loreEl('div', 'field__label', note));
   wrap.appendChild(status);
+  wrap.appendChild(buildRelationshipBlock(character.lorebook || []));
 
   const inFlight = loreUpdater.isRunning() || busy || sendInFlight;
   const progress = loreEl(
