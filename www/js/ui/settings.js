@@ -51,9 +51,9 @@ export function openSettings(app) {
     <div class="field">
       <label class="field__label" style="display:flex;align-items:center;gap:var(--space-2, 8px)">
         <input type="checkbox" id="settings-format" style="accent-color:var(--color-accent, #8b1fe0)">
-        <span>Ayuda de formato de Mia</span>
+        <span>Corregir formato automáticamente</span>
       </label>
-      <div class="field__hint">Hace que cada respuesta empiece ya dentro de una acción en cursiva, para que la narración no parezca diálogo ni queden asteriscos sueltos. No hace el chat más lento.</div>
+      <div class="field__hint">Cada respuesta empieza ya dentro de una acción en cursiva, y si llega con asteriscos mal puestos pero con el diálogo entre comillas, se muestra bien (diálogo normal, el resto en cursiva). Los mensajes sin asteriscos ni comillas no se tocan. No hace el chat más lento.</div>
     </div>
 
     <div class="field">

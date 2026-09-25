@@ -94,12 +94,9 @@ personajes guiado (solo propuesta, no autorizado). Añadido por DOC-002
   VER-001 hallazgo 3), con personaje y lorebook, restaurable.
 - Guardado de respuesta parcial y manejo de segundo plano
   (`visibilitychange`/`pagehide`; VER-001 hallazgo 7).
-- `.gitignore` y `package-lock.json` (sin excluir `signing/`; VER-001
-  hallazgo 20).
-- Imágenes (avatar, fondo) fuera del registro del personaje (VER-001
-  hallazgo 18).
-- ~~Prueba de la memoria contra el servidor real~~: hecha en MEM-001 v2; en el teléfono, "Actualizar memoria
-  ahora" funcionó (1 nueva); sin probar allí: el disparo automático.
+- `.gitignore` y `package-lock.json` (sin excluir `signing/`; VER-001 hallazgo 20).
+- Imágenes (avatar, fondo) fuera del registro del personaje (VER-001 hallazgo 18).
+- ~~Prueba de la memoria contra el servidor real~~: hecha; en el teléfono la actualización manual funcionó (el disparo automático, sin probar).
 - Latencia de la memoria: cada actualización de memoria hace que la SIGUIENTE
   respuesta del chat tarde ~15–25 s más (invalida la caché de prompt del
   servidor). **Decisión (MEM-002, 2026-09-24):** la actualización automática
@@ -225,6 +222,7 @@ personajes: segunda iteración visual"; auditoría de recuperabilidad →
 | UI-013 | Hub: "Continuar" abre el chat más reciente; el retrato abre la lista de chats | Autorizado — **implementado el 2026-09-25** (sesión Q1); verificado en el navegador integrado; **pendiente de probar en el teléfono** | `nav.js` (`continueTarget`, puro). Sin chats, "Continuar" sigue creando uno (vía `chats.js`). Ver "UI-013" (en `HISTORIAL.md`). |
 | UI-014 | El botón "atrás" de Android navega dentro de la app | Autorizado — **implementado el 2026-09-25** (sesión Q1); probado solo con un Android simulado en el navegador; **pendiente de probar en el teléfono** | Plugin `@capacitor/app` + `backButton` en `main.js`; decisión pura en `nav.js` (`decideBack`). Ver "UI-014" (en `HISTORIAL.md`). |
 | UI-010 | Indicador de memoria usada por mensaje (marcapáginas gris / de acento) | Autorizado — **implementado el 2026-09-25** (sesión Q2); verificado en el navegador (4 skins) y de punta a punta con un servidor simulado; **pendiente de probar en el teléfono** | `Message.loreUsed`; `buildLoreBlocks().used`; hoja de detalle en `chat.js`. Ver "UI-010" (en `HISTORIAL.md`). |
+| UI-012 | Interruptor "Corregir formato automáticamente"; comillas como señal de diálogo en pantalla | Autorizado — **implementado el 2026-09-25** (sesión Q2); verificado en el navegador; **pendiente de probar en el teléfono** | `Settings.formatAssist` conserva su nombre. `formatMessage(text, {role, quoteDialogue})`; reglas R1–R4 en `format.js`. Ver "UI-012" (en `HISTORIAL.md`). |
 | BKP-001 | Importación de copias segura: confirmar, no pisar datos nuevos, todo o nada | **Autorizado; sin implementar** (sesión posterior a MEM-001 v2, solo cuando el usuario lo pida) | Punto de partida: hallazgos 2 y 10 de VER-001. |
 | MEM-001 (v1) | (Anulado) versión anterior de MEM-001 | **ANULADO**, reemplazado por MEM-001 v2 | Asumía que el servidor podía devolver una lista larga con saltos de línea. |
 | (previos) | `CONTRACT-LOREBOOK.md` (implementado, parcialmente superado), `CONTRACT-CHARACTER-CREATOR.md` (propuesta, no autorizada), `CONTRACT-HANDOFF.md` (briefing) | — | Ver los avisos al inicio de cada uno. |

@@ -309,6 +309,11 @@ function renderMessages() {
   scrollToBottom(true);
 }
 
+// UI-012: las comillas como señal de diálogo van con el interruptor "Corregir formato automáticamente".
+function formatOpts(role) {
+  return { role, quoteDialogue: !!settings && settings.formatAssist !== false };
+}
+
 function buildMessageRow(m, i) {
   const isLast = i === messages.length - 1;
   const row = document.createElement('div');
@@ -320,7 +325,7 @@ function buildMessageRow(m, i) {
   if (m.role === 'char' && !m.text && busy && isLast) {
     bubble.appendChild(buildDots());
   } else {
-    bubble.innerHTML = formatMessage(m.text, { role: m.role });
+    bubble.innerHTML = formatMessage(m.text, formatOpts(m.role));
   }
   row.appendChild(bubble);
 
@@ -616,7 +621,7 @@ function updateStreamingBubble() {
   const bubble = lastRow.querySelector('.chat-bubble');
   if (!bubble) return;
   if (msg.text) {
-    bubble.innerHTML = formatMessage(msg.text, { role: msg.role });
+    bubble.innerHTML = formatMessage(msg.text, formatOpts(msg.role));
   } else {
     bubble.replaceChildren(buildDots());
   }

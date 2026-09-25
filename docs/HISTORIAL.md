@@ -2075,3 +2075,33 @@ Scripts de medición desechables (fuera del repo); datos sintéticos, sin conten
 - Tests nuevos (9): `used` sin/con coincidencias y como copia; recorte por presupuesto (tema y siempre presentes); `loreIndicatorState`;
   `compareLoreUsed` (editado, borrado, contenido original conservado); guardado/lectura y saneado en `state`; `importBackup` con y sin campo;
   `generateReply` devuelve `loreUsed` (`[]` / entradas enviadas). Los tests con DOM (icono gris/coloreado) se cubren con la función pura + el navegador.
+
+## UI-012: "Corregir formato automáticamente" y comillas como señal de diálogo (2026-09-25)
+
+**Estado:** implementado; verificado en el navegador integrado (375×812). **NO probado en el teléfono.** Solo visual: no cambia `messages`, lo guardado ni el prompt.
+- **Nombre del interruptor (decisión final):** "Corregir formato automáticamente", con un texto de ayuda que dice lo que hace sin nombrar personajes.
+  El campo interno `Settings.formatAssist` conserva su nombre (sin migración; copias antiguas cargan igual).
+- **Hallazgo (código real vs. contrato):** `formatAssist` controlaba solo el ARRANQUE de la respuesta en `*` (FMT-002, en `kobold.js`); la reparación
+  visual de FMT-003 nunca dependió de él (siempre activa). Comportamiento exacto con el interruptor APAGADO, que se conserva: la reparación de
+  FMT-003 sigue activa igual que antes; lo único que el interruptor apagado desactiva de lo nuevo es la regla 2 (comillas). Con él encendido
+  (por defecto) actúan las 4 reglas. `chat.js` pasa `quoteDialogue: settings.formatAssist !== false` (`formatOpts`); un cambio del
+  interruptor se nota al volver a entrar al chat.
+- **Reglas** (`format.js`, solo mensajes del personaje, decididas mensaje por mensaje, sin depender de qué personaje es):
+
+| # | Condición (en este orden) | Resultado |
+|---|---|---|
+| 1 | asteriscos SIMPLES (rachas de exactamente un `*`; los `**` no cuentan) en número par y > 0 | emparejamiento de FMT-003, sin cambios (aunque haya comillas: quedan literales) |
+| 2 | si no, y hay comillas (`"` `“` `”`; el apóstrofo no cuenta) | tramos entre comillas = diálogo normal (comillas ocultas); el resto = cursiva; todo `*` se oculta |
+| 3 | si no, y hay algún asterisco (impar sin comillas, o solo `**…**`) | reparación best-effort de FMT-003 |
+| 4 | sin asteriscos ni comillas (p. ej. Ani) | texto tal cual, sin cursiva ni transformación |
+
+  Detalles de la regla 2: una comilla sin cerrar (streaming) deja el resto como diálogo; los tramos de solo espacios no se vuelven cursiva; el diálogo
+  se escapa como HTML igual que todo. Con número IMPAR de `*` y comillas gana la 2 (p. ej. `*A. *B.* "C."` → `<em>A. B.</em> C.`), no la reparación de FMT-003.
+- Tests (23 nuevos en `format.test.mjs`): tabla de 18 casos que cubre R1–R4 (incluido "estilo Ani"), interruptor apagado = resultado exacto de FMT-003,
+  usuario sin cambios, mensajes congelados sin cambios, rendimiento (200 mensajes de ~700 caracteres < 400 ms).
+- Navegador: `Sam smiles, then "Hi there. I missed you." and waves softly.*` → cursiva/diálogo/cursiva sin `*` ni comillas visibles; el mensaje con `*…*` bien
+  emparejado y comillas se ve como antes; un mensaje estilo Ani ("hey you! i'm so happy…") idéntico; comillas tipográficas correctas; etiqueta nueva en Ajustes.
+- **Para el arquitecto (fuera de este contrato, NO tocado):** `formatAssist` activo hace que `kobold.js` arranque TODA respuesta con `*`, sea cual
+  sea el personaje (FMT-002 no distingue). A un personaje sin asteriscos (Ani) le empezaría cada respuesta dentro de una acción. Conviene decidir si
+  el arranque en `*` debe depender del personaje (p. ej. por su `mes_example`) antes de que el usuario chatee con Ani con el interruptor encendido.
+- **Riesgo conocido de la regla 2 (según contrato):** un mensaje sin asteriscos que cite algo entre comillas (`I love the "Mona Lisa" painting`) mostrará el resto en cursiva.
