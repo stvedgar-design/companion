@@ -29,6 +29,8 @@ import {
   LORE_GENERIC_KEYWORDS,
   normalizeLoreKeys,
   isUnnamedPronounFact,
+  hasFirstPersonVoice,
+  isGenericWord,
   areNearDuplicates,
   mergeNearDuplicates,
   cleanupLorebook,
@@ -955,4 +957,103 @@ test('MEM-004: loreBudgetPreview da el bloque real y la reserva del bloque por t
   assert.equal(prev.topicReserve, loreEntryCost(entries[1]));
   assert.equal(prev.topicBudget, loreTopicBudget(loreEntryCost(entries[0])));
   assert.equal(formatAlwaysBlock([]), '');
+});
+
+// ---------- MEM-005: fusión de paráfrasis con las mismas keys ----------
+// Causa real (medida): "invite"/"invited" no se reconocían como la misma palabra, así que dos
+// frases del mismo hecho con las MISMAS keys (`coffee, date`) quedaban con solapamiento 1/3 < 0,6.
+
+const NAMES2 = ['Sam', 'Mia'];
+const COFFEE_A = 'Sam did not invite Mia to a coffee date';
+const COFFEE_B = 'Sam has never invited Mia out for coffee';
+
+test('MEM-005: areNearDuplicates reconoce la misma palabra con otra terminación (invite/invited/inviting)', () => {
+  assert.equal(areNearDuplicates(COFFEE_A, COFFEE_B, NAMES2), true);
+  assert.equal(areNearDuplicates('Sam is inviting Mia for coffee', 'Sam invited Mia for coffee', NAMES2), true);
+  // Hechos distintos siguen sin fusionarse.
+  assert.equal(areNearDuplicates('Sam told Mia the dog Bruno fears thunder', 'Sam took Mia to the lake on Sunday', NAMES2), false);
+  assert.equal(areNearDuplicates('Bruno barks loudly', 'Bruno sleeps all day', []), false);
+});
+
+test('MEM-005: dos entradas con las mismas keys y el mismo hecho, en dos extracciones, se fusionan en una', () => {
+  const first = applyExtraction([], [{ keys: ['coffee', 'date'], content: COFFEE_A }], { now: 1, ignoreKeys: NAMES2 });
+  const second = applyExtraction(first.entries, [{ keys: ['coffee', 'date'], content: COFFEE_B }], { now: 2, ignoreKeys: NAMES2 });
+  assert.equal(second.entries.length, 1);
+  assert.deepEqual([second.added, second.updated], [0, 1]);
+  assert.deepEqual(second.entries[0].keys, ['coffee', 'date']);
+  // En la MISMA pasada también.
+  const same = applyExtraction([], [
+    { keys: ['coffee', 'date'], content: COFFEE_A },
+    { keys: ['coffee', 'date'], content: COFFEE_B }
+  ], { now: 1, ignoreKeys: NAMES2 });
+  assert.equal(same.entries.length, 1);
+});
+
+test('MEM-005: "Limpiar recuerdos" fusiona las dos entradas de coffee/date; un hecho distinto con otras keys se conserva', () => {
+  const list = [
+    makeEntry({ id: 'a', keys: ['coffee', 'date'], content: COFFEE_A, updated: 1 }),
+    makeEntry({ id: 'b', keys: ['coffee', 'date'], content: COFFEE_B, updated: 2 }),
+    makeEntry({ id: 'c', keys: ['bruno', 'thunder'], content: 'Sam told Mia that the dog Bruno is afraid of thunder', updated: 3 })
+  ];
+  const out = cleanupLorebook(list, { names: NAMES2, now: 9 });
+  assert.equal(out.merged, 1);
+  assert.deepEqual(out.entries.map((e) => e.id), ['a', 'c']);
+});
+
+test('MEM-005: con las mismas keys (2 o más) basta la mitad de solapamiento; con una sola key, no', () => {
+  const a = 'Sam took Mia to the lake and they swam together';
+  const b = 'Sam and Mia swam together on a cold night';
+  const withKeys = mergeNearDuplicates([
+    makeEntry({ id: 'a', keys: ['lake', 'swim'], content: a, updated: 1 }),
+    makeEntry({ id: 'b', keys: ['lake', 'swim'], content: b, updated: 2 })
+  ], { names: NAMES2, now: 9 });
+  assert.equal(withKeys.merged, 1);
+  const oneKey = mergeNearDuplicates([
+    makeEntry({ id: 'a', keys: ['lake'], content: a, updated: 1 }),
+    makeEntry({ id: 'b', keys: ['lake'], content: b, updated: 2 })
+  ], { names: NAMES2, now: 9 });
+  assert.equal(oneKey.merged, 0);
+});
+
+// ---------- MEM-005: cierre del residual de primera persona ----------
+
+test('MEM-005: hasFirstPersonVoice detecta I/my/we/yo/mi fuera de comillas y no lo confunde con otras palabras', () => {
+  for (const bad of [
+    'Sam told me that his dog fears thunder',
+    'Sam told Mia that my dog is Bruno',
+    "Sam said I'm afraid of heights",
+    'We went to the lake with Sam and Mia',
+    'Sam le contó a Mia que mi perro teme a los truenos',
+    'Yo trabajo en una panadería con Sam'
+  ]) assert.equal(hasFirstPersonVoice(bad), true, bad);
+  for (const good of [
+    'Sam told Mia that the dog Bruno is afraid of thunder',
+    'Sam works in a bakery and Mia loves croissants',
+    'Sam told Mia: "I am afraid of heights"',
+    'Sam gave Mia a mint and a mix of nuts', // "mix", "mint": no son "mi"
+    'Sam visited Milan with Mia' // "Milan" contiene "mi"
+  ]) assert.equal(hasFirstPersonVoice(good), false, good);
+  assert.equal(hasFirstPersonVoice(null), false);
+});
+
+test('MEM-005: applyExtraction no guarda un hecho en primera persona aunque nombre a los dos', () => {
+  const out = applyExtraction([], [
+    { keys: ['bruno'], content: 'Sam told Mia that my dog Bruno hides under the bed' },
+    { keys: ['bruno', 'thunder'], content: 'Sam told Mia that the dog Bruno is afraid of thunder' }
+  ], { now: 1, ignoreKeys: NAMES2 });
+  assert.equal(out.entries.length, 1);
+  assert.equal(out.entries[0].content, 'Sam told Mia that the dog Bruno is afraid of thunder');
+});
+
+test('MEM-005: normalizeLoreKeys conserva una key "literal del usuario" de contenido real (hands, kiss, touch, whisper)', () => {
+  const keys = normalizeLoreKeys(['bruno', 'thunder', 'hands'], 'Sam held Bruno with both hands', { names: NAMES2 });
+  assert.deepEqual(keys, ['bruno', 'thunder', 'hands']);
+  for (const w of ['hands', 'kiss', 'touch', 'whisper', 'squeeze', 'hug']) {
+    assert.equal(isGenericWord(w), false, w);
+    assert.ok(normalizeLoreKeys(['coffee', w], 'Sam and Mia', { names: NAMES2 }).includes(w), w);
+  }
+  // Máximo 4: 3 del tema + 1 del usuario.
+  assert.equal(normalizeLoreKeys(['a1b', 'c2d', 'e3f', 'hands', 'kiss'], 'x', { names: NAMES2 }).length, LOREBOOK_KEYS_MAX);
+  // El nombre de un personaje o una palabra de una letra siguen fuera.
+  assert.deepEqual(normalizeLoreKeys(['sam', 'x', 'kiss'], 'Sam kissed Mia', { names: NAMES2 }), ['kiss']);
 });

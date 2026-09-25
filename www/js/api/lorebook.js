@@ -179,11 +179,12 @@ export function buildExtractionPrompt(character, settings, windowMessages, exist
       `using the real names "${U}" and "${N}" (never "I", "my", "he", "she", "they" or "the user", never a single word), ` +
       `with the concrete detail, like "${U} told ${N} that the dog Bruno is afraid of thunder". ` +
       `At most ${LOREBOOK_EXTRACT_ENTRY_CHARS} characters, in the same language as the conversation.`,
-    `For each fact give 1 to 3 keywords: single lowercase words, never two words joined together (concrete nouns or topics likely to come up again in the chat). ` +
+    `For each fact give 1 to 3 keywords about its topic: single lowercase words, never two words joined together (concrete nouns or topics likely to come up again in the chat). ` +
+      `Then, if ${U}'s own lines in the excerpt contain a distinctive noun or verb about that fact, add 1 more keyword copied EXACTLY as ${U} wrote it; if there is no clear one, skip it. ` +
       `Never use the names "${N}" or "${U}" as keywords, nor generic words like "personality", "person", "likes" or "feelings". ` +
       `Put every keyword in double quotes.`,
     `Reply with ONE line only: a compact JSON array with no line breaks and no markdown, like ` +
-      `[{"k":["bruno","thunder"],"c":"${U} told ${N} that the dog Bruno is afraid of thunder"}], one fact per object. ` +
+      `[{"k":["bruno","thunder","hides"],"c":"${U} told ${N} that the dog Bruno is afraid of thunder"}], one fact per object. ` +
       `If there is nothing new worth remembering, reply [].`,
     known ? `Already known (keywords only, do not repeat these facts): ${known}` : '',
     'Excerpt:',
@@ -511,11 +512,19 @@ export function isUnnamedPronounFact(content, names = []) {
   return !words.some((w) => nameWords.has(w));
 }
 
-// Quita una `s` final (no la de "ss"), y "ies" → "y": solo para comparar.
+// Raíz aproximada, SOLO para comparar (nunca se guarda): quita plural (`s`, `ies`), `ed`/`ing` y
+// una `e` final, y desdobla la consonante doble ("stopped" → "stop"). MEM-005: sin esto
+// "invite" / "invited" / "inviting" contaban como palabras distintas y dos frases del mismo hecho
+// no se fusionaban. Solo se aplica a palabras latinas (las demás se comparan tal cual).
 function stemLite(word) {
-  if (word.length > 4 && word.endsWith('ies')) return word.slice(0, -3) + 'y';
-  if (word.length > 3 && word.endsWith('s') && !word.endsWith('ss')) return word.slice(0, -1);
-  return word;
+  let w = word;
+  if (w.length > 4 && w.endsWith('ies')) w = w.slice(0, -3) + 'y';
+  else if (w.length > 3 && w.endsWith('s') && !w.endsWith('ss')) w = w.slice(0, -1);
+  if (w.length > 5 && w.endsWith('ing')) w = w.slice(0, -3);
+  else if (w.length > 4 && w.endsWith('ed')) w = w.slice(0, -2);
+  if (w.length > 3 && w.endsWith('e')) w = w.slice(0, -1);
+  if (w.length > 3 && /([^aeiou])\1$/.test(w) && !w.endsWith('ss') && !w.endsWith('ll')) w = w.slice(0, -1);
+  return w;
 }
 
 function contentWords(text, nameWords) {
@@ -535,18 +544,35 @@ function wordOverlap(a, b, nameWords) {
   return overlapStats(a, b, nameWords).ratio;
 }
 
+// MEM-005: con las mismas keys (2 o más, en cualquier orden) la mitad de solapamiento ya basta.
+export const LOREBOOK_MERGE_OVERLAP_SAME_KEYS = 0.5;
+
+function keySet(keys) {
+  return new Set((Array.isArray(keys) ? keys : []).map((k) => foldText(collapse(k))).filter(Boolean));
+}
+
+function haveSameKeys(keysA, keysB) {
+  const A = keySet(keysA);
+  const B = keySet(keysB);
+  return A.size >= 2 && A.size === B.size && [...A].every((k) => B.has(k));
+}
+
 /**
  * ¿Dos contenidos hablan de lo mismo? (coeficiente de solapamiento sobre
  * palabras de contenido ≥ LOREBOOK_MERGE_OVERLAP y al menos
- * LOREBOOK_MERGE_MIN_SHARED palabras compartidas.)
+ * LOREBOOK_MERGE_MIN_SHARED palabras compartidas.) MEM-005: si se pasan las keys
+ * de las dos entradas (`opts.keysA`, `opts.keysB`) y son las mismas (2 o más),
+ * el umbral baja a LOREBOOK_MERGE_OVERLAP_SAME_KEYS.
  * @param {string} a
  * @param {string} b
  * @param {string[]} [names]
+ * @param {{ keysA?: string[], keysB?: string[] }} [opts]
  * @returns {boolean}
  */
-export function areNearDuplicates(a, b, names = []) {
+export function areNearDuplicates(a, b, names = [], opts = {}) {
   const stats = overlapStats(a, b, nameWordSet(names));
-  return stats.shared >= LOREBOOK_MERGE_MIN_SHARED && stats.ratio >= LOREBOOK_MERGE_OVERLAP;
+  const threshold = haveSameKeys(opts.keysA, opts.keysB) ? LOREBOOK_MERGE_OVERLAP_SAME_KEYS : LOREBOOK_MERGE_OVERLAP;
+  return stats.shared >= LOREBOOK_MERGE_MIN_SHARED && stats.ratio >= threshold;
 }
 
 // Cuál de dos contenidos se conserva al fusionar: el de más palabras de
@@ -586,7 +612,7 @@ export function mergeNearDuplicates(entries, opts = {}) {
       if (out[i].source === 'manual') continue;
       for (let j = i + 1; j < out.length; j++) {
         if (out[j].source === 'manual') continue;
-        if (!areNearDuplicates(out[i].content, out[j].content, names)) continue;
+        if (!areNearDuplicates(out[i].content, out[j].content, names, { keysA: out[i].keys, keysB: out[j].keys })) continue;
         const content = moreInformative(out[i].content, out[j].content, nameWords);
         const keys = normalizeLoreKeys([...out[i].keys, ...out[j].keys], content, { names });
         out[i] = { ...out[i], content, keys: keys.length ? keys : out[i].keys, updated: now };
@@ -652,8 +678,31 @@ export async function cleanStoredLorebook(deps) {
   return { cleaned: result.cleaned, merged: result.merged, changed: result.changed };
 }
 
+// MEM-005: pronombres de primera persona (inglés y español). Un recuerdo escrito con ellos ("Sam told me
+// that my dog…") no dice de quién habla aunque nombre a alguien, porque "yo" era el usuario o el personaje
+// según quien lo copió. Las formas con acento o apóstrofe se normalizan antes de comparar.
+const FIRST_PERSON_WORDS = new Set([
+  'i', 'me', 'my', 'mine', 'myself', 'we', 'us', 'our', 'ours', 'ourselves',
+  'yo', 'mi', 'mis', 'nosotros', 'nosotras', 'nuestro', 'nuestra', 'nuestros', 'nuestras',
+]);
+
+/**
+ * ¿El hecho está escrito en primera persona (I, my, we, yo, mi…) FUERA de comillas? Lo que va entre
+ * comillas es una cita textual ("Sam told Mia: \"I am afraid\"") y no cuenta. Pura.
+ * @param {string} content
+ * @returns {boolean}
+ */
+export function hasFirstPersonVoice(content) {
+  const outside = String(content || '').replace(/"[^"]*"|“[^”]*”/g, ' ');
+  for (const token of foldText(outside).replace(/[’‘]/g, "'").split(/[^\p{L}\p{N}']+/u)) {
+    const word = token.replace(/^'+|'+$/g, '').replace(/'(m|ve|ll|d|re)$/, '');
+    if (FIRST_PERSON_WORDS.has(word)) return true;
+  }
+  return false;
+}
+
 // Valida y acota UNA entrada cruda del modelo. null si no sirve (incluye los
-// hechos sin nombre y los de menos de LOREBOOK_MIN_CONTENT_WORDS palabras).
+// hechos sin nombre, los escritos en primera persona y los de menos de LOREBOOK_MIN_CONTENT_WORDS palabras).
 function normalizeIncoming(raw, names) {
   if (!raw || typeof raw !== 'object') return null;
   const rawContent = pickField(raw, CONTENT_FIELDS);
@@ -661,6 +710,7 @@ function normalizeIncoming(raw, names) {
   if (!content) return null;
   if (content.split(/\s+/).length < LOREBOOK_MIN_CONTENT_WORDS) return null;
   if (isUnnamedPronounFact(content, names)) return null;
+  if (hasFirstPersonVoice(content)) return null;
 
   let rawKeys = pickField(raw, KEYS_FIELDS);
   if (typeof rawKeys === 'string') rawKeys = [rawKeys];
@@ -722,7 +772,9 @@ export function applyExtraction(previousEntries, incomingEntries, opts = {}) {
     const byKey = entries.find(
       (e) => e.source !== 'manual' && sharesKey(e) && wordOverlap(e.content, inc.content, nameWords) >= MERGE_MIN_OVERLAP
     );
-    const match = byKey || entries.find((e) => e.source !== 'manual' && areNearDuplicates(e.content, inc.content, names));
+    const match = byKey || entries.find(
+      (e) => e.source !== 'manual' && areNearDuplicates(e.content, inc.content, names, { keysA: e.keys, keysB: inc.keys })
+    );
     if (match) {
       // Misma key y mismo tema: el hecho nuevo reemplaza al viejo (p. ej. una
       // fecha corregida). Sin key en común: se conserva el más informativo.
