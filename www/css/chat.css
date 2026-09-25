@@ -172,6 +172,7 @@
   backdrop-filter: blur(var(--surface-blur, 0px));
   -webkit-backdrop-filter: blur(var(--surface-blur, 0px));
 }
+.chat-actionbtn[hidden] { display: none; } /* UI-006: el menú es único; "Regenerar" solo se muestra en el último mensaje del personaje */
 .chat-actionbtn:active { color: var(--color-text); }
 .chat-actionbtn:focus-visible { outline: 2px solid var(--color-accent-2); outline-offset: 2px; }
 

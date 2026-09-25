@@ -22,6 +22,7 @@ import { openSettings } from './settings.js';
 import { openAppearance } from './appearance.js';
 import { openChatBackground } from './chat-background.js';
 import { formatMessage } from './format.js';
+import { MESSAGE_ACTIONS, availableMessageActions } from './msgmenu.js';
 import { makeAvatar } from '../cards/avatar.js';
 import { pickFiles, saveBlob, autoBackupBlob } from '../platform.js';
 import { averageColorFromDataUrl } from '../images.js';
@@ -300,6 +301,7 @@ function checkKeyboardFromVh() {
 /* ---------- lista de mensajes ---------- */
 
 function renderMessages() {
+  clearSelection();
   els.messages.replaceChildren();
   messages.forEach((m, i) => {
     els.messages.appendChild(buildMessageRow(m, i));
@@ -352,31 +354,63 @@ function buildMessageRow(m, i) {
     row.appendChild(meta);
   }
 
-  const actions = document.createElement('div');
-  actions.className = 'chat-row__actions';
-  if (!busy) {
-    actions.appendChild(buildActionButton('Editar', () => openEditSheet(i)));
-    actions.appendChild(buildActionButton('Borrar', () => deleteMessage(i)));
-    actions.appendChild(buildActionButton('Copiar', () => copyMessage(i)));
-    if (isLast && m.role === 'char') {
-      actions.appendChild(buildActionButton('Regenerar', () => regenerate()));
-    }
-  }
-  row.appendChild(actions);
-
   return row;
 }
 
-function buildActionButton(label, onClick) {
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'chat-actionbtn';
-  btn.textContent = label;
-  btn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    onClick();
+// UI-006: UN solo menú de acciones para todo el chat. Se construye la primera vez que se necesita y después se
+// MUEVE a la fila del mensaje seleccionado (no hay botones por fila, así el número de nodos no crece con el chat).
+let msgMenu = null;
+let menuIndex = -1; // índice del mensaje al que está asociado el menú; -1 = cerrado
+let menuOpenedAt = 0;
+
+function ensureMessageMenu() {
+  if (msgMenu) return msgMenu;
+  msgMenu = document.createElement('div');
+  msgMenu.className = 'chat-row__actions';
+  msgMenu.setAttribute('role', 'menu');
+  msgMenu.setAttribute('aria-label', 'Acciones del mensaje');
+  MESSAGE_ACTIONS.forEach((a) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'chat-actionbtn';
+    btn.setAttribute('role', 'menuitem');
+    btn.dataset.action = a.id;
+    btn.textContent = a.label;
+    msgMenu.appendChild(btn);
   });
-  return btn;
+  msgMenu.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    e.stopPropagation();
+    runMessageAction(btn.dataset.action);
+  });
+  return msgMenu;
+}
+
+function openMessageMenu(row) {
+  const i = Number(row.dataset.index);
+  const m = messages[i];
+  if (!m) return;
+  const allowed = availableMessageActions({ role: m.role, isLast: i === messages.length - 1, busy });
+  if (!allowed.length) return;
+  const menu = ensureMessageMenu();
+  menu.querySelectorAll('[data-action]').forEach((btn) => {
+    btn.hidden = !allowed.includes(btn.dataset.action);
+  });
+  row.appendChild(menu);
+  row.classList.add('chat-row--selected');
+  menuIndex = i;
+  menuOpenedAt = Date.now();
+}
+
+function runMessageAction(action) {
+  const i = menuIndex;
+  clearSelection(); // cierra el menú al ejecutar cualquier acción
+  if (i < 0) return;
+  if (action === 'edit') openEditSheet(i);
+  else if (action === 'delete') deleteMessage(i);
+  else if (action === 'copy') copyMessage(i);
+  else if (action === 'regenerate') regenerate();
 }
 
 function buildDots() {
@@ -406,10 +440,13 @@ function onMessagesClick(e) {
   }
   const wasSelected = row.classList.contains('chat-row--selected');
   clearSelection();
-  if (!wasSelected) row.classList.add('chat-row--selected');
+  if (!wasSelected) openMessageMenu(row);
 }
 
+// Cierra el menú (lo saca de la fila) y quita la selección. También lo usan hide(), volver y cada re-render.
 function clearSelection() {
+  if (msgMenu && msgMenu.parentNode) msgMenu.remove();
+  menuIndex = -1;
   els.messages.querySelectorAll('.chat-row--selected').forEach((r) => r.classList.remove('chat-row--selected'));
 }
 
@@ -487,6 +524,8 @@ function updateScrollDownVisibility() {
 }
 
 function onMessagesScroll() {
+  // UI-006: el menú se cierra al hacer scroll (salvo el ajuste de posición justo al abrirlo).
+  if (menuIndex >= 0 && Date.now() - menuOpenedAt > 300) clearSelection();
   atBottom = isNearBottom();
   updateScrollDownVisibility();
 }

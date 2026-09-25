@@ -2138,3 +2138,22 @@ El contrato manda parar y reportar si el resumen tiende a inventar información 
 - **Diferencias con el contrato original (por la nueva decisión):** no hay botón "Actualizar estado de la relación", ni cancelación al enviar un mensaje, ni campo `Character.relationshipStatus` (no hay nada que persistir, así que no hay cambio de esquema ni riesgo para copias antiguas).
 - Tests (8 nuevos, `tests/relationship.test.mjs`): vacío/datos malos, umbrales en sus límites, las tres frases, total y "siempre presentes" con texto exacto, última fecha, pureza (no altera lo recibido) y que el módulo no usa red, texto de "hace X".
 - Navegador: con 7 recuerdos ("Ya han compartido bastante." / 7 en total · 1 siempre presente / hace 2 días), con 0 (solo "Todavía no hay recuerdos guardados.") y con 13 ("mucha historia acumulada", 2 siempre presentes, "hace 1 hora").
+
+## UI-006: menú de mensaje compacto (2026-09-25)
+
+**Estado:** implementado; verificado en el navegador integrado (375×812). **NO probado en el teléfono.**
+- **Antes (Hecho, leído en el código):** `buildMessageRow` creaba para CADA fila un contenedor `.chat-row__actions` con 3 botones (Editar, Borrar, Copiar) o 4 (+ Regenerar
+  si `isLast && role === 'char'`), ocultos por CSS hasta seleccionar la fila; solo se creaban si no había respuesta en curso. Con 250 mensajes: ~1 000 botones en el DOM.
+- **Diseño elegido:** UN solo menú (`.chat-row__actions`, con `role="menu"` y botones `role="menuitem"`), construido la primera vez que se toca un mensaje y después MOVIDO
+  (`appendChild`) a la fila seleccionada; se saca de la fila al cerrar. Así el menú queda exactamente donde estaba (debajo de la burbuja, mismos botones y CSS: no hay cálculo de
+  coordenadas ni cambia el aspecto), el gesto sigue siendo el de siempre (tocar el mensaje; tocarlo otra vez lo cierra) y no se añade ningún gesto que compita con el scroll o con seleccionar texto.
+  Alternativa descartada: menú flotante posicionado con coordenadas (más código, más casos de borde con el teclado y el scroll, y no aporta nada al usuario).
+- `ui/msgmenu.js` (nuevo, puro): `MESSAGE_ACTIONS` y `availableMessageActions({ role, isLast, busy })`: Editar, Borrar y Copiar siempre; Regenerar solo en el ÚLTIMO mensaje del personaje; con respuesta en curso, ninguna (idéntico a las condiciones anteriores; test).
+  `chat.js`: `ensureMessageMenu`/`openMessageMenu`/`runMessageAction`; `clearSelection()` ahora también saca el menú y lo usan `renderMessages()`, `hide()` y volver. CSS: solo `.chat-actionbtn[hidden]`.
+- **Cierre del menú:** al tocar el mismo mensaje, al tocar otro (se mueve), al tocar fuera de los mensajes, al ejecutar cualquier acción (antes "Copiar" lo dejaba abierto), al hacer scroll (con una guarda de 300 ms para el ajuste de posición al abrirlo) y en cada re-render.
+- **Verificado (Hecho):** con 252 mensajes: 0 menús y 0 botones en reposo, 1 menú y 4 botones (constante) al seleccionar; tras 30 toques rápidos seguidos en mensajes distintos sigue 1 menú, en el último tocado; "Regenerar" solo en el último del personaje;
+  Editar abre la hoja de edición; Borrar quita el mensaje y lo guarda (252 → 251); Regenerar (contra un servidor simulado) sustituyó la respuesta y la guardó; tocar fuera cierra.
+  **Límites de la prueba:** el navegador de prueba no permite el portapapeles (sale el aviso "No se pudo copiar", código sin cambios) y, con el panel oculto, no entrega eventos `scroll` reales: el cierre por scroll se comprobó disparando el evento a mano.
+- Tests (4 nuevos, `msgmenu.test.mjs`): acciones y orden, condiciones de Regenerar, sin menú con respuesta en curso, equivalencia con la condición anterior.
+- **Para el arquitecto (fuera de contrato, NO tocado):** "Regenerar" quita la respuesta anterior ANTES de pedir la nueva (`regenerate()` en `chat.js`). Si el servidor está apagado, la respuesta anterior se pierde
+  (comprobado: sin servidor, el último mensaje del personaje desapareció y quedó guardado así). Es lógica de regeneración (NO TOCAR en este contrato), pero conviene un contrato aparte por la sensibilidad a pérdida de datos.
