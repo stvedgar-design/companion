@@ -126,6 +126,11 @@ export function openSheet(node) {
   }
 }
 
+export function isSheetOpen() {
+  const sheet = el('sheet');
+  return !!sheet && sheet.classList.contains('is-open');
+}
+
 export function closeSheet() {
   const sheet = el('sheet');
   if (!sheet || !sheet.classList.contains('is-open')) return;

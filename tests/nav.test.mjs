@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { continueTarget } from '../www/js/nav.js';
+import { continueTarget, decideBack, ROOT_VIEWS } from '../www/js/nav.js';
 
 test('continueTarget: con varios chats abre el de `updated` más reciente', () => {
   const chats = [
@@ -26,4 +26,22 @@ test('continueTarget: sin chats (o sin datos) cae en la lista de chats, que crea
 test('continueTarget: con empate de fechas conserva el primero de la lista (ya ordenada por listChats)', () => {
   const chats = [{ id: 'x', updated: 9 }, { id: 'y', updated: 9 }];
   assert.equal(continueTarget('mia', chats).params.chatId, 'x');
+});
+
+test('decideBack: una hoja o diálogo abierto se cierra primero, en cualquier vista', () => {
+  for (const view of ['home', 'chats', 'chat', 'setup', null]) {
+    assert.equal(decideBack({ sheetOpen: true, view }), 'close-sheet');
+  }
+});
+
+test('decideBack: en chat y en la lista de chats retrocede una pantalla', () => {
+  assert.equal(decideBack({ sheetOpen: false, view: 'chat' }), 'back');
+  assert.equal(decideBack({ sheetOpen: false, view: 'chats' }), 'back');
+});
+
+test('decideBack: en la raíz (hub o configuración inicial) o sin vista activa (PIN) sale de la app', () => {
+  assert.deepEqual(ROOT_VIEWS, ['home', 'setup']);
+  assert.equal(decideBack({ sheetOpen: false, view: 'home' }), 'exit');
+  assert.equal(decideBack({ sheetOpen: false, view: 'setup' }), 'exit');
+  assert.equal(decideBack({ sheetOpen: false, view: null }), 'exit');
 });

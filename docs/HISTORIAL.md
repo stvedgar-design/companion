@@ -2023,4 +2023,30 @@ Scripts de medición desechables (fuera del repo); datos sintéticos, sin conten
   "Volver a los chats de este personaje".
 - **Verificado (Hecho, navegador integrado):** con un personaje de 2 chats, "Continuar" abrió el más reciente (no el primero
   creado); el retrato abrió la lista con ambos; "atrás" volvió al hub; con un personaje sin chats "Continuar" creó 1 y entró.
-- Tests: 5 nuevos en `tests/nav.test.mjs` (varios chats, uno, ninguno/datos malos, empate).
+- Tests: 4 nuevos en `tests/nav.test.mjs` (varios chats, uno, ninguno/datos malos, empate).
+
+## UI-014: el botón "atrás" de Android navega dentro de la app (2026-09-25)
+
+**Estado:** implementado. **Verificado solo en el navegador con un plugin simulado; NO probado en un Android real.**
+- **Hecho (leído):** antes no había ningún listener de `backButton`. `main.js` ya llevaba la navegación con el historial del
+  navegador (`pushState` por vista y por hoja abierta); sin el plugin, Capacitor decide por su cuenta qué hace "atrás".
+- `package.json`: añadido `@capacitor/app` (`^6.0.1`, misma línea que el resto de Capacitor 6). No existe `package-lock.json` y el CI
+  usa `npm install` antes de `npx cap add android`/`cap sync`, así que el plugin entra en el APK sin más cambios (Inferencia: el
+  CI no se ha ejecutado con este cambio todavía).
+- `nav.js` (puro, probado): `decideBack({ sheetOpen, view })` → `'close-sheet'` (hoja o diálogo abierto), `'back'` (vista `chat`
+  o `chats`) o `'exit'` (raíz: `home` o `setup`, o sin vista activa, p. ej. con el PIN de bloqueo puesto).
+- `main.js`: `registerAndroidBack()` registra `App.addListener('backButton', …)` solo si existe `Capacitor.Plugins.App` (en el
+  navegador no hace nada). Acciones: cerrar la hoja con `shell.closeSheet()` (que ya devuelve su entrada de historial); retroceder
+  con `back()` = `history.back()`, o sea lo mismo que la flecha de la barra superior (el chat ya guarda y cancela en `hide()`);
+  salir con `App.exitApp()` solo en la raíz. Protecciones: 300 ms entre pulsaciones y no actuar mientras una vista se abre desde el
+  historial (evita saltar dos pantallas), y una red de seguridad: si `history.back()` no produce ningún cambio en 400 ms, va al hub
+  (con reemplazo) en vez de quedar sin respuesta.
+- `shell.js`: nueva `isSheetOpen()`. La flecha propia de la interfaz no cambió.
+- **Verificado (Hecho, navegador 375×812 con `Capacitor.Plugins.App` simulado en una página temporal, ya borrada):** chat→lista→hub
+  con dos "atrás"; en el hub, un "atrás" llama a `exitApp` una vez y la app sigue en el hub; con una hoja abierta (menú del chat)
+  el primer "atrás" solo la cierra y el segundo cambia de pantalla; un diálogo de "Borrar personaje" se cancela sin borrar nada;
+  3 pulsaciones seguidas dan un solo paso; con `history.back` anulado, "atrás" en un chat va al hub. Sin el plugin (navegador
+  normal), la flecha y `history.back()` funcionan como antes.
+- **NO verificado (requiere el teléfono):** que el APK lleve el plugin y que `Capacitor.Plugins.App` se rellene como los otros
+  plugins; que un gesto de "atrás" real llegue al listener; salir de la app desde el hub; el comportamiento con el teclado abierto.
+- Tests: 3 nuevos en `tests/nav.test.mjs` (`decideBack`).

@@ -2,10 +2,12 @@
 // Arranque de la app: crea el objeto `app` (AppApi), inicializa las tres
 // vistas y gobierna la navegación con el historial del navegador para que
 // el botón/gesto "atrás" de Android funcione tanto entre pantallas como
-// para cerrar hojas abiertas.
+// para cerrar hojas abiertas. UI-014: en el APK ese botón se intercepta con
+// el plugin @capacitor/app (ver "Botón atrás de Android" más abajo).
 
 import * as shell from './ui/shell.js';
 import * as state from './state.js';
+import { decideBack } from './nav.js';
 import * as lockView from './ui/lock.js';
 import * as setupView from './ui/setup.js';
 import * as homeView from './ui/home.js';
@@ -111,6 +113,7 @@ document.addEventListener('shell:sheetclose', () => {
 });
 
 window.addEventListener('popstate', (event) => {
+  popstateCount++;
   if (sheetHistoryPushed) {
     // "Atrás" con una hoja abierta: solo la cierra, no cambia de vista.
     sheetHistoryPushed = false;
@@ -134,6 +137,7 @@ window.addEventListener('popstate', (event) => {
 async function switchViewFromHistory(view, params) {
   if (!views[view] || typeof views[view].show !== 'function') return;
   const prevView = currentView;
+  transitioning = true;
   try {
     if (prevView && views[prevView] && typeof views[prevView].hide === 'function') {
       views[prevView].hide();
@@ -146,6 +150,68 @@ async function switchViewFromHistory(view, params) {
     console.error(err);
     shell.toast('No se pudo volver a esa pantalla.');
     navigate('home', undefined, { replace: true });
+  } finally {
+    transitioning = false;
+  }
+}
+
+// --- Botón atrás de Android (UI-014) -------------------------------------
+// Sin este listener, Capacitor cierra la app o retrocede por su cuenta. Aquí
+// se reutiliza la navegación que ya existe: cerrar la hoja abierta (que
+// devuelve su entrada de historial), retroceder con `back()` (lo mismo que la
+// flecha de la barra superior) o salir solo desde la raíz. La decisión vive
+// en `nav.js` (`decideBack`, pura y probada).
+
+const BACK_DEBOUNCE_MS = 300; // pulsaciones repetidas rápido no saltan dos pantallas
+const BACK_FALLBACK_MS = 400; // si `history.back()` no produjo ningún cambio, se va al hub
+let popstateCount = 0;
+let transitioning = false; // true mientras una vista se está abriendo desde el historial
+let lastBackAt = 0;
+
+function onAndroidBack() {
+  const now = Date.now();
+  if (transitioning || now - lastBackAt < BACK_DEBOUNCE_MS) return;
+  lastBackAt = now;
+
+  const action = decideBack({ sheetOpen: shell.isSheetOpen(), view: currentView });
+  if (action === 'close-sheet') {
+    shell.closeSheet();
+  } else if (action === 'back') {
+    const seen = popstateCount;
+    back();
+    // Red de seguridad: si por algún motivo no había entrada anterior en el
+    // historial, no dejamos al usuario atrapado sin respuesta al "atrás".
+    setTimeout(() => {
+      if (popstateCount === seen && !transitioning && currentView && currentView !== 'home') {
+        navigate('home', undefined, { replace: true });
+      }
+    }, BACK_FALLBACK_MS);
+  } else {
+    exitApp();
+  }
+}
+
+function nativeAppPlugin() {
+  const capacitor = window.Capacitor;
+  const plugins = capacitor && capacitor.Plugins;
+  return plugins && plugins.App ? plugins.App : null;
+}
+
+function exitApp() {
+  const plugin = nativeAppPlugin();
+  if (plugin && typeof plugin.exitApp === 'function') plugin.exitApp();
+}
+
+// Solo existe dentro del APK; en el navegador no hay `Capacitor.Plugins.App`
+// y no se hace nada (la navegación por historial sigue igual que antes).
+function registerAndroidBack() {
+  const plugin = nativeAppPlugin();
+  if (!plugin || typeof plugin.addListener !== 'function') return;
+  try {
+    const registered = plugin.addListener('backButton', onAndroidBack);
+    if (registered && typeof registered.catch === 'function') registered.catch((err) => console.error(err));
+  } catch (err) {
+    console.error(err);
   }
 }
 
@@ -165,6 +231,7 @@ window.addEventListener('unhandledrejection', (event) => {
 
 async function boot() {
   shell.initShell();
+  registerAndroidBack();
 
   lockView.init(document.getElementById('view-lock'));
   setupView.init(document.getElementById('view-setup'), app);
