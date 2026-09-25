@@ -316,7 +316,7 @@ function buildMessageRow(m, i) {
   if (m.role === 'char' && !m.text && busy && isLast) {
     bubble.appendChild(buildDots());
   } else {
-    bubble.innerHTML = formatMessage(m.text);
+    bubble.innerHTML = formatMessage(m.text, { role: m.role });
   }
   row.appendChild(bubble);
 
@@ -588,7 +588,7 @@ function updateStreamingBubble() {
   const bubble = lastRow.querySelector('.chat-bubble');
   if (!bubble) return;
   if (msg.text) {
-    bubble.innerHTML = formatMessage(msg.text);
+    bubble.innerHTML = formatMessage(msg.text, { role: msg.role });
   } else {
     bubble.replaceChildren(buildDots());
   }
