@@ -4,6 +4,8 @@
 // que el usuario la arrastre de una vez al "Proyecto" de Claude.ai, donde el arquitecto revisa sin poder abrir carpetas.
 // Nombre plano = ruta relativa con `/` cambiado por `__` (sin el punto inicial de carpetas ocultas: `.github/x` -> `github__x`).
 // SOLO PARA LECTURA EXTERNA: ninguna instancia de Claude Code debe leerla ni usarla como fuente de verdad (los originales mandan).
+// Además genera `_BUNDLE.txt`: TODOS esos mismos archivos en uno solo (cada uno tras una línea `=== ruta original ===`), para
+// subir un único archivo al chat del arquitecto en vez de decenas sueltos.
 // Uso: node tools/para-el-arquitecto.mjs        Sin dependencias.
 
 import { execFileSync } from 'node:child_process';
@@ -112,6 +114,16 @@ function main() {
     if (lstatSync(join(OUT, entry.name)).isSymbolicLink()) fail(`enlace simbólico dentro de ${OUT_NAME}/: ${entry.name}`);
   }
 
+  // ---- _BUNDLE.txt: los mismos archivos ya verificados, uno tras otro, con su ruta original ----
+  const bundleHeader = `# _BUNDLE — ${copied.length} archivos en uno solo (solo lectura externa; los originales mandan). Cada archivo empieza con una línea "=== ruta original ===".\n`;
+  const bundle = copied
+    .map((c) => {
+      const text = readFileSync(join(ROOT, c.rel), 'utf8');
+      return `=== ${c.rel} ===\n${text}${text.endsWith('\n') ? '' : '\n'}`;
+    })
+    .join('\n');
+  writeFileSync(join(OUT, '_BUNDLE.txt'), `${bundleHeader}\n${bundle}`);
+
   // ---- _INDICE.md ----
   const version = /APP_VERSION\s*=\s*'([^']+)'/.exec(readFileSync(join(ROOT, 'www/js/version.js'), 'utf8'));
   const hash = git(['rev-parse', '--short', 'HEAD']) || '(sin git)';
@@ -129,6 +141,7 @@ function main() {
     `- APP_VERSION: \`${version ? version[1] : '?'}\``,
     `- Cambios sin commitear: ${dirty.length ? `SÍ (${dirty.length}): ${dirty.map((l) => '`' + l.trim() + '`').join(', ')}` : 'no'}`,
     `- Archivos copiados: ${copied.length}`,
+    '- También existe `_BUNDLE.txt`: esos mismos archivos en uno solo, cada uno tras una línea `=== ruta original ===` (para subir un único archivo).',
     '',
     '| Nombre plano | Ruta original |',
     '|---|---|',
@@ -139,7 +152,7 @@ function main() {
   }
   writeFileSync(join(OUT, '_INDICE.md'), lines.join('\n') + '\n');
 
-  console.log(`Listo: ${copied.length} archivos + _INDICE.md en ${OUT_NAME}/ (commit ${hash}${dirty.length ? ', con cambios sin commitear' : ''}).`);
+  console.log(`Listo: ${copied.length} archivos + _INDICE.md + _BUNDLE.txt en ${OUT_NAME}/ (commit ${hash}${dirty.length ? ', con cambios sin commitear' : ''}).`);
   if (skipped.length) console.log(`Omitidos por regla: ${skipped.length} (ver _INDICE.md).`);
 }
 
