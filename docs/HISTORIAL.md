@@ -2225,3 +2225,39 @@ El contrato manda parar y reportar si el resumen tiende a inventar información 
   Todos ≥ 4,5:1, sin excepciones. Los valores de partida no pasaban (p. ej. cursiva del usuario en Claude 4,45): se ajustaron el degradado del usuario y el alfa antes de dar la paleta por buena.
 - **Selector** (Apariencia): "Penumbra" y "Penumbra Claude" junto a los demás; el ajuste de vidrio (UI-007) sigue oculto salvo con Glass. Verificado: elegir "Penumbra Claude" guarda `theme` y aplica `data-theme`; los tres skins antiguos mantienen `box-shadow: none` en las burbujas.
 - Tests: 2 nuevos (skins hermanos y sin blur) + el de guardado de skins ahora cubre los 5; 353 en total.
+
+## VER-005: ¿búsqueda de memoria por significado en el hardware del usuario? (2026-09-25)
+
+**Recomendación (a la vista): NO construir hoy la búsqueda por significado (embeddings) ni la tabla de sinónimos.** Solo, y únicamente si el uso real lo pide, la coincidencia difusa para errores de tipeo (umbral conservador). Razones, con números abajo: (1) una tabla de sinónimos cubre lo que su autor anticipó (8/8) pero casi nada de lo que no (2/16 en un juego "ciego"), y sus falsos positivos son por polisemia (5/12 negativos); (2) la coincidencia difusa arregla los tipeos (4/4) pero no el significado, y con umbrales laxos activa cosas sin relación (4 de 12 negativos); (3) lo único que ninguna mejora barata toca son los casos de **solo significado** (0/7 con todas): ahí solo sirven embeddings, y el lorebook tiene ≤24 entradas y "siempre presentes" para lo importante, así que el beneficio real es acotado. **Construir más adelante si:** el usuario nota (con el indicador de recuerdos de UI-010) que entradas importantes no se activan por significado y no basta marcarlas "siempre presente". Ver también el hallazgo de `--smartcache` (más abajo), que puede cambiar el costo de cualquier función que use una llamada extra al servidor.
+
+**Estado de la Parte A (hardware real): NO se probó hoy** (el usuario pidió cerrar la sesión antes de proponerle la prueba; el contrato permite documentarla como "Supuesto, no verificado"). No se cargó ningún modelo de embeddings ni se cambió ninguna bandera del servidor. Para probarla: bajar UN modelo pequeño (p. ej. `bge-small-en-v1.5-q8_0.gguf`, 36,8 MB), añadir `--embeddingsmodel <ruta>` al arranque (lo haría el usuario, en una copia del script) y medir 5-10 respuestas del chat antes y después.
+
+### Parte A — viabilidad técnica (Hecho / Supuesto)
+- **Hecho (`--help` y `--version` del binario del usuario, 2026-09-25):** KoboldCpp **1.121** trae `--embeddingsmodel [archivo]`, `--embeddingsmaxctx [n]` y `--embeddingsgpu`. `/api/extra/version` reporta `"embeddings": false` solo porque hoy se arranca sin esa bandera.
+- **Hecho (documentación oficial, wiki de KoboldCpp):** acepta modelos GGUF de embeddings, expuestos en `/v1/embeddings` y `/api/extra/embeddings`; por defecto se ejecutan en **CPU** (`--embeddingsgpu` los sube a GPU y la documentación dice que "normalmente no hace falta"). Nombres soportados: familias Nomic Embed, BGE, GTE, E5. Hay un caso público de un modelo (bge-m3) que no cargó por un tensor faltante: no todo GGUF de embeddings sirve.
+- **Hecho (Hugging Face, `CompendiumLabs/bge-small-en-v1.5-gguf`):** archivos de 24,8 MB (q4_k_m), 36,8 MB (q8_0), 67,3 MB (f16) y 134 MB (f32): entran en el rango de 50-150 MB que pedía el contrato (los tamaños de otros modelos, p. ej. nomic-embed, NO se verificaron).
+- **Hecho (observado en el PC, con el servidor apagado):** GPU AMD Ellesmere (RX 470/480/570/580) con **8 GiB de VRAM** (0,7 GiB ya usados por el escritorio); 15,5 GiB de RAM (10,8 GiB disponibles). El modelo de chat pesa 6,8 GB en disco (IQ4_XS).
+- **Supuesto (NO verificado en hardware real):** un modelo de ~40 MB en CPU cabe sin tocar la VRAM del modelo de chat, y como el procesamiento del prompt del chat va en la GPU (Vulkan) no debería competir; **no se midió** el tiempo de carga, la memoria, la latencia por lote de 24 ni el efecto sobre las respuestas normales (lo que decide la viabilidad). El contrato pide medirlo solo con consentimiento del usuario y dice que el PC tuvo un cierre inesperado reciente.
+
+### Parte B — ¿cuánto mejoran las alternativas baratas? (Hecho, sin modelo, script desechable fuera del repositorio)
+Método: la función REAL `selectLoreEntries` (copia de `lorebook.js` con funciones internas expuestas) frente a: **(1) tabla de sinónimos** sobre `stemLite` (74 filas, 420 palabras, escrita y congelada ANTES de los casos) y **(2) coincidencia difusa** (distancia de edición con transposición ≤1 si la key tiene ≥6 letras, ≤2 si ≥10; o subcadena de ≥5 letras que cubra ≥75 % de la palabra). Casos inventados (Sam, Mia, Bruno, Laura…), cada uno con keys como las que pide el prompt de MEM-005 y un mensaje que **no contiene ninguna key** (se verificó). Tipos: `syn` (sinónimo/hiperónimo/coloquial), `morph` (otra forma de la palabra), `typo` (tipeo), `sem` (solo significado o conocimiento del mundo).
+
+| Inglés (24 casos que SÍ deben activar; 12 que NO) | actual | tabla sinónimos | difusa | ambas |
+|---|---|---|---|---|
+| syn (8) | 0 | **8** | 0 | 8 |
+| morph (5) | 0 | 4 | 2 | **5** |
+| typo (4) | 0 | 0 | **4** | 4 |
+| sem (7) | 0 | 0 | 0 | 0 |
+| **Total** | **0/24** | **12/24** | **6/24** | **17/24** |
+| Falsos positivos (de 12) | 1 | 5 | 5 | 9 |
+
+- Español (10 casos, 6 negativos; los ejemplos del contrato, "reventado de laburar"): actual 0/10 · sinónimos 6/10 (FP 3/6) · difusa 1/10 (FP 0/6) · ambas 7/10 (FP 3/6). La flexión del español (p. ej. "cociné" vs "cocinar") tumba la tabla: 0/1.
+- **Juego "ciego" (16 pares con sinónimos elegidos libremente, escrito DESPUÉS de congelar la tabla y sin mirarla): actual 0/16 · tabla 2/16 (12,5 %) · difusa 0/16.** Es la cifra que estima la cobertura real de una tabla pequeña; el 8/8 de arriba es optimista porque el autor de la tabla y de los casos es el mismo.
+- Falsos positivos de la tabla: polisemia ("wiped" = limpió la mesa, "bike" = bicicleta vs moto, "dinner" activa "food", "doctor" activa una entrada de una enfermera, "pasta" = dinero/comida). De la difusa: palabras parecidas sin relación ("marred"/"married", "concern"/"concert", "winner"/"dinner", "hunter"/"hunger").
+- Barrido del umbral de edición (largo mínimo de la key): 6 → tipeos 4/4, FP 5 · 7 → 4/4, FP 3 · **8 → 3/4, FP 1 (solo el que ya da el sistema actual)** · 9 → 3/4, FP 1. Si algún día se construye la difusa: mínimo 8 letras.
+- Costo por turno con 24 entradas: actual 0,11 ms; difusa 0,68 ms (irrelevante frente a los ~0,7-15 s del modelo).
+- **Límite del método:** los casos y su reparto por tipo son míos; los totales dependen de esa mezcla (lo informativo es la tasa por tipo). Con conversaciones reales del usuario se sabría qué tipos de fallo son los frecuentes.
+- **No hay tercera columna (embeddings)** porque la Parte A no se probó.
+
+### Hallazgo aparte (Hecho): `--smartcache`
+La ayuda del binario del usuario incluye `--smartcache [límite]`: "guarda instantáneas del caché KV en la RAM" (requiere fast forward, activo por defecto). La restricción central de toda la memoria (una sola caché de prompt: una llamada aparte cuesta ~14-66 s en la siguiente respuesta, ver MEM-001 v2/MEM-004/MEM-007) **podría** dejar de existir con esa bandera, pero **no se probó** (habría que reiniciar el servidor con ella; el contrato prohíbe cambiarlo por iniciativa propia). Propuesta al arquitecto: una medición corta con el usuario (reiniciar con `--smartcache 2`, repetir la medición "llamada aparte → siguiente respuesta").
