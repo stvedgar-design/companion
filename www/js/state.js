@@ -5,6 +5,7 @@
 
 import { normalizeVariants } from './variants.js';
 import { sanitizeMeta } from './perf.js';
+import { parseBackupText, normalizeBackup, analyzeBackup, planImport } from './backup.js';
 
 /**
  * @typedef {Object} Card  Card normalizada: todos los campos siempre presentes.
@@ -605,64 +606,100 @@ export function createState(backend) {
     return new Blob([JSON.stringify(payload)], { type: 'application/json' });
   }
 
-  async function importBackup(file) {
+  // ---------- importación de copias (BKP-001) ----------
+  // Tres pasos separados: (1) leer y validar el archivo UNA vez (`parseBackupText`), (2) analizarlo contra lo que ya hay
+  // (`analyzeBackupFile`, sin escribir nada) y (3) aplicarlo (`importBackupData`) en UNA transacción, tras validar y sanear TODO.
+  // La lógica de comparar y decidir vive en `backup.js` (pura y probada).
+
+  async function readBackupFile(file) {
     let text;
     try {
       text = await file.text();
     } catch {
       throw new Error('No se pudo leer el archivo de copia de seguridad.');
     }
+    return parseBackupText(text);
+  }
 
-    let data;
+  // Lo que ya hay, en la forma que necesita `analyzeBackup`. Solo se cuentan los mensajes de los chats que la copia también trae.
+  async function snapshotExisting(norm) {
+    const characters = await backend.getAll('characters');
+    const chats = (await backend.getAll('chatMeta')).map(sanitizeChat).filter(Boolean);
+    const wanted = new Set(norm.chats.map((c) => c.id));
+    const messageCounts = {};
+    for (const c of chats) {
+      if (!wanted.has(c.id)) continue;
+      const msgs = await backend.get('chatMsgs', c.id);
+      messageCounts[c.id] = Array.isArray(msgs) ? msgs.length : 0;
+    }
+    return { characters, chats, messageCounts };
+  }
+
+  /** Lee el archivo, lo valida y lo compara con lo que hay. No escribe nada. Devuelve `{ data, analysis }` (`data` se pasa luego a `importBackupData`). */
+  async function analyzeBackupFile(file) {
+    const data = await readBackupFile(file);
+    const norm = normalizeBackup(data);
+    const existing = await snapshotExisting(norm);
+    return { data, analysis: analyzeBackup(norm, existing) };
+  }
+
+  const validMessage = (m) => !!m && typeof m === 'object' && (m.role === 'user' || m.role === 'char') && typeof m.text === 'string';
+
+  /**
+   * Aplica una copia ya leída. `opts.mode`: `'merge'` (por defecto: solo agrega lo que falta, NO toca nada existente) o
+   * `'replace'` (lo de la copia gana). `opts.includeSettings`: restaura también los ajustes (servidor, nombre, aspecto, PIN);
+   * por defecto NO. Todo se valida y sanea antes de escribir y se escribe en una sola transacción: si falla, no cambia nada.
+   */
+  async function importBackupData(data, opts = {}) {
+    const norm = normalizeBackup(data);
+    const existing = await snapshotExisting(norm);
+    const plan = planImport(norm, existing, { mode: opts.mode, includeSettings: opts.includeSettings === true });
+
+    const ops = [];
+    let droppedMessages = 0;
+    let invalidChats = 0;
+    for (const character of plan.characters) ops.push({ type: 'put', store: 'characters', key: character.id, value: character });
+    for (const ch of plan.chats) {
+      const meta = ch.legacy
+        ? sanitizeChat({ id: ch.id, characterId: ch.characterId, title: 'Chat restaurado', scenario: '', created: Date.now(), updated: Date.now(), last: previewLast(ch.messages), lastExportAt: 0 })
+        : sanitizeChat(ch.raw);
+      if (!meta) {
+        invalidChats++;
+        continue;
+      }
+      ops.push({ type: 'put', store: 'chatMeta', key: meta.id, value: meta });
+      if (Array.isArray(ch.messages)) {
+        const clean = ch.messages.filter(validMessage).map(sanitizeMessage);
+        droppedMessages += ch.messages.length - clean.length;
+        ops.push({ type: 'put', store: 'chatMsgs', key: meta.id, value: clean });
+      }
+    }
+    let settingsRestored = false;
+    if (plan.settings) {
+      const current = await getSettings();
+      ops.push({ type: 'put', store: 'settings', key: SETTINGS_KEY, value: sanitizeSettings({ ...current, ...plan.settings }) });
+      settingsRestored = true;
+    }
+
     try {
-      data = JSON.parse(text.replace(/^\uFEFF/, ''));
-    } catch {
-      throw new Error('El archivo no es un JSON válido.');
+      if (ops.length) await backend.atomic(ops); // todo o nada
+    } catch (err) {
+      throw new Error('No se pudo restaurar la copia. No se cambió nada de tus datos.');
     }
+    const st = plan.stats;
+    return {
+      characters: st.addedCharacters + st.replacedCharacters, // compatibilidad con quien leía solo este número
+      ...st,
+      orphanChats: st.orphanChats + invalidChats,
+      droppedMessages,
+      settingsRestored,
+      mode: plan.mode,
+    };
+  }
 
-    if (!data || typeof data !== 'object' || data.app !== 'companion' || !Array.isArray(data.characters)) {
-      throw new Error('Ese archivo no es una copia de seguridad válida de Companion.');
-    }
-
-    let count = 0;
-    for (const character of data.characters) {
-      if (!character || typeof character.id !== 'string' || !character.id) continue;
-      await saveCharacter(character);
-      count += 1;
-    }
-
-    if (data.version === 2 && data.chats && typeof data.chats === 'object') {
-      const chatMessagesById = (data.chatMessages && typeof data.chatMessages === 'object') ? data.chatMessages : {};
-      for (const chatId of Object.keys(data.chats)) {
-        const chat = sanitizeChat(data.chats[chatId]);
-        if (!chat) continue;
-        await backend.put('chatMeta', chat.id, chat);
-        const msgs = chatMessagesById[chatId];
-        if (Array.isArray(msgs)) await backend.put('chatMsgs', chat.id, msgs);
-      }
-    } else if (data.chats && typeof data.chats === 'object') {
-      // Copia de seguridad del formato viejo: un chat por personaje.
-      for (const characterId of Object.keys(data.chats)) {
-        const legacyMessages = data.chats[characterId];
-        if (!Array.isArray(legacyMessages)) continue;
-        const now = Date.now();
-        const chat = sanitizeChat({
-          id: characterId,
-          characterId,
-          title: 'Chat restaurado',
-          scenario: '',
-          created: now,
-          updated: now,
-          last: previewLast(legacyMessages),
-          lastExportAt: 0,
-        });
-        await backend.put('chatMeta', chat.id, chat);
-        await backend.put('chatMsgs', chat.id, legacyMessages);
-      }
-    }
-
-    // No se pisa settings.url ni se restauran otros ajustes.
-    return { characters: count };
+  /** Lee, valida y aplica en un paso (sin confirmación: la interfaz usa `analyzeBackupFile` + `importBackupData`). Por defecto solo AGREGA. */
+  async function importBackup(file, opts = {}) {
+    return importBackupData(await readBackupFile(file), opts);
   }
 
   return {
@@ -687,6 +724,8 @@ export function createState(backend) {
     migrateLegacyChats,
     exportBackup,
     importBackup,
+    analyzeBackupFile,
+    importBackupData,
     newId,
   };
 }
@@ -819,4 +858,6 @@ export const deleteChat = (...args) => getDefaultInstance().deleteChat(...args);
 export const migrateLegacyChats = (...args) => getDefaultInstance().migrateLegacyChats(...args);
 export const exportBackup = (...args) => getDefaultInstance().exportBackup(...args);
 export const importBackup = (...args) => getDefaultInstance().importBackup(...args);
+export const analyzeBackupFile = (...args) => getDefaultInstance().analyzeBackupFile(...args);
+export const importBackupData = (...args) => getDefaultInstance().importBackupData(...args);
 export const newId = (...args) => getDefaultInstance().newId(...args);

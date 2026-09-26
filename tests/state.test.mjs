@@ -546,8 +546,11 @@ test('importBackup (v2) restaura personajes, chats y mensajes, y no pisa setting
   };
   const backupFile = { async text() { return JSON.stringify(backupPayload); } };
 
-  const result = await state.importBackup(backupFile);
-  assert.deepEqual(result, { characters: 2 });
+  // BKP-001: reemplazar es una decisión explícita (por defecto solo se agrega lo que falta; ver los tests de BKP-001)
+  const result = await state.importBackup(backupFile, { mode: 'replace' });
+  assert.equal(result.characters, 2);
+  assert.equal(result.replacedCharacters, 1);
+  assert.equal(result.addedCharacters, 1);
 
   const settings = await state.getSettings();
   assert.equal(settings.url, 'http://mi-url-actual:5001'); // no se pisó
@@ -582,7 +585,8 @@ test('importBackup acepta copias del formato viejo (v1: un chat por personaje)',
   const backupFile = { async text() { return JSON.stringify(backupPayload); } };
 
   const result = await state.importBackup(backupFile);
-  assert.deepEqual(result, { characters: 1 });
+  assert.equal(result.characters, 1);
+  assert.equal(result.addedChats, 1);
 
   const chats = await state.listChats('existente');
   assert.equal(chats.length, 1);
