@@ -159,3 +159,8 @@ Decisión: los dos Penumbra dejan de compartir fuente (el usuario pidió "una ti
 **Ajuste del color de las acciones en Penumbra oscuro (2026-09-26):** el durazno `#e6ad82` era casi igual al salmón `#e5a07c` de Penumbra Claude oscuro (tono 26° vs 21°); pasa a dorado champán `#ebc987` (tono 40°, contraste 9,7:1 sobre la burbuja; el mínimo exigido es 4,5). Se movió Penumbra y no Claude porque el terracota es la identidad de Claude.
 
 **Ajuste del color de las acciones en Penumbra claro (2026-09-26):** `#8e4626` (tono 18°) era casi igual al `#9a4424` de Penumbra Claude claro (tono 16°). Penumbra claro pasa a bronce/ocre `#755000` (tono 41°, contraste 5,3:1 sobre la burbuja lavanda; piso 4,5), en la misma familia dorada de su versión oscura. Penumbra Claude conserva su terracota. Un test exige una distancia mínima entre los `--color-em` de los dos hermanos en ambos modos.
+
+## Rendimiento de la lista de mensajes (UI-001)
+
+`.chat-row` lleva `content-visibility: auto` (solo si el WebView lo soporta, vía `@supports`) con `contain-intrinsic-size: auto var(--row-h, 84px)` y `flex-shrink: 0`. `--row-h` es una estimación de la altura de cada fila según el largo de su texto (`estimateRowHeight`, `perf.js`; error medio ~10 %), que `chat.js` pone en línea; el navegador recuerda la altura real de las filas ya vistas. **Trampa aprendida:** sin `flex-shrink: 0` las filas (hijas de una columna flex con scroll) se encogen a 0 px al activarse la contención. La contención de pintura recorta lo que se dibuje fuera de la fila: no hay sombras ni contornos que sobresalgan (comprobado: menú de acciones y `--bubble-edge` de Penumbra se ven completos). Las filas nuevas o rehechas nunca están fuera de pantalla, así que no hay salto al enviar o recibir.
+

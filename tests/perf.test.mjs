@@ -1,7 +1,7 @@
 // tests/perf.test.mjs — UI-001: cadencia de repintado, resumen de fluidez y saneado de `meta` (puro, sin DOM)
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createThrottle, summarizeFrames, formatFluencyReport, sanitizeMeta, lastReplyText, estimateRowHeight, charsPerBubbleLine, STREAM_PAINT_MS, SLOW_FRAME_MS } from '../www/js/perf.js';
+import { createThrottle, summarizeFrames, formatFluencyReport, sanitizeMeta, lastReplyText, estimateRowHeight, charsPerBubbleLine, stepScroll, FLUENCY_SPEED_PX_S, STREAM_PAINT_MS, SLOW_FRAME_MS } from '../www/js/perf.js';
 
 // Reloj simulado: avanza a mano y dispara los temporizadores vencidos.
 function fakeClock() {
@@ -95,7 +95,7 @@ test('UI-001 summarizeFrames: media, p95, peor cuadro y porcentaje de cuadros le
 test('UI-001 formatFluencyReport: lenguaje llano, con skin y modo, sin datos personales; explica cuando no hubo cuadros', () => {
   const ok = formatFluencyReport(summarizeFrames([16, 16, 50]), { theme: 'glass', mode: 'dark', source: 'synthetic', rows: 80, seconds: 5 });
   assert.match(ok, /chat de prueba de 80 mensajes/);
-  assert.match(ok, /Cuadros lentos \(más de 32 ms\): 1 de 3/);
+  assert.match(ok, /Cuadros lentos \(más de 32 ms\): 1 de 3 \(33,3 %\)/); // coma decimal
   assert.match(ok, /Skin: glass · modo: dark/);
   const chat = formatFluencyReport(summarizeFrames([16]), { theme: 'nomi', mode: 'light', source: 'chat', rows: 200, seconds: 5 });
   assert.match(chat, /tu chat abierto \(200 mensajes\)/);
@@ -134,4 +134,23 @@ test('UI-001 charsPerBubbleLine: ~32 caracteres en 375 px, más en pantallas anc
   assert.ok(charsPerBubbleLine(768) > 60);
   assert.equal(charsPerBubbleLine(20), 8);
   assert.equal(charsPerBubbleLine(NaN), 32);
+});
+
+test('UI-001 stepScroll: avanza a la velocidad pedida y rebota en los extremos (recorre la lista de ida y vuelta)', () => {
+  let s = { pos: 0, dir: 1 };
+  s = stepScroll({ ...s, dtMs: 16, max: 1000, speedPxS: 1000 });
+  assert.equal(s.pos, 16);
+  assert.equal(s.dir, 1);
+  s = stepScroll({ pos: 990, dir: 1, dtMs: 20, max: 1000, speedPxS: 1000 }); // se pasaría de 1000: rebota
+  assert.deepEqual(s, { pos: 1000, dir: -1 });
+  s = stepScroll({ pos: 5, dir: -1, dtMs: 20, max: 1000, speedPxS: 1000 }); // se pasaría de 0: rebota
+  assert.deepEqual(s, { pos: 0, dir: 1 });
+  // lista más corta que la pantalla (max 0) no se mueve y no falla
+  assert.deepEqual(stepScroll({ pos: 0, dir: 1, dtMs: 16, max: 0 }), { pos: 0, dir: -1 });
+  assert.deepEqual(stepScroll({ pos: NaN, dir: 7, dtMs: -5, max: NaN }), { pos: 0, dir: -1 });
+  // recorrido completo simulado: sube y baja sin salirse nunca de [0, max]
+  let p = { pos: 0, dir: 1 }; let down = 0, up = 0;
+  for (let i = 0; i < 1000; i++) { p = stepScroll({ ...p, dtMs: 16.7, max: 5000 }); assert.ok(p.pos >= 0 && p.pos <= 5000); if (p.dir === 1) down++; else up++; }
+  assert.ok(down > 100 && up > 100);
+  assert.ok(FLUENCY_SPEED_PX_S >= 1500 && FLUENCY_SPEED_PX_S <= 4000);
 });

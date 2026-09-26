@@ -9,6 +9,7 @@ import { pickFiles, saveBlob } from '../platform.js';
 import { createPinHash, verifyPin } from '../lock.js';
 import { openAppearance } from './appearance.js';
 import { APP_VERSION } from '../version.js';
+import { runFluencyTest, FLUENCY_SECONDS } from './fluency.js';
 
 export function openSettings(app) {
   const node = document.createElement('div');
@@ -76,6 +77,18 @@ export function openSettings(app) {
       </div>
     </div>
 
+    <div class="field">
+      <label class="field__label">Prueba de fluidez</label>
+      <div class="settings-row">
+        <button class="btn btn--ghost btn--sm" id="settings-fluency" type="button">Medir fluidez (${FLUENCY_SECONDS} s)</button>
+      </div>
+      <div class="field__hint">Desliza el chat solo durante unos segundos y mide qué tan fluido va. Si tienes un chat abierto lo usa; si no, uno de prueba. No se envía nada a ningún lado.</div>
+      <div class="field__hint" id="settings-fluency-result" hidden style="white-space:pre-line"></div>
+      <div class="settings-row" id="settings-fluency-copyrow" hidden>
+        <button class="btn btn--ghost btn--sm" id="settings-fluency-copy" type="button">Copiar resultado</button>
+      </div>
+    </div>
+
     <div class="settings-version">Companion v${APP_VERSION}</div>
   `;
 
@@ -92,6 +105,10 @@ export function openSettings(app) {
     appearanceBtn: q('#settings-appearance'),
     exportBtn: q('#settings-export'),
     importBtn: q('#settings-import'),
+    fluency: q('#settings-fluency'),
+    fluencyResult: q('#settings-fluency-result'),
+    fluencyCopyRow: q('#settings-fluency-copyrow'),
+    fluencyCopy: q('#settings-fluency-copy'),
   };
 
   getSettings().then((settings) => {
@@ -197,6 +214,34 @@ export function openSettings(app) {
       els.status.textContent = err.message;
     } finally {
       els.test.disabled = false;
+    }
+  });
+
+  // UI-001: mide la fluidez del desplazamiento (ver ui/fluency.js). Nada sale del teléfono.
+  let fluencyText = '';
+  els.fluency.addEventListener('click', async () => {
+    els.fluency.disabled = true;
+    els.fluencyCopyRow.hidden = true;
+    els.fluencyResult.hidden = false;
+    els.fluencyResult.textContent = `Midiendo… no toques la pantalla durante ${FLUENCY_SECONDS} segundos.`;
+    try {
+      const { text } = await runFluencyTest({ host: node });
+      fluencyText = text;
+      els.fluencyResult.textContent = text;
+      els.fluencyCopyRow.hidden = false;
+    } catch (err) {
+      els.fluencyResult.textContent = 'No se pudo hacer la prueba.';
+    } finally {
+      els.fluency.disabled = false;
+    }
+  });
+
+  els.fluencyCopy.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(fluencyText);
+      app.toast('Resultado copiado.');
+    } catch (err) {
+      app.toast('No se pudo copiar. Puedes seleccionar el texto y copiarlo a mano.');
     }
   });
 

@@ -88,12 +88,13 @@ export function summarizeFrames(deltas, slowMs = SLOW_FRAME_MS) {
 export function formatFluencyReport(s, ctx = {}) {
   const where = ctx.source === 'chat' ? `tu chat abierto (${ctx.rows || 0} mensajes)` : `un chat de prueba de ${ctx.rows || 0} mensajes`;
   const lines = [`Prueba de fluidez: ${where}, ${ctx.seconds || 0} s de desplazamiento automático.`];
+  const n = (x) => String(x).replace('.', ','); // coma decimal
   if (!s.frames) {
     lines.push('No se pudo medir: la pantalla no dibujó cuadros durante la prueba (¿la app estaba en segundo plano?).');
   } else {
     const perSecond = s.meanMs > 0 ? Math.round(1000 / s.meanMs) : 0;
-    lines.push(`Tiempo medio por cuadro: ${s.meanMs} ms (unos ${perSecond} cuadros por segundo). El 95 % de los cuadros tardó ${s.p95Ms} ms o menos; el peor, ${s.maxMs} ms.`);
-    lines.push(`Cuadros lentos (más de ${SLOW_FRAME_MS} ms): ${s.slowFrames} de ${s.frames} (${s.slowPercent} %).`);
+    lines.push(`Tiempo medio por cuadro: ${n(s.meanMs)} ms (unos ${perSecond} cuadros por segundo). El 95 % de los cuadros tardó ${n(s.p95Ms)} ms o menos; el peor, ${n(s.maxMs)} ms.`);
+    lines.push(`Cuadros lentos (más de ${SLOW_FRAME_MS} ms): ${s.slowFrames} de ${s.frames} (${n(s.slowPercent)} %).`);
   }
   lines.push(`Skin: ${ctx.theme || '?'} · modo: ${ctx.mode || '?'}`);
   return lines.join('\n');
@@ -143,4 +144,26 @@ export function estimateRowHeight(text, charsPerLine, hasMeta = false) {
 export function charsPerBubbleLine(listWidthPx) {
   const w = Number.isFinite(listWidthPx) && listWidthPx > 0 ? listWidthPx : 375;
   return Math.max(8, Math.floor((0.88 * (w - 32) - 32) / 8.4));
+}
+
+/** Velocidad del desplazamiento automático de la "Prueba de fluidez" (px/s): un fling rápido pero realista con el dedo. */
+export const FLUENCY_SPEED_PX_S = 2500;
+
+/**
+ * Un paso del desplazamiento automático: avanza `dtMs` a `speedPxS` en la dirección `dir` (+1 baja, −1 sube) y rebota en
+ * los extremos (0 y `max`), de modo que recorre la lista de arriba abajo y de vuelta sin parar. Pura.
+ * @returns {{ pos: number, dir: 1|-1 }}
+ */
+export function stepScroll({ pos, dir, dtMs, max, speedPxS = FLUENCY_SPEED_PX_S }) {
+  const limit = Math.max(0, Number.isFinite(max) ? max : 0);
+  let d = dir === -1 ? -1 : 1;
+  let p = (Number.isFinite(pos) ? pos : 0) + d * speedPxS * (Math.max(0, dtMs) / 1000);
+  if (p >= limit) {
+    p = limit;
+    d = -1;
+  } else if (p <= 0) {
+    p = 0;
+    d = 1;
+  }
+  return { pos: p, dir: d };
 }
