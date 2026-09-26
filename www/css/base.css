@@ -413,6 +413,16 @@ input[type=range]:focus-visible{
 .menu-item:focus-visible{ outline: 2px solid var(--color-accent-2); outline-offset: 2px; }
 .menu-item--danger{ color: var(--color-danger); }
 
+/* UI-019: encabezado de grupo dentro de una hoja de opciones (cada grupo va en un `.menu-section`). */
+.menu-group{
+  padding: var(--space-4) 4px var(--space-1);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
 .toast{
   position: absolute;
   left: 50%;

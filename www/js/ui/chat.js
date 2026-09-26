@@ -1508,7 +1508,7 @@ function onBack() {
 
 // Cuenta de mensajes por rol + estimación de cuánto contexto del modelo
 // ocupa la conversación en este momento (aproximado: ver `estimateContextUsage`
-// en prompt.js). Solo informativo, se muestra al abrir el menú del chat.
+// en prompt.js). Solo informativo (se muestra al abrir el menú del chat).
 function buildUsageInfo() {
   const field = document.createElement('div');
   field.className = 'field';
@@ -1539,105 +1539,76 @@ function buildUsageInfo() {
   return field;
 }
 
+// UI-019: el menú (⋮) agrupa las opciones por categoría; ninguna cambia de comportamiento, solo de lugar.
+function menuItem(label, onClick) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'menu-item';
+  btn.textContent = label;
+  btn.addEventListener('click', onClick);
+  return btn;
+}
+
+function menuSection(title, items) {
+  const section = document.createElement('div');
+  section.className = 'menu-section';
+  section.setAttribute('role', 'group');
+  section.setAttribute('aria-label', title);
+  const head = document.createElement('div');
+  head.className = 'menu-group';
+  head.setAttribute('aria-hidden', 'true');
+  head.textContent = title;
+  section.append(head, ...items);
+  return section;
+}
+
 function onMenu() {
   const wrap = document.createElement('div');
   wrap.appendChild(buildUsageInfo());
 
-  const settingsBtn = document.createElement('button');
-  settingsBtn.type = 'button';
-  settingsBtn.className = 'menu-item';
-  settingsBtn.textContent = 'Ajustes';
-  settingsBtn.addEventListener('click', () => {
-    openSettings(app);
-  });
-  wrap.appendChild(settingsBtn);
+  // Navegación (sin encabezado)
+  wrap.appendChild(menuItem('Ajustes', () => openSettings(app)));
+  wrap.appendChild(
+    menuItem('Volver a los chats de este personaje', () => {
+      if (busy) cancelGeneration();
+      app.navigate('chats', { characterId: chat.characterId });
+    })
+  );
 
-  const appearanceBtn = document.createElement('button');
-  appearanceBtn.type = 'button';
-  appearanceBtn.className = 'menu-item';
-  appearanceBtn.textContent = 'Apariencia';
-  appearanceBtn.addEventListener('click', () => {
-    openAppearance(app);
-  });
-  wrap.appendChild(appearanceBtn);
+  wrap.appendChild(
+    menuSection('Apariencia', [
+      menuItem('Apariencia', () => openAppearance(app)),
+      menuItem('Fondo del chat', () => openChatBackground(app, character)),
+    ])
+  );
 
-  const bgBtn = document.createElement('button');
-  bgBtn.type = 'button';
-  bgBtn.className = 'menu-item';
-  bgBtn.textContent = 'Fondo del chat';
-  bgBtn.addEventListener('click', () => {
-    openChatBackground(app, character);
-  });
-  wrap.appendChild(bgBtn);
-
-  const backToChatsBtn = document.createElement('button');
-  backToChatsBtn.type = 'button';
-  backToChatsBtn.className = 'menu-item';
-  backToChatsBtn.textContent = 'Volver a los chats de este personaje';
-  backToChatsBtn.addEventListener('click', () => {
-    if (busy) cancelGeneration();
-    app.navigate('chats', { characterId: chat.characterId });
-  });
-  wrap.appendChild(backToChatsBtn);
-
-  const lorebookBtn = document.createElement('button');
-  lorebookBtn.type = 'button';
-  lorebookBtn.className = 'menu-item';
-  lorebookBtn.textContent = 'Ver lorebook';
-  lorebookBtn.addEventListener('click', () => {
-    openLorebookSheet();
-  });
-  wrap.appendChild(lorebookBtn);
-
-  const continuityBtn = document.createElement('button');
-  continuityBtn.type = 'button';
-  continuityBtn.className = 'menu-item';
-  continuityBtn.textContent = 'Resumen de este chat';
-  continuityBtn.addEventListener('click', () => {
-    openContinuitySheet();
-  });
-  wrap.appendChild(continuityBtn);
-
+  const characterItems = [
+    menuItem('Ver lorebook', () => openLorebookSheet()),
+    menuItem('Resumen de este chat', () => openContinuitySheet()),
+  ];
   if (character && character.card.alternate_greetings && character.card.alternate_greetings.length && isOnlyGreeting()) {
-    const greetBtn = document.createElement('button');
-    greetBtn.type = 'button';
-    greetBtn.className = 'menu-item';
-    greetBtn.textContent = 'Cambiar saludo';
-    greetBtn.addEventListener('click', () => {
-      openGreetingSheet();
-    });
-    wrap.appendChild(greetBtn);
+    characterItems.push(menuItem('Cambiar saludo', () => openGreetingSheet()));
   }
+  characterItems.push(
+    menuItem('Cambiar avatar', () => {
+      app.closeSheet();
+      onChangeAvatar();
+    })
+  );
+  wrap.appendChild(menuSection('Personaje y memoria', characterItems));
 
-  const avatarBtn = document.createElement('button');
-  avatarBtn.type = 'button';
-  avatarBtn.className = 'menu-item';
-  avatarBtn.textContent = 'Cambiar avatar';
-  avatarBtn.addEventListener('click', () => {
-    app.closeSheet();
-    onChangeAvatar();
-  });
-  wrap.appendChild(avatarBtn);
-
-  const exportBtn = document.createElement('button');
-  exportBtn.type = 'button';
-  exportBtn.className = 'menu-item';
-  exportBtn.textContent = 'Exportar este chat';
-  exportBtn.addEventListener('click', () => {
-    app.closeSheet();
-    onExportChat();
-  });
-  wrap.appendChild(exportBtn);
-
-  const importBtn = document.createElement('button');
-  importBtn.type = 'button';
-  importBtn.className = 'menu-item';
-  importBtn.textContent = 'Importar chat';
-  importBtn.addEventListener('click', () => {
-    app.closeSheet();
-    onImportChat();
-  });
-  wrap.appendChild(importBtn);
+  wrap.appendChild(
+    menuSection('Datos', [
+      menuItem('Exportar este chat', () => {
+        app.closeSheet();
+        onExportChat();
+      }),
+      menuItem('Importar chat', () => {
+        app.closeSheet();
+        onImportChat();
+      }),
+    ])
+  );
 
   app.openSheet(wrap);
 }

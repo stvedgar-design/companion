@@ -73,6 +73,7 @@ posibles (eso está en `themes.css` mismo, es la fuente de verdad).
 | `.status` (+ `--ok`, `--err`) | texto de estado bajo un formulario |
 | `.sheet` / `.sheet__card` / `.sheet__title` | hoja inferior modal |
 | `.menu-item` (+ `--danger`) | opción dentro de la hoja |
+| `.menu-section` + `.menu-group` | UI-019: grupo de opciones con encabezado (texto pequeño en mayúsculas, color apagado); cada grupo va envuelto en `.menu-section` para que `.menu-item:last-child` siga quitando la última línea |
 | `.toast` | aviso flotante arriba, con `aria-live` |
 
 `select` e `input[type=range]` llevan estilo propio sin necesitar clase adicional. Todo respeta `:active`, `:focus-visible` (anillo `--color-accent-2`) y `:disabled`; `prefers-reduced-motion: reduce` desactiva animaciones. Este módulo no define clases opcionales adicionales.
