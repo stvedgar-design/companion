@@ -85,7 +85,7 @@ personaje (MEM-001 v2: extracción aditiva de una línea vía KoboldCpp, inyecci
 por keyword, hoja "Ver lorebook" con editar/borrar/deshacer y "Actualizar memoria
 ahora"; MEM-002: la actualización automática cada 20 mensajes está APAGADA por
 defecto y se activa con un interruptor en esa hoja); 5 skins × claro/oscuro; fondo
-de chat por personaje; CI con gate de tests; versión visible en Ajustes; resumen de continuidad por chat (MEM-007, **apagado por defecto**: cuesta ~+2-4 s por respuesta); 470
+de chat por personaje; CI con gate de tests; versión visible en Ajustes; resumen de continuidad por chat (MEM-007, **apagado por defecto**: cuesta ~+2-4 s por respuesta); 485
 tests (`node --test tests/*.test.mjs`).
 
 **Verificado en un teléfono real (Hecho, reportado por el tester, 2026-09-24):**
@@ -254,7 +254,7 @@ personajes: segunda iteración visual"; auditoría de recuperabilidad →
 | DOC-004 | Carpeta "para-el-arquitecto": copia plana del proyecto para revisión externa | Autorizado — **implementado el 2026-09-26** (sesión 0) | `tools/para-el-arquitecto.mjs` (sin dependencias; excluye llaves, `signing/`, `node_modules/`, `android/`, binarios y >400 KB; falla si algo excluido se cuela) + `_INDICE.md` (hora, commit, versión, cambios sin commitear, tabla plano→ruta) + `.gitignore`. Se ejecuta al cerrar cada sesión. Ver "DOC-004" (en `HISTORIAL.md`). |
 | DOC-005 | Principios de ingeniería del proyecto | Autorizado — **implementado el 2026-09-26** (sesión 0; solo `docs/`) | `docs/PRINCIPIOS-DE-INGENIERIA.md`: 14 criterios de decisión (medir antes de optimizar, una fuente de verdad, guardado incremental, esquema versionado, privacidad, etc.). Enlazado desde este encabezado y `CONTRACT-HANDOFF.md` §0. |
 | VER-005 | ¿Búsqueda de memoria por significado en el hardware del usuario? | Autorizado — **informe hecho el 2026-09-25** (sesión M1; solo `docs/`, sin código de producción). **Recomendación: no construir embeddings ni la tabla de sinónimos hoy.** Parte A (hardware real) **no se probó**; Parte B medida | KoboldCpp 1.121 sí trae `--embeddingsmodel` (Hecho, `--help` del binario). Tabla de sinónimos: 8/8 en lo que su autor previó, 2/16 en un juego "ciego"; difusa: tipeos 4/4 pero falsos positivos; casos de solo significado 0/7 con todo lo barato. Hallazgo: `--smartcache`. Ver "VER-005" (en `HISTORIAL.md`). |
-| BKP-001 | Importación de copias segura: confirmar, no pisar datos nuevos, todo o nada | **Autorizado; sin implementar** (sesión posterior a MEM-001 v2, solo cuando el usuario lo pida) | Punto de partida: hallazgos 2 y 10 de VER-001. |
+| BKP-001 | Importación de copias segura: confirmar, no pisar datos nuevos, todo o nada | Autorizado — **implementado el 2026-09-26** (sesión D); verificado en el navegador (resumen, «Solo agregar», «Restaurar todo» con copia previa, Volver, archivos inválidos y chat-log); 485 tests; **pendiente de probar en el teléfono** | `www/js/backup.js` (puro) + `state.js` (`analyzeBackupFile`, `importBackupData`, una transacción); `ui/backup-import.js`. Por defecto SOLO AGREGA; Ajustes solo con teléfono vacío o si se marca. **Cierra los hallazgos 2 (parcial: el chat-log se rechaza con explicación) y 10 de VER-001;** el 3 («un archivo por chat» del respaldo automático es falso) sigue pendiente. Ver "BKP-001" (en `HISTORIAL.md`). |
 | MEM-001 (v1) | (Anulado) versión anterior de MEM-001 | **ANULADO**, reemplazado por MEM-001 v2 | Asumía que el servidor podía devolver una lista larga con saltos de línea. |
 | (previos) | `CONTRACT-LOREBOOK.md` (implementado, parcialmente superado), `CONTRACT-CHARACTER-CREATOR.md` (propuesta, no autorizada), `CONTRACT-HANDOFF.md` (briefing) | — | Ver los avisos al inicio de cada uno. |
 
@@ -270,7 +270,7 @@ personajes: segunda iteración visual"; auditoría de recuperabilidad →
   salió del artifact.)
 - **VER-001 (2026-09-23), auditoría de recuperabilidad.** Solo lectura; 20 hallazgos
   (P0–P3): el respaldo automático no es restaurable con `importBackup` (1–4),
-  `importBackup` pisa datos sin avisar (10, BKP-001), no se guarda la respuesta parcial (7).
+  `importBackup` pisaba datos sin avisar (10, corregido por BKP-001), no se guarda la respuesta parcial (7).
 - **MEM-001 v2 (2026-09-24), memoria (lorebook) aditiva.** Extracción de una línea y hasta
   3 entradas con prefill; hoja "Ver lorebook"; Paso 0 con mediciones del servidor (160
   tokens, corte en `\n`, caché de prompt) e informe de latencia. En el teléfono la
@@ -316,8 +316,7 @@ Ninguna de estas piezas está autorizada ni tiene contrato todavía; no se
 implementan sin un contrato del arquitecto. Sin datos personales del usuario.
 1. **Fecha y hora reales en el prompt** y horarios "fuera de línea" configurables
    por el usuario (franjas en que no puede chatear).
-2. **BKP-001** (autorizado, Sesión D): importación de copias segura (confirmar, no
-   pisar datos nuevos, todo o nada).
+2. ~~**BKP-001**~~ (hecho el 2026-09-26, sesión D): importación de copias segura (analizar, elegir, no pisar, todo o nada).
 3. **Memoria de "lo que importa del usuario"**, con opción de marcar algo como
    importante y sugerencias que se confirman en lugar de guardarse solas.
 4. **Verificación de notificaciones programadas en Android** (¿llegan con la app

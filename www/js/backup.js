@@ -190,7 +190,7 @@ export function describeAnalysis(a) {
   const lines = [];
   const when = formatExported(a.exported);
   lines.push(when ? `Esta copia es del ${when}.` : 'Esta copia no trae la fecha en que se hizo.');
-  lines.push(`Tiene ${plural(a.counts.characters, 'personaje', 'personajes')}, ${plural(a.counts.chats, 'chat', 'chats')} y ${fmt(a.counts.messages)} mensajes.`);
+  lines.push(`Tiene ${plural(a.counts.characters, 'personaje', 'personajes')}, ${plural(a.counts.chats, 'chat', 'chats')} y ${a.counts.messages === 1 ? '1 mensaje' : `${fmt(a.counts.messages)} mensajes`}.`);
   if (a.existingEmpty) lines.push('Tu teléfono no tiene personajes ni chats todavía.');
   else {
     const have = [];
@@ -214,8 +214,8 @@ export function replaceWarning(a) {
   if (a.newerChats) parts.push(plural(a.newerChats, 'chat', 'chats'));
   const mem = a.conflicts.filter((c) => c.kind === 'character' && c.existingMoreMemories).length;
   if (mem) parts.push(plural(mem, 'personaje con más recuerdos', 'personajes con más recuerdos'));
-  const other = a.conflicts.some((c) => c.existingNewer) && !parts.length;
-  return `¡Ojo! Restaurar todo reemplazaría ${parts.join(' y ') || (other ? 'datos más nuevos que la copia' : 'datos más completos que la copia')} que tienes ahora y que son más nuevos o más completos que los de la copia. Esos cambios se perderían (por eso se guarda antes una copia de lo actual).`;
+  const what = parts.length ? `: ${parts.join(' y ')}` : '';
+  return `¡Ojo! «Restaurar todo» pisaría cosas tuyas que son más nuevas o más completas que las de la copia${what}. Esos cambios se perderían (por eso antes se guarda una copia de lo que tienes ahora).`;
 }
 
 /** Líneas con lo que se hizo, en lenguaje llano. */

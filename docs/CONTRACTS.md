@@ -205,7 +205,9 @@ saveChatContinuity(chatId: string, summary: { text: string, coveredUntil: number
 deleteChat(chatId: string): Promise<void>
 migrateLegacyChats(): Promise<void>                 // convierte el chat único viejo de cada personaje; idempotente; se llama al arrancar (main.js)
 exportBackup(): Promise<Blob>                       // JSON: { app:'companion', version:2, exported, settings, characters, chats:{[chatId]:Chat}, chatMessages:{[chatId]:Message[]} }; incluye pinSalt/pinHash dentro de settings
-importBackup(file: File|Blob): Promise<{ characters: number }>  // el ARCHIVO GANA por id (personajes, chatMeta, chatMsgs) sin comparar fechas ni avisar; NO restaura settings (ni url, ni user, ni PIN, ni tema); acepta v2 y v1; requiere `characters` como array
+analyzeBackupFile(file: File|Blob): Promise<{ data, analysis }>  // BKP-001: lee y valida el archivo UNA vez y lo compara con lo que hay; NO escribe. `analysis` (ver `www/js/backup.js`, `analyzeBackup`): fecha (`exported`), `counts`, `existingEmpty`, `newCharacters/newChats`, `conflicts[]` por id (`existingNewer`, `existingMore`, `existingMoreMemories`), `warnNewer`, `orphanChats`, `hasSettings`
+importBackupData(data, opts?: { mode?: 'merge'|'replace', includeSettings?: boolean }): Promise<{ characters, addedCharacters, replacedCharacters, skippedCharacters, addedChats, replacedChats, skippedChats, orphanChats, droppedMessages, settingsRestored, mode }>  // BKP-001: 'merge' (por defecto) NO toca ningún id existente y solo agrega lo que falta; 'replace' = lo de la copia gana. Valida y sanea TODO antes de escribir y escribe en UNA transacción (`backend.atomic`): si falla, no cambia nada. `Settings` (URL, nombre, aspecto, PIN) solo con `includeSettings: true`
+importBackup(file: File|Blob, opts?): Promise<lo mismo>  // = readBackupFile + importBackupData (sin confirmación; la interfaz usa analyzeBackupFile + importBackupData). Por defecto SOLO AGREGA. Acepta v1 y v2 (y v2 sin campos nuevos); rechaza el `chat-log` explicando que se importa desde «Importar chat»
 newId(): string
 ```
 

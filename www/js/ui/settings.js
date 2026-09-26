@@ -3,7 +3,7 @@
 // UI-011: los deslizadores de longitud (Settings.maxLen) y creatividad (Settings.temp) se quitaron
 // de la pantalla; los campos siguen en state.js y api/kobold.js los sigue enviando igual.
 
-import { getSettings, saveSettings, exportBackup, importBackup } from '../state.js';
+import { getSettings, saveSettings, exportBackup } from '../state.js';
 import { connect } from '../api/kobold.js';
 import { pickFiles, saveBlob } from '../platform.js';
 import { createPinHash, verifyPin } from '../lock.js';
@@ -11,6 +11,7 @@ import { openAppearance } from './appearance.js';
 import { APP_VERSION } from '../version.js';
 import { runFluencyTest, FLUENCY_SECONDS } from './fluency.js';
 import { openDiagnostics } from './diagnostics.js';
+import { startImport } from './backup-import.js';
 
 export function openSettings(app) {
   const node = document.createElement('div');
@@ -271,17 +272,14 @@ export function openSettings(app) {
     }
   });
 
+  // BKP-001: importar NUNCA escribe sin que el usuario vea qué trae la copia y elija (ver ui/backup-import.js).
   els.importBtn.addEventListener('click', async () => {
     const files = await pickFiles();
     if (!files.length) return;
     els.importBtn.disabled = true;
     try {
-      const { characters } = await importBackup(files[0]);
-      app.toast(`Se restauraron ${characters} personajes`);
-      app.closeSheet();
-      app.navigate('home', {}, { replace: true });
-    } catch (err) {
-      app.toast(err.message || 'No se pudo importar la copia.');
+      await startImport(app, files[0]);
+    } finally {
       els.importBtn.disabled = false;
     }
   });

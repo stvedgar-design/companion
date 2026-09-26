@@ -140,7 +140,7 @@ test('BKP-001 textos: el resumen dice fecha, cantidades y conflictos en lenguaje
   assert.match(lines, /Ya tienes en tu teléfono 1 personaje y 2 chats de esta copia\./);
   assert.match(lines, /Lo que te falta y se agregaría: 2 personajes y 5 chats\./);
   assert.match(lines, /1 chat que ya tienes tiene más mensajes o cambios más nuevos/);
-  assert.match(replaceWarning(a), /^¡Ojo! Restaurar todo reemplazaría 1 chat/);
+  assert.match(replaceWarning(a), /^¡Ojo! «Restaurar todo» pisaría cosas tuyas .*: 1 chat\./);
   assert.match(describeAnalysis(analyzeBackup(backup, existingOf([], []))).join(' '), /Tu teléfono no tiene personajes ni chats todavía/);
   const res = describeResult({ addedCharacters: 1, addedChats: 3, replacedCharacters: 0, replacedChats: 0, skippedCharacters: 1, skippedChats: 2, orphanChats: 1, droppedMessages: 2, settingsRestored: true }).join(' ');
   assert.match(res, /Se agregó: 1 personaje y 3 chats\./);
