@@ -10,6 +10,7 @@ import { createPinHash, verifyPin } from '../lock.js';
 import { openAppearance } from './appearance.js';
 import { APP_VERSION } from '../version.js';
 import { runFluencyTest, FLUENCY_SECONDS } from './fluency.js';
+import { openDiagnostics } from './diagnostics.js';
 
 export function openSettings(app) {
   const node = document.createElement('div');
@@ -89,6 +90,14 @@ export function openSettings(app) {
       </div>
     </div>
 
+    <div class="field">
+      <label class="field__label">Diagnóstico y rendimiento</label>
+      <div class="settings-row">
+        <button class="btn btn--ghost btn--sm" id="settings-diag" type="button">Abrir diagnóstico</button>
+      </div>
+      <div class="field__hint">Prueba de estrés con datos inventados para medir qué tan fluida va la app en este teléfono.</div>
+    </div>
+
     <div class="settings-version">Companion v${APP_VERSION}</div>
   `;
 
@@ -105,6 +114,7 @@ export function openSettings(app) {
     appearanceBtn: q('#settings-appearance'),
     exportBtn: q('#settings-export'),
     importBtn: q('#settings-import'),
+    diag: q('#settings-diag'),
     fluency: q('#settings-fluency'),
     fluencyResult: q('#settings-fluency-result'),
     fluencyCopyRow: q('#settings-fluency-copyrow'),
@@ -216,6 +226,8 @@ export function openSettings(app) {
       els.test.disabled = false;
     }
   });
+
+  els.diag.addEventListener('click', () => openDiagnostics(app));
 
   // UI-001: mide la fluidez del desplazamiento (ver ui/fluency.js). Nada sale del teléfono.
   let fluencyText = '';

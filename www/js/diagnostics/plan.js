@@ -179,9 +179,9 @@ function phaseLines(id, res) {
     const combos = reps[0].combos.map((c, i) => ({ ...c, slowPercent: meanOver(reps, (r) => (r.combos[i] || {}).slowPercent), meanMs: meanOver(reps, (r) => (r.combos[i] || {}).meanMs), frames: meanOver(reps, (r) => (r.combos[i] || {}).frames) }));
     for (const c of combos) lines.push(c.frames ? `${themeLabel(c.theme, c.mode)}: ${Math.round(c.slowPercent)} de cada 100 cuadros lentos (media ${fmtMs(c.meanMs)}).` : `${themeLabel(c.theme, c.mode)}: no se pudo medir.`);
     const measured = combos.filter((c) => c.frames);
-    if (measured.length > 1) {
-      const worst = measured.reduce((a, b) => (b.meanMs > a.meanMs ? b : a));
-      const best = measured.reduce((a, b) => (b.meanMs < a.meanMs ? b : a));
+    const worst = measured.length > 1 ? measured.reduce((a, b) => (b.meanMs > a.meanMs ? b : a)) : null;
+    const best = measured.length > 1 ? measured.reduce((a, b) => (b.meanMs < a.meanMs ? b : a)) : null;
+    if (worst && worst.meanMs > best.meanMs * 1.05) {
       lines.push(`El más fluido: ${themeLabel(best.theme, best.mode)}; el más lento: ${themeLabel(worst.theme, worst.mode)}.`);
     }
   } else if (id === 'hub') {

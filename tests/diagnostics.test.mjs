@@ -152,6 +152,9 @@ test('UI-005 plan: el informe describe cada fase en lenguaje llano (sin jerga) y
   assert.match(byId.hub, /30 personajes/);
   assert.match(byId.backup, /Volvió completa/);
   assert.match(byId.server, /primer fragmento en 2,5 s/);
+  // si todos los aspectos dan lo mismo no se nombra un "más lento"
+  const flat = describeResults({ skins: { reps: [{ combos: [{ theme: 'nomi', mode: 'dark', frames: 60, meanMs: 16, slowPercent: 0 }, { theme: 'glass', mode: 'dark', frames: 60, meanMs: 16.4, slowPercent: 0 }] }] } }, 'full');
+  assert.equal(flat.find((s) => s.id === 'skins').lines.some((l) => /El más fluido/.test(l)), false);
   // fase sin datos / omitida / fallida
   const partial = describeResults({ server: { skipped: 'el servidor no respondió' }, hub: { failed: 'sin espacio' } }, 'full');
   assert.match(partial.find((s) => s.id === 'server').lines[0], /Omitida: el servidor no respondió/);

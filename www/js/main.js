@@ -169,6 +169,11 @@ let transitioning = false; // true mientras una vista se está abriendo desde el
 let lastBackAt = 0;
 
 function onAndroidBack() {
+  // UI-005: con la prueba de estrés en pantalla completa, "atrás" solo pide cancelarla (no navega por debajo).
+  if (document.body.classList.contains('diag-running')) {
+    document.dispatchEvent(new CustomEvent('companion:diag-back'));
+    return;
+  }
   const now = Date.now();
   if (transitioning || now - lastBackAt < BACK_DEBOUNCE_MS) return;
   lastBackAt = now;
@@ -271,6 +276,16 @@ async function boot() {
   shell.showView(initial);
   history.replaceState({ view: initial, params: undefined }, '');
   await views[initial].show(undefined);
+
+  // UI-005: si una prueba de estrés quedó a medias (la app se cerró), se ofrece continuarla o descartarla. Solo se carga el
+  // módulo del diagnóstico si hay un progreso guardado (no cuesta nada en el arranque normal).
+  try {
+    if (localStorage.getItem('companion.diag.progress')) {
+      import('./ui/diagnostics.js').then((m) => m.offerResume(app)).catch((err) => console.error(err));
+    }
+  } catch (err) {
+    console.error(err);
+  }
 }
 
 boot().catch((err) => {

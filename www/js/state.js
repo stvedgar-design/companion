@@ -724,7 +724,13 @@ function openCompanionDb(dbName = DB_NAME) {
         if (!db.objectStoreNames.contains(name)) db.createObjectStore(name);
       }
     };
-    req.onsuccess = () => resolve(req.result);
+    req.onsuccess = () => {
+      const db = req.result;
+      // Solo la base aislada del banco de pruebas de estrés (UI-005): se cierra cuando alguien la borra, para que el borrado no
+      // quede bloqueado. La base real (DB_NAME) no cambia de comportamiento.
+      if (dbName !== DB_NAME) db.onversionchange = () => db.close();
+      resolve(db);
+    };
     req.onerror = () => reject(storageError(req.error));
     req.onblocked = () => {
       reject(new Error('La base de datos está bloqueada por otra pestaña. Cierra otras ventanas de la app e inténtalo de nuevo.'));
