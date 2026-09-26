@@ -149,3 +149,30 @@ test('UI-009: Penumbra y Penumbra Claude son hermanos: misma tipografía y misma
     assert.notEqual(a['--grad-user'], b['--grad-user']);
   }
 });
+
+// ---- UI-022: punto de estado del hub con tono por franja del día ----
+
+test('UI-022: los 4 tonos del punto de estado (por franja y por modo) contrastan ≥3:1 con el fondo de todos los skins', () => {
+  const home = css('home.css');
+  const tone = { dark: {}, light: {} };
+  for (const m of home.matchAll(/(\[data-mode='light'\] )?\.home-status\[data-part='(\w+)'\]\s*\{\s*--dot-ok:\s*(#[0-9a-f]{6})/gi)) {
+    tone[m[1] ? 'light' : 'dark'][m[2]] = m[3];
+  }
+  for (const mode of ['dark', 'light']) assert.deepEqual(Object.keys(tone[mode]).sort(), ['madrugada', 'manana', 'noche', 'tarde'], mode);
+  for (const [key, t] of Object.entries(loadSkins())) {
+    const mode = key.split('/')[1];
+    for (const [part, color] of Object.entries(tone[mode])) {
+      const cr = contrastRatio(color, t['--color-bg']);
+      assert.ok(cr >= 3, `${key} ${part}: punto ${color} sobre ${t['--color-bg']} = ${cr.toFixed(2)} < 3`);
+    }
+  }
+});
+
+test('UI-022: "sin conexión" se distingue por la forma (anillo hueco), no solo por el color', () => {
+  const home = css('home.css');
+  const ok = /\.home-status\[data-state='ok'\] i\s*\{([^}]*)\}/.exec(home)[1];
+  const err = /\.home-status\[data-state='err'\] i\s*\{([^}]*)\}/.exec(home)[1];
+  assert.match(ok, /background:\s*var\(--dot-ok\)/);
+  assert.match(err, /background:\s*transparent/);
+  assert.match(err, /border:\s*[\d.]+px solid var\(--color-danger\)/);
+});

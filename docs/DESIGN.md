@@ -72,7 +72,7 @@ posibles (eso está en `themes.css` mismo, es la fuente de verdad).
 | `.empty` | estado vacío centrado |
 | `.status` (+ `--ok`, `--err`) | texto de estado bajo un formulario |
 | `.sheet` / `.sheet__card` / `.sheet__title` | hoja inferior modal |
-| `.menu-item` (+ `--danger`) | opción dentro de la hoja |
+| `.menu-item` (+ `--danger`) | opción dentro de la hoja. UI-022: SIN línea divisoria entre opciones (el espacio en blanco y el encabezado `.menu-group` separan); área táctil ≥44 px |
 | `.menu-section` + `.menu-group` | UI-019: grupo de opciones con encabezado (texto pequeño en mayúsculas, color apagado); cada grupo va envuelto en `.menu-section` para que `.menu-item:last-child` siga quitando la última línea |
 | `.menu-fold` (+ `__chevron`, `__body`) | UI-020: opción que despliega su contenido al tocarla (`aria-expanded`); el cuerpo (`.menu-fold__body`) va oculto de entrada y se llena la primera vez que se abre |
 | `.toast` | aviso flotante arriba, con `aria-live` |
@@ -120,6 +120,13 @@ En la burbuja del usuario el texto normal ya es blanco (negro en iMessage claro)
 | Penumbra Claude | `#ffdfcc` | `#ffdfcc` | 4,0 / 4,0 |
 
 `tests/contrast.test.mjs` vigila los pisos (4,0; 3,3 en Glass claro; 3,2 en iMessage oscuro) y que la cursiva sea de un color distinto al del texto en los 10 skins/modos.
+
+## Pulido de hub y chat (UI-022)
+
+- **Reintentar respuesta** (`.chat-retry`): ya no es una píldora de ancho completo sino un ícono de flecha circular (círculo de 32 px dentro de un área táctil de 44 px), alineado a la derecha bajo el último mensaje del usuario. Conserva `aria-label`/`title` "Reintentar respuesta". Misma acción de siempre (`generate()`).
+- **Tarjeta del hub** (`.home-card`): toda la tarjeta es "Continuar" (chat más reciente; sin chats, crea uno, UI-013). El retrato (`.home-card__avatar`) es su propia zona y abre la lista de chats (`stopPropagation`). El botón "Continuar" sigue visible como refuerzo (y para teclado/lector de pantalla). **Borrar = pulsación larga** sobre la tarjeta (550 ms, se cancela si el dedo se mueve >10 px, o sea un scroll) con la confirmación de siempre; ya no hay papelera. Una línea de pista bajo la lista (`.home-hint`) lo explica. Lógica del gesto en `www/js/longpress.js` (pura, con test).
+- **Punto de estado** (`.home-status`, `data-state` + `data-part`): el TONO cambia con la franja del día (las 4 de UI-018) y la FORMA dice el estado: conectado = disco relleno de 10 px; sin conexión = anillo hueco rojo de 14 px; comprobando = punto gris de 8 px. Tonos (oscuro / claro): madrugada `#8f9cff` / `#4a58d6`, mañana `#62d69a` / `#1a8a57`, tarde `#f0c14b` / `#9a6400`, noche `#c29cff` / `#7a3fc4`; nunca rojos (no se confunden con un error) y ≥3:1 sobre el fondo de los 10 skins/modos (vigilado por `contrast.test.mjs`). Son los únicos colores fijos fuera de `themes.css`: no dependen de la paleta del skin.
+- **Menos líneas divisorias**: se quitó el `border-bottom` de `.menu-item` (menú del chat, "Diagnóstico", "Elegir saludo"…).
 
 ## Métricas técnicas: "esconder, no eliminar" (UI-020)
 

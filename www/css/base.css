@@ -396,15 +396,16 @@ input[type=range]:focus-visible{
 
 .menu-item{
   display: block;
-  width: 100%;
+  width: calc(100% + 8px);
+  margin: 0 -4px;
   text-align: left;
-  padding: 15px 4px;
+  padding: 15px 8px;
   font-size: var(--fs-lg);
   color: var(--color-text);
-  border-bottom: 1px solid var(--color-line);
   min-height: 44px;
+  border-radius: var(--radius-sm);
 }
-.menu-item:last-child{ border-bottom: 0; }
+/* UI-022: sin línea divisoria entre opciones; el espacio en blanco (padding de 15px) y el encabezado de cada grupo separan. */
 .menu-item:active{
   background: var(--color-surface-2);
   backdrop-filter: var(--surface-backdrop, none);

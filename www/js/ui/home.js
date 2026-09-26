@@ -6,11 +6,11 @@ import { importCardFile } from '../cards/import.js';
 import { connect } from '../api/kobold.js';
 import { pickFiles } from '../platform.js';
 import { continueTarget } from '../nav.js';
+import { createLongPress } from '../longpress.js';
 import { openSettings } from './settings.js';
 import { dayPart, pickGreeting } from '../greeting.js';
 
 const ICON_SETTINGS = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>';
-const ICON_TRASH = '<svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>';
 const ICON_SEARCH = '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>';
 
 let app = null;
@@ -42,6 +42,7 @@ export function init(root, appApi) {
         <input class="inp" id="home-search" type="text" placeholder="Buscar personaje" autocomplete="off">
       </div>
       <div class="home-grid" id="home-list"></div>
+      <p class="home-hint" id="home-hint" hidden>Toca una tarjeta para continuar. Mantenla presionada para borrar el personaje.</p>
     </div>
     <div class="footbar">
       <button class="btn" id="home-add" type="button">Cargar character card</button>
@@ -56,6 +57,7 @@ export function init(root, appApi) {
     searchWrap: root.querySelector('#home-search-wrap'),
     search: root.querySelector('#home-search'),
     list: root.querySelector('#home-list'),
+    hint: root.querySelector('#home-hint'),
     add: root.querySelector('#home-add'),
   };
 
@@ -124,10 +126,11 @@ function currentGreeting(now = new Date()) {
   return text;
 }
 
-// Punto de estado de la conexión (discreto): verde = conectado, rojo = sin conexión, gris = comprobando. El nombre del
+// Punto de estado de la conexión (discreto): disco de color (según la franja) = conectado, anillo rojo = sin conexión, punto gris = comprobando. El nombre del
 // modelo ya no se muestra; queda en la etiqueta accesible para quien la use.
 function setStatus(state, model = '') {
   els.status.dataset.state = state;
+  els.status.dataset.part = dayPart(new Date().getHours()); // UI-022: tono del punto según la franja del día
   els.status.setAttribute(
     'aria-label',
     state === 'ok' ? `Servidor conectado${model ? ' · ' + model : ''}` : state === 'err' ? 'Sin conexión con el servidor' : 'Comprobando conexión con el servidor'
@@ -160,6 +163,7 @@ export function hide() {
 
 function renderList() {
   els.list.innerHTML = '';
+  els.hint.hidden = true;
 
   if (!characters.length) {
     const empty = document.createElement('div');
@@ -182,24 +186,45 @@ function renderList() {
   }
 
   items.forEach(renderRow);
+  els.hint.hidden = false;
 }
 
 function renderRow(character) {
   const card = document.createElement('div');
   card.className = 'home-card';
 
-  // El retrato abre la lista de chats; "Continuar" entra directo al chat más
-  // reciente (UI-013). Sin chats, `continueTarget` cae en la lista, que crea uno.
+  // UI-022: TODA la tarjeta es "Continuar" (entra al chat más reciente; sin chats, `continueTarget` cae en la lista, que
+  // crea uno, UI-013). El retrato es su propia zona: abre la lista de chats. Borrar = pulsación larga sobre la tarjeta
+  // (con confirmación), ya no hay papelera al lado de "Continuar".
   const openChats = () => app.navigate('chats', { characterId: character.id });
   const openLatest = () => {
     const target = continueTarget(character.id, chatsByCharacter[character.id]);
     app.navigate(target.view, target.params);
   };
 
+  const longPress = createLongPress({
+    onLong: () => {
+      if (navigator.vibrate) navigator.vibrate(15);
+      onDelete(character);
+    },
+  });
+  card.addEventListener('pointerdown', (e) => {
+    if (e.button === 0 || e.pointerType === 'touch') longPress.down(e.clientX, e.clientY);
+  });
+  card.addEventListener('pointermove', (e) => longPress.move(e.clientX, e.clientY));
+  for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) card.addEventListener(ev, () => longPress.up());
+  // El menú nativo de "mantener presionado" (o clic derecho) se reemplaza por nuestra confirmación de borrado.
+  card.addEventListener('contextmenu', (e) => e.preventDefault());
+  card.addEventListener('click', () => {
+    if (longPress.consumeClick()) return; // el click que sigue a una pulsación larga ya atendida
+    openLatest();
+  });
+
   const avatar = document.createElement('div');
   avatar.className = 'home-card__avatar';
   avatar.setAttribute('role', 'button');
   avatar.tabIndex = 0;
+  avatar.setAttribute('aria-label', `Chats de ${character.name}`);
   if (character.avatar) {
     const img = document.createElement('img');
     img.src = character.avatar;
@@ -227,7 +252,11 @@ function renderRow(character) {
   scrim.appendChild(sub);
   avatar.appendChild(scrim);
 
-  avatar.addEventListener('click', openChats);
+  avatar.addEventListener('click', (e) => {
+    e.stopPropagation(); // no dispara el "Continuar" de la tarjeta
+    if (longPress.consumeClick()) return;
+    openChats();
+  });
   avatar.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
@@ -238,24 +267,14 @@ function renderRow(character) {
   const row = document.createElement('div');
   row.className = 'home-card__row';
 
+  // Sigue visible como refuerzo (y para teclado/lector de pantalla): su clic sube hasta la tarjeta y hace lo mismo.
   const continueBtn = document.createElement('button');
   continueBtn.className = 'btn btn--sm home-card__continue';
   continueBtn.type = 'button';
   continueBtn.textContent = 'Continuar';
-  continueBtn.addEventListener('click', openLatest);
-
-  const del = document.createElement('button');
-  del.className = 'ib home-card__del';
-  del.type = 'button';
-  del.setAttribute('aria-label', 'Borrar');
-  del.innerHTML = ICON_TRASH;
-  del.addEventListener('click', (e) => {
-    e.stopPropagation();
-    onDelete(character);
-  });
+  continueBtn.setAttribute('aria-label', `Continuar con ${character.name}`);
 
   row.appendChild(continueBtn);
-  row.appendChild(del);
 
   card.appendChild(avatar);
   card.appendChild(row);

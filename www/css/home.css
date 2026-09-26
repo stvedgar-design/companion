@@ -65,15 +65,29 @@
   border: 0;
   cursor: pointer;
 }
+/* UI-022: el punto cambia de tono según la franja del día (data-part, las 4 de UI-018) y su FORMA dice el estado, no solo el
+   color: conectado = disco relleno; sin conexión = anillo hueco más grande (rojo); comprobando = punto pequeño apagado.
+   Los tonos de franja son fríos/neutros (nunca rojos) para no confundirse con un error; ≥3:1 sobre el fondo de los 10 skins/modos
+   (vigilado por tests/contrast.test.mjs). */
+.home-status { --dot-ok: #62d69a; }
+.home-status[data-part='madrugada'] { --dot-ok: #8f9cff; }
+.home-status[data-part='manana'] { --dot-ok: #62d69a; }
+.home-status[data-part='tarde'] { --dot-ok: #f0c14b; }
+.home-status[data-part='noche'] { --dot-ok: #c29cff; }
+[data-mode='light'] .home-status[data-part='madrugada'] { --dot-ok: #4a58d6; }
+[data-mode='light'] .home-status[data-part='manana'] { --dot-ok: #1a8a57; }
+[data-mode='light'] .home-status[data-part='tarde'] { --dot-ok: #9a6400; }
+[data-mode='light'] .home-status[data-part='noche'] { --dot-ok: #7a3fc4; }
 .home-status i {
-  width: 10px;
-  height: 10px;
+  box-sizing: border-box;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: var(--color-muted);
   opacity: 0.6;
 }
-.home-status[data-state='ok'] i { background: var(--color-ok); opacity: 1; }
-.home-status[data-state='err'] i { background: var(--color-danger); opacity: 1; }
+.home-status[data-state='ok'] i { width: 10px; height: 10px; background: var(--dot-ok); opacity: 1; }
+.home-status[data-state='err'] i { width: 14px; height: 14px; background: transparent; border: 2.5px solid var(--color-danger); opacity: 1; }
 .home-status:focus-visible { outline: 2px solid var(--color-accent-2); outline-offset: -6px; border-radius: 50%; }
 
 .home-search {
@@ -104,7 +118,22 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  cursor: pointer;
+  -webkit-touch-callout: none; /* UI-022: la pulsación larga borra; sin menú ni selección nativos */
+  user-select: none;
+  -webkit-user-select: none;
 }
+.home-card:active .home-card__continue { opacity: 0.85; }
+
+/* UI-022: pista de los gestos de la tarjeta (tocar / mantener presionado). */
+.home-hint {
+  margin: 0;
+  padding: 0 var(--space-4) var(--space-4);
+  text-align: center;
+  font-size: var(--fs-xs);
+  color: var(--color-muted);
+}
+.home-hint[hidden] { display: none; }
 
 .home-card__avatar {
   position: relative;
@@ -169,10 +198,6 @@
 .home-card__continue {
   flex: 1;
   min-width: 0;
-}
-
-.home-card__del {
-  flex: none;
 }
 
 /* ---------- settings (hoja de ajustes) ---------- */
