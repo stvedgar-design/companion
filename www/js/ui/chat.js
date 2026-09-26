@@ -23,7 +23,7 @@ import { openSettings } from './settings.js';
 import { openAppearance } from './appearance.js';
 import { openChatBackground } from './chat-background.js';
 import { formatMessage } from './format.js';
-import { MESSAGE_ACTIONS, availableMessageActions } from './msgmenu.js';
+import { MESSAGE_ACTIONS, availableMessageActions, revealDelta, shouldCloseOnScroll } from './msgmenu.js';
 import { makeAvatar } from '../cards/avatar.js';
 import { pickFiles, saveBlob, autoBackupBlob } from '../platform.js';
 import { averageColorFromDataUrl } from '../images.js';
@@ -362,7 +362,7 @@ function buildMessageRow(m, i) {
 // MUEVE a la fila del mensaje seleccionado (no hay botones por fila, así el número de nodos no crece con el chat).
 let msgMenu = null;
 let menuIndex = -1; // índice del mensaje al que está asociado el menú; -1 = cerrado
-let menuOpenedAt = 0;
+let menuOpenScrollTop = 0; // UI-016: posición de la lista al abrir (ya con el ajuste); un scroll solo cierra si se aleja de aquí
 
 function ensureMessageMenu() {
   if (msgMenu) return msgMenu;
@@ -401,7 +401,11 @@ function openMessageMenu(row) {
   row.appendChild(menu);
   row.classList.add('chat-row--selected');
   menuIndex = i;
-  menuOpenedAt = Date.now();
+  // UI-016: el menú se abre debajo del mensaje; si queda fuera de la zona visible (típico en el último mensaje) se
+  // desplaza la lista, sin animación, hasta verlo entero. Después se anota la posición: ese ajuste no cuenta como "scroll".
+  const delta = revealDelta(menu.getBoundingClientRect(), els.messages.getBoundingClientRect());
+  if (delta) els.messages.scrollTop += delta;
+  menuOpenScrollTop = els.messages.scrollTop;
 }
 
 function runMessageAction(action) {
@@ -525,8 +529,8 @@ function updateScrollDownVisibility() {
 }
 
 function onMessagesScroll() {
-  // UI-006: el menú se cierra al hacer scroll (salvo el ajuste de posición justo al abrirlo).
-  if (menuIndex >= 0 && Date.now() - menuOpenedAt > 300) clearSelection();
+  // UI-006/UI-016: el menú se cierra al alejarse con el scroll (no por el ajuste al abrirlo ni por un temblor del dedo).
+  if (shouldCloseOnScroll({ open: menuIndex >= 0, scrollTop: els.messages.scrollTop, openScrollTop: menuOpenScrollTop })) clearSelection();
   atBottom = isNearBottom();
   updateScrollDownVisibility();
 }
