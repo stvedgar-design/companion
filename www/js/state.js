@@ -715,9 +715,9 @@ function wrapRequest(req) {
   });
 }
 
-function openCompanionDb() {
+function openCompanionDb(dbName = DB_NAME) {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    const req = indexedDB.open(dbName, DB_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
       for (const name of STORE_NAMES) {
@@ -732,9 +732,11 @@ function openCompanionDb() {
   });
 }
 
-function createIndexedDbBackend() {
+// `dbName` solo lo cambia el banco de pruebas de estrés (UI-005), que usa OTRA base de datos con los mismos almacenes para no
+// poder tocar nunca los datos reales; la app usa siempre el valor por defecto.
+export function createIndexedDbBackend(dbName = DB_NAME) {
   let dbPromise = null;
-  const getDb = () => (dbPromise || (dbPromise = openCompanionDb()));
+  const getDb = () => (dbPromise || (dbPromise = openCompanionDb(dbName)));
 
   return {
     async get(store, key) {
