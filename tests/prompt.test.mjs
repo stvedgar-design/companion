@@ -574,3 +574,91 @@ test('MEM-007: la ventana del historial NO se mueve cuando el resumen cambia de 
   assert.equal(continuityBlockChars('x'), CONTINUITY_RESERVE_CHARS);
   assert.ok(continuityBlockChars('y'.repeat(2000)) > CONTINUITY_RESERVE_CHARS);   // un texto más largo que la reserva ocupa lo que ocupa
 });
+
+// ---------- LAT-001 (a): frente estable en modo plantilla ----------
+
+function longChat(n, len = 200) {
+  return Array.from({ length: n }, (_, i) => ({ role: i % 2 === 0 ? 'char' : 'user', text: `m${i} ` + 'x'.repeat(len), ts: i }));
+}
+
+test('LAT-001: con el historial recortado, el primer mensaje enviado es SIEMPRE del usuario (nunca el de relleno)', () => {
+  const card = makeCard();
+  const settings = makeSettings({ ctx: 1200, maxLen: 100 });
+  const all = longChat(120);
+  const seenFronts = new Set();
+  for (let n = 40; n <= 120; n++) {
+    const { messages: out } = buildChatMessages(card, all.slice(0, n), settings);
+    assert.ok(out.length < n, 'el caso de prueba debe recortar');
+    assert.equal(out[1].role, 'user', `n=${n}`);
+    assert.notEqual(out[1].content, '[Start of roleplay]', `n=${n}`);
+    seenFronts.add(out[1].content.split(' ')[0]);
+  }
+  assert.ok(seenFronts.size > 1, 'la ventana se desliza');
+});
+
+test('LAT-001: dos turnos con distinto largo de mensaje no hacen aparecer/desaparecer el relleno al frente', () => {
+  const card = makeCard();
+  const settings = makeSettings({ ctx: 1200, maxLen: 100 });
+  const base = longChat(80);
+  const longer = base.map((m, i) => (i === 79 ? { ...m, text: m.text + ' y'.repeat(150) } : m));
+  const a = buildChatMessages(card, base, settings).messages;
+  const b = buildChatMessages(card, longer, settings).messages;
+  assert.equal(a[1].role, 'user');
+  assert.equal(b[1].role, 'user');
+  assert.ok(![a[1], b[1]].some((m) => m.content === '[Start of roleplay]'));
+});
+
+test('LAT-001: el relleno sigue apareciendo al INICIO real del chat (todo cabe y empieza en el personaje)', () => {
+  const card = makeCard();
+  const msgs = longChat(6, 20);
+  const { messages: out } = buildChatMessages(card, msgs, makeSettings());
+  assert.equal(out[1].content, '[Start of roleplay]');
+  assert.equal(out.length, 1 + 1 + 6);
+});
+
+test('LAT-001: chat que cabe entero queda IDÉNTICO al de antes (el frente estable no toca lo que no se recortó)', () => {
+  const card = makeCard();
+  const settings = makeSettings();
+  const msgs = [
+    { role: 'char', text: '*Sonrío.* Hola.', ts: 1 },
+    { role: 'user', text: 'Hola', ts: 2 },
+    { role: 'char', text: 'Qué bueno verte.', ts: 3 },
+  ];
+  const { messages: out } = buildChatMessages(card, msgs, settings);
+  assert.deepEqual(out.slice(1).map((m) => [m.role, m.content]), [
+    ['user', '[Start of roleplay]'],
+    ['assistant', '*Sonrío.* Hola.'],
+    ['user', 'Hola'],
+    ['assistant', 'Qué bueno verte.'],
+  ]);
+});
+
+test('LAT-001: sin ningún mensaje del usuario en la ventana no se descarta nada (queda al menos 1 mensaje)', () => {
+  const card = makeCard();
+  const settings = makeSettings({ ctx: 512, maxLen: 400 });
+  const msgs = [{ role: 'user', text: 'hola', ts: 1 }, { role: 'char', text: 'X'.repeat(5000), ts: 2 }];
+  const { messages: out } = buildChatMessages(card, msgs, settings);
+  assert.equal(out.length, 3);
+  assert.equal(out[1].content, '[Start of roleplay]');
+  assert.equal(out[2].role, 'assistant');
+});
+
+test('LAT-001: historyStartIndex sigue coincidiendo con lo que envía el armador real (modo plantilla, con recorte)', () => {
+  const card = makeCard();
+  const settings = makeSettings({ ctx: 1200, maxLen: 100, mode: 'chat' });
+  const all = longChat(100);
+  for (let n = 40; n <= 100; n++) {
+    const msgs = all.slice(0, n);
+    const { messages: out } = buildChatMessages(card, msgs, settings);
+    assert.equal(historyStartIndex(card, msgs, settings), n - (out.length - 1), `n=${n}`);
+  }
+});
+
+test('LAT-001: modo texto simple no cambia (no usa mensaje de relleno)', () => {
+  const card = makeCard();
+  const settings = makeSettings({ ctx: 1200, maxLen: 100 });
+  const all = longChat(80);
+  const { prompt } = buildPlainPrompt(card, all, settings);
+  const firstLine = prompt.split('\n[Start of chat]\n')[1].split('\n')[0];
+  assert.ok(firstLine.startsWith('Luna: ') || firstLine.startsWith('Edgar: '));
+});

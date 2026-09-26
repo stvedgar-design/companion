@@ -247,6 +247,17 @@ function pickHistory(items, budget, lengthOf) {
   return keep;
 }
 
+// LAT-001 (a) "frente estable": en modo plantilla, si el historial se recortó y el primer mensaje que cabe es del
+// personaje, se descarta ese (y los que le sigan hasta el primero del usuario). Así el mensaje de relleno
+// `[Start of roleplay]` solo aparece al inicio real del chat: si aparecía y desaparecía al deslizar la ventana, el
+// prompt dejaba de ser "el anterior sin el principio" y el servidor reprocesaba todo (~45-55 s; docs/HISTORIAL.md,
+// "Hallazgo LAT-001"). Un chat que cabe entero queda idéntico; sin ningún mensaje del usuario en la ventana no se toca.
+function stableFront(kept, totalCount) {
+  if (kept.length >= totalCount) return kept;
+  const firstUser = kept.findIndex((m) => m.role === 'user');
+  return firstUser > 0 ? kept.slice(firstUser) : kept;
+}
+
 /**
  * Arma un prompt de texto simple (equivalente al modo chat de Kobold Lite),
  * compatible con cualquier modelo.
@@ -329,7 +340,7 @@ export function buildChatMessages(card, messages, settings, chatScenario = '', l
   const continuity = formatContinuityBlock(extras && extras.continuity);
   const topic = endBlock(topicBlock, varietyNote, continuity);
   const budget = historyBudgetChars(settings, head.length, topic.length + continuityPadding(continuity));
-  const kept = pickHistory(messages, budget, (m) => m.text.length);
+  const kept = stableFront(pickHistory(messages, budget, (m) => m.text.length), messages.length);
 
   const out = [{ role: 'system', content: head }];
   // Muchas plantillas exigen que el primer turno sea 'user'.
@@ -406,7 +417,7 @@ export function historyStartIndex(card, messages, settings, chatScenario = '', l
   if (settings && settings.mode === 'chat') {
     let head = headBlock(card, settings, chatScenario, loreBlock);
     if (card.post_history_instructions) head += '\n\n' + subMacros(card.post_history_instructions, N, U);
-    const kept = pickHistory(messages, historyBudgetChars(settings, head.length, end), (m) => m.text.length);
+    const kept = stableFront(pickHistory(messages, historyBudgetChars(settings, head.length, end), (m) => m.text.length), messages.length);
     return messages.length - kept.length;
   }
   const head = headBlock(card, settings, chatScenario, loreBlock) + '\n\n[Start of chat]';
