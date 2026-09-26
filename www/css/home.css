@@ -37,14 +37,44 @@
 
 /* ---------- home (lista de personajes) ---------- */
 
-.home-chip {
-  align-self: flex-start;
-  margin: var(--space-3) var(--space-4);
-  border: none;
-  cursor: pointer;
-  backdrop-filter: var(--surface-backdrop, none);
-  -webkit-backdrop-filter: var(--surface-backdrop, none);
+/* UI-018: saludo según la hora + punto de estado de la conexión (antes un chip con el nombre del modelo). */
+.home-greeting {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
 }
+.home-greeting__text {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--fs-xl);
+  font-weight: 500;
+  line-height: 1.3;
+  color: var(--color-text);
+}
+.home-status {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.home-status i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--color-muted);
+  opacity: 0.6;
+}
+.home-status[data-state='ok'] i { background: var(--color-ok); opacity: 1; }
+.home-status[data-state='err'] i { background: var(--color-danger); opacity: 1; }
+.home-status:focus-visible { outline: 2px solid var(--color-accent-2); outline-offset: -6px; border-radius: 50%; }
 
 .home-search {
   overflow: hidden;

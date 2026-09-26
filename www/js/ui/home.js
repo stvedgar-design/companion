@@ -1,5 +1,5 @@
 // www/js/ui/home.js
-// Vista de lista de personajes: chip de conexión, lista, búsqueda y carga de character cards.
+// Vista de lista de personajes: saludo según la hora con el estado de conexión, lista, búsqueda y carga de character cards.
 
 import { getSettings, listCharacters, listChats, deleteCharacter } from '../state.js';
 import { importCardFile } from '../cards/import.js';
@@ -7,6 +7,7 @@ import { connect } from '../api/kobold.js';
 import { pickFiles } from '../platform.js';
 import { continueTarget } from '../nav.js';
 import { openSettings } from './settings.js';
+import { dayPart, pickGreeting } from '../greeting.js';
 
 const ICON_SETTINGS = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>';
 const ICON_TRASH = '<svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>';
@@ -20,6 +21,8 @@ let chatsByCharacter = {}; // UI-013: para que "Continuar" sepa cuál es el chat
 let searchQuery = '';
 let searchOpen = false;
 let viewToken = 0; // se incrementa en hide(); invalida cualquier comprobación de conexión pendiente
+let sessionGreeting = null; // UI-018: { part, text } — el saludo de esta apertura de la app (no cambia al volver al hub)
+const LAST_GREETING_KEY = 'companion.lastGreeting';
 
 export function init(root, appApi) {
   app = appApi;
@@ -30,7 +33,10 @@ export function init(root, appApi) {
       <button class="ib" id="home-search-toggle" aria-label="Buscar personaje">${ICON_SEARCH}</button>
       <button class="ib" id="home-settings" aria-label="Ajustes">${ICON_SETTINGS}</button>
     </div>
-    <button class="chip home-chip" id="home-chip" type="button"></button>
+    <div class="home-greeting">
+      <h2 class="home-greeting__text" id="home-greeting"></h2>
+      <button class="home-status" id="home-status" type="button" data-state="checking" aria-label="Comprobando conexión con el servidor"><i></i></button>
+    </div>
     <div class="scroll">
       <div class="field home-search" id="home-search-wrap">
         <input class="inp" id="home-search" type="text" placeholder="Buscar personaje" autocomplete="off">
@@ -45,7 +51,8 @@ export function init(root, appApi) {
   els = {
     searchToggle: root.querySelector('#home-search-toggle'),
     settingsBtn: root.querySelector('#home-settings'),
-    chip: root.querySelector('#home-chip'),
+    status: root.querySelector('#home-status'),
+    greeting: root.querySelector('#home-greeting'),
     searchWrap: root.querySelector('#home-search-wrap'),
     search: root.querySelector('#home-search'),
     list: root.querySelector('#home-list'),
@@ -53,7 +60,7 @@ export function init(root, appApi) {
   };
 
   els.settingsBtn.addEventListener('click', () => openSettings(app));
-  els.chip.addEventListener('click', () => openSettings(app));
+  els.status.addEventListener('click', () => openSettings(app));
   els.add.addEventListener('click', onAddClick);
   els.searchToggle.addEventListener('click', toggleSearch);
   els.search.addEventListener('input', () => {
@@ -86,14 +93,46 @@ export async function show() {
   els.search.value = '';
   searchOpen = false;
   els.searchWrap.classList.remove('home-search--open');
-  els.chip.className = 'chip home-chip';
-  els.chip.textContent = 'Comprobando conexión…';
+  setStatus('checking');
+  els.greeting.textContent = currentGreeting();
 
   characters = await listCharacters();
   lastByCharacter = await buildLastPreviews(characters);
   renderList();
 
   checkConnection(myToken);
+}
+
+// UI-018: la frase se elige una vez por apertura de la app (y de nuevo si cambia la franja del día); nunca repite la de
+// la apertura anterior. El dato guardado es solo una comodidad: si el almacenamiento falla, simplemente no evita repetir.
+function currentGreeting(now = new Date()) {
+  const part = dayPart(now.getHours());
+  if (sessionGreeting && sessionGreeting.part === part) return sessionGreeting.text;
+  let last = '';
+  try {
+    last = localStorage.getItem(LAST_GREETING_KEY) || '';
+  } catch {
+    // sin almacenamiento: se elige igual
+  }
+  const text = pickGreeting(now.getHours(), last);
+  sessionGreeting = { part, text };
+  try {
+    localStorage.setItem(LAST_GREETING_KEY, text);
+  } catch {
+    // no crítico
+  }
+  return text;
+}
+
+// Punto de estado de la conexión (discreto): verde = conectado, rojo = sin conexión, gris = comprobando. El nombre del
+// modelo ya no se muestra; queda en la etiqueta accesible para quien la use.
+function setStatus(state, model = '') {
+  els.status.dataset.state = state;
+  els.status.setAttribute(
+    'aria-label',
+    state === 'ok' ? `Servidor conectado${model ? ' · ' + model : ''}` : state === 'err' ? 'Sin conexión con el servidor' : 'Comprobando conexión con el servidor'
+  );
+  els.status.title = els.status.getAttribute('aria-label');
 }
 
 // Trae, para cada personaje, el `last` del chat más reciente (si tiene
@@ -244,12 +283,10 @@ async function checkConnection(myToken) {
   try {
     const { model } = await connect(settings.url);
     if (myToken !== viewToken) return;
-    els.chip.className = 'chip home-chip chip--ok';
-    els.chip.textContent = 'Conectado · ' + model;
+    setStatus('ok', model);
   } catch {
     if (myToken !== viewToken) return;
-    els.chip.className = 'chip home-chip chip--err';
-    els.chip.textContent = 'Sin conexión';
+    setStatus('err');
   }
 }
 
