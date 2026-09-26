@@ -1,7 +1,7 @@
 // www/js/ui/chat.js
 // Pantalla de chat: burbujas, streaming, avatar en 3 modos, composer, menú.
 
-import { getChat, getChatMessages, saveChatMessages, getCharacter, saveCharacter, getSettings, saveSettings, markChatExported, saveCharacterLorebook, markChatLorebookProgress, saveChatContinuity, sanitizeContinuity } from '../state.js';
+import { getChat, getChatMessages, saveChatMessages, getCharacter, saveCharacter, getSettings, saveSettings, markChatExported, saveCharacterLorebook, markChatLorebookProgress, saveChatContinuity, sanitizeContinuity, sanitizeMessage } from '../state.js';
 import { generateReplyNonEmpty, completeOnce, completeChatOnce } from '../api/kobold.js';
 import { initialMessages, scenarioGreeting, estimateContextUsage } from '../api/prompt.js';
 import {
@@ -23,6 +23,7 @@ import { openSettings } from './settings.js';
 import { openAppearance } from './appearance.js';
 import { openChatBackground } from './chat-background.js';
 import { formatMessage } from './format.js';
+import { variantCount, activeVariantIndex, addVariant, selectVariant, editActiveText } from '../variants.js';
 import { MESSAGE_ACTIONS, availableMessageActions, revealDelta, shouldCloseOnScroll } from './msgmenu.js';
 import { makeAvatar } from '../cards/avatar.js';
 import { pickFiles, saveBlob, autoBackupBlob } from '../platform.js';
@@ -333,29 +334,77 @@ function buildMessageRow(m, i) {
   }
   row.appendChild(bubble);
 
-  // UI-010: indicador de memoria usada (solo mensajes del personaje con dato; los anteriores no muestran nada).
+  // Línea bajo la burbuja: marcapáginas de memoria (UI-010) y, si hay varias versiones de la respuesta, el selector (UI-017).
   const loreState = loreIndicatorState(m);
-  if (loreState !== 'none' && m.text) {
+  const showLore = loreState !== 'none' && !!m.text;
+  const showVariants = m.role === 'char' && variantCount(m) > 1 && !!m.text;
+  if (showLore || showVariants) {
     const meta = document.createElement('div');
     meta.className = 'chat-row__meta';
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'chat-lore chat-lore--' + (loreState === 'active' ? 'active' : 'muted');
-    btn.dataset.lore = loreState;
-    btn.setAttribute(
-      'aria-label',
-      loreState === 'active' ? `Este mensaje usó ${m.loreUsed.length} recuerdo(s). Ver cuáles` : 'Este mensaje no usó ningún recuerdo'
-    );
-    btn.innerHTML = ICON_LORE;
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      openLoreUsedSheet(m);
-    });
-    meta.appendChild(btn);
+    if (showLore) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'chat-lore chat-lore--' + (loreState === 'active' ? 'active' : 'muted');
+      btn.dataset.lore = loreState;
+      btn.setAttribute(
+        'aria-label',
+        loreState === 'active' ? `Este mensaje usó ${m.loreUsed.length} recuerdo(s). Ver cuáles` : 'Este mensaje no usó ningún recuerdo'
+      );
+      btn.innerHTML = ICON_LORE;
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openLoreUsedSheet(m);
+      });
+      meta.appendChild(btn);
+    }
+    if (showVariants) meta.appendChild(buildVariantNav(m, i)); // después del marcapáginas: este no cambia de sitio (UI-016)
     row.appendChild(meta);
   }
 
   return row;
+}
+
+// UI-017: `‹ 2/3 ›` bajo una respuesta con varias versiones. Navegar es instantáneo: no llama al servidor.
+function buildVariantNav(m, i) {
+  const n = variantCount(m);
+  const at = activeVariantIndex(m);
+  const nav = document.createElement('div');
+  nav.className = 'chat-variants';
+  nav.setAttribute('role', 'group');
+  nav.setAttribute('aria-label', 'Versiones de la respuesta');
+  const step = (label, text, delta, disabled) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'chat-variants__btn';
+    b.setAttribute('aria-label', label);
+    b.textContent = text;
+    b.disabled = disabled;
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      onVariantStep(i, delta);
+    });
+    return b;
+  };
+  const count = document.createElement('span');
+  count.className = 'chat-variants__count';
+  count.textContent = `${at + 1}/${n}`;
+  count.setAttribute('aria-label', `Versión ${at + 1} de ${n}`);
+  nav.append(step('Versión anterior', '‹', -1, at === 0), count, step('Versión siguiente', '›', 1, at === n - 1));
+  return nav;
+}
+
+async function onVariantStep(i, delta) {
+  if (busy) return;
+  const m = messages[i];
+  if (!m) return;
+  const next = selectVariant(m, activeVariantIndex(m) + delta);
+  if (next === m) return;
+  clearSelection();
+  messages[i] = next;
+  const row = els.messages.querySelector(`.chat-row[data-index="${i}"]`);
+  if (row) row.replaceWith(buildMessageRow(next, i));
+  scrollToBottom(false);
+  await persistChat(); // la versión activa es la que se envía al modelo en el próximo turno: debe quedar guardada
 }
 
 // UI-006: UN solo menú de acciones para todo el chat. Se construye la primera vez que se necesita y después se
@@ -481,7 +530,7 @@ function openEditSheet(i) {
     if (!value) {
       messages.splice(i, 1);
     } else {
-      messages[i] = { ...msg, text: value };
+      messages[i] = editActiveText(msg, value);
     }
     await persistChat();
     app.closeSheet();
@@ -612,7 +661,9 @@ async function onSendClick() {
 
 /* ---------- generación ---------- */
 
-async function generate() {
+// `opts.previous` (UI-017): la respuesta que se está regenerando. Se conserva y la nueva se AGREGA como versión.
+async function generate(opts = {}) {
+  const previous = (opts && opts.previous) || null;
   if (busy || !character) return;
   loreUpdater.abort(); // también al regenerar: el chat tiene prioridad sobre la memoria
   continuityUpdater.abort();
@@ -649,9 +700,12 @@ async function generate() {
   } catch (err) {
     app.toast((err && err.message) || 'No se pudo generar la respuesta.');
   } finally {
-    if (!reply.text) {
-      const idx = messages.indexOf(reply);
-      if (idx >= 0) messages.splice(idx, 1);
+    const idx = messages.indexOf(reply);
+    if (previous) {
+      // UI-017: con texto (aunque sea parcial, como siempre) pasa a ser una versión más; sin texto se conserva la anterior.
+      if (idx >= 0) messages[idx] = reply.text ? addVariant(previous, { text: reply.text, loreUsed: reply.loreUsed, ts: reply.ts }) : previous;
+    } else if (!reply.text && idx >= 0) {
+      messages.splice(idx, 1);
     }
     busy = false;
     abortCtl = null;
@@ -682,10 +736,15 @@ function cancelGeneration() {
 
 function regenerate() {
   if (busy) return;
-  if (messages.length && messages[messages.length - 1].role === 'char') {
+  const last = messages[messages.length - 1];
+  if (last && last.role === 'char') {
+    // UI-017: la respuesta anterior sale de la lista solo mientras se genera (el historial que viaja termina en el
+    // mensaje del usuario) y vuelve como una de las versiones. Lo guardado en disco no cambia hasta terminar.
     messages.pop();
+    generate({ previous: last });
+  } else {
+    generate();
   }
-  generate();
 }
 
 async function persistChat() {
@@ -1680,7 +1739,7 @@ async function onImportChat() {
 
   const cleaned = data.messages
     .filter((m) => m && (m.role === 'user' || m.role === 'char') && typeof m.text === 'string')
-    .map((m) => ({ role: m.role, text: m.text, ts: typeof m.ts === 'number' ? m.ts : Date.now() }));
+    .map((m) => sanitizeMessage({ ...m, role: m.role, text: m.text, ts: typeof m.ts === 'number' ? m.ts : Date.now() }));
 
   if (!cleaned.length) {
     app.toast('Ese archivo no tiene mensajes reconocibles.');

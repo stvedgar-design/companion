@@ -3,6 +3,8 @@
 // Backend inyectable: createState(backend) permite usar un backend en memoria en tests.
 // Única API asíncrona y estable; la estructura interna del backend es libre.
 
+import { normalizeVariants } from './variants.js';
+
 /**
  * @typedef {Object} Card  Card normalizada: todos los campos siempre presentes.
  * @property {string} name
@@ -78,6 +80,10 @@
  * @property {{ id: string, keys: string[], content: string, always: boolean }[]} [loreUsed]
  *   UI-010, solo mensajes del personaje: copia de los recuerdos que viajaron en el prompt de ESE mensaje
  *   (`[]` = ninguno). Ausente = mensaje anterior a UI-010 / sin dato (no se muestra icono).
+ * @property {{ text: string, loreUsed?: object[] }[]} [variants]
+ *   UI-017, solo mensajes del personaje regenerados: TODAS las versiones de la respuesta (2 o más; ausente = una sola).
+ * @property {number} [activeVariant]  Índice de la versión que se ve. `text`/`loreUsed` son SIEMPRE los de esa versión
+ *   (ver `variants.js`), así que el prompt, la exportación y la vista previa no necesitan saber de variantes.
  */
 
 /**
@@ -207,12 +213,15 @@ export function sanitizeLoreUsed(raw) {
   return clean;
 }
 
-// Solo toca el campo `loreUsed`; cualquier otro campo del mensaje (y los mensajes sin él) pasan tal cual.
-function sanitizeMessage(m) {
-  if (!m || typeof m !== 'object' || !('loreUsed' in m)) return m;
-  const { loreUsed, ...rest } = m;
-  const clean = m.role === 'char' ? sanitizeLoreUsed(loreUsed) : undefined;
-  return clean === undefined ? rest : { ...rest, loreUsed: clean };
+// Solo toca `loreUsed` y (UI-017) `variants`/`activeVariant`; cualquier otro campo del mensaje (y los mensajes sin ellos) pasan tal cual.
+export function sanitizeMessage(m) {
+  if (!m || typeof m !== 'object') return m;
+  if ('loreUsed' in m) {
+    const { loreUsed, ...rest } = m;
+    const clean = m.role === 'char' ? sanitizeLoreUsed(loreUsed) : undefined;
+    m = clean === undefined ? rest : { ...rest, loreUsed: clean };
+  }
+  return normalizeVariants(m, sanitizeLoreUsed);
 }
 
 function previewLast(messages) {

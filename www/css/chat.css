@@ -134,7 +134,24 @@
 .chat-bubble strong { font-weight: 600; }
 
 /* --- UI-010: indicador de memoria usada (gris = ningún recuerdo, acento del skin = usó alguno) --- */
-.chat-row__meta { margin-top: 2px; }
+.chat-row__meta { margin-top: 2px; display: flex; align-items: center; gap: var(--space-2); }
+
+/* --- UI-017: selector de versiones de una respuesta regenerada (‹ 2/3 ›) --- */
+.chat-variants { display: inline-flex; align-items: center; color: var(--color-muted); font-size: var(--fs-sm); }
+.chat-variants__btn {
+  min-width: 40px;
+  min-height: 32px;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: inherit;
+  font-size: 22px;
+  line-height: 1;
+}
+.chat-variants__btn:disabled { opacity: 0.3; }
+.chat-variants__btn:not(:disabled):active { color: var(--color-text); }
+.chat-variants__btn:focus-visible { outline: 2px solid var(--color-accent-2); outline-offset: 2px; }
+.chat-variants__count { min-width: 3ch; text-align: center; font-variant-numeric: tabular-nums; }
 .chat-lore {
   display: inline-flex;
   align-items: center;

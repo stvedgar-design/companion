@@ -147,6 +147,8 @@ Los imports son ESM relativos y siempre con extensión `.js`. Los tests importan
  * @property {string} text          // texto crudo; los *asteriscos* se formatean solo al mostrar
  * @property {number} ts            // ms desde epoch
  * @property {{ id: string, keys: string[], content: string, always: boolean }[]} [loreUsed]  // UI-010, solo 'char': COPIA de los recuerdos que viajaron en el prompt de ese mensaje ([] = ninguno; ausente = mensaje anterior, sin dato → sin icono). Saneado al leer (`sanitizeLoreUsed`).
+ * @property {{ text: string, loreUsed?: object[] }[]} [variants]  // UI-017, solo 'char' regenerado: TODAS las versiones (2 o más; ausente = una sola). `text`/`loreUsed` del mensaje son SIEMPRE los de la versión activa (ver `www/js/variants.js`).
+ * @property {number} [activeVariant]  // UI-017: índice de la versión que se ve.
  */
 
 /**
