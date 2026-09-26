@@ -422,6 +422,12 @@ input[type=range]:focus-visible{
   text-transform: uppercase;
   color: var(--color-muted);
 }
+/* UI-020: opción que despliega su contenido (p. ej. "Diagnóstico"); el contenido va en `.menu-fold__body`. */
+.menu-fold{ display: flex; align-items: center; justify-content: space-between; margin-top: var(--space-2); color: var(--color-muted); }
+.menu-fold__chevron{ font-size: 22px; line-height: 1; transition: transform var(--dur) ease; }
+.menu-fold[aria-expanded="true"] .menu-fold__chevron{ transform: rotate(90deg); }
+.menu-fold__body{ padding: 0 4px var(--space-2); }
+.menu-fold__body[hidden]{ display: none; }
 
 .toast{
   position: absolute;

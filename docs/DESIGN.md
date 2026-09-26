@@ -74,6 +74,7 @@ posibles (eso está en `themes.css` mismo, es la fuente de verdad).
 | `.sheet` / `.sheet__card` / `.sheet__title` | hoja inferior modal |
 | `.menu-item` (+ `--danger`) | opción dentro de la hoja |
 | `.menu-section` + `.menu-group` | UI-019: grupo de opciones con encabezado (texto pequeño en mayúsculas, color apagado); cada grupo va envuelto en `.menu-section` para que `.menu-item:last-child` siga quitando la última línea |
+| `.menu-fold` (+ `__chevron`, `__body`) | UI-020: opción que despliega su contenido al tocarla (`aria-expanded`); el cuerpo (`.menu-fold__body`) va oculto de entrada y se llena la primera vez que se abre |
 | `.toast` | aviso flotante arriba, con `aria-live` |
 
 `select` e `input[type=range]` llevan estilo propio sin necesitar clase adicional. Todo respeta `:active`, `:focus-visible` (anillo `--color-accent-2`) y `:disabled`; `prefers-reduced-motion: reduce` desactiva animaciones. Este módulo no define clases opcionales adicionales.
@@ -105,3 +106,7 @@ son degradados sutiles (solo se usan en `background`). Nombres en el selector: "
 | `--bubble-edge` | `inset 0 0 0 1px rgba(255,238,255,.09)` | `inset 0 0 0 1px rgba(255,255,255,.7), 0 1px 2px rgba(60,40,90,.1)` | `inset 0 0 0 1px rgba(255,236,220,.09)` | `inset 0 0 0 1px rgba(255,255,255,.75), 0 1px 2px rgba(80,50,30,.1)` |
 
 Contraste logrado (WCAG, peor tramo del degradado; el test `contrast.test.mjs` los vigila): texto/personaje 10,8–13,1; cursiva/personaje 4,8–7,8; texto/usuario 4,9–5,7; cursiva/usuario 4,7–5,4; blanco sobre el acento (botón enviar) 5,1–6,2; texto secundario sobre el fondo 5,9–7,4.
+
+## Métricas técnicas: "esconder, no eliminar" (UI-020)
+
+Principio del proyecto (decisión del usuario): los datos técnicos (conteo de mensajes, contexto usado, y toda medición futura como las de UI-001/UI-005) **se siguen calculando y siguen disponibles** para Claude Code y el arquitecto, pero **no se muestran de entrada** al usuario final, cuya experiencia es chatear. Su lugar es la sección plegable **"Diagnóstico"** del menú ⋮ del chat (`buildDiagnostics` en `www/js/ui/chat.js`; cerrada por defecto; texto de aviso "Información técnica. No hace falta entenderla para usar la app."). Contratos posteriores que midan algo deben añadirlo dentro de esa sección (o de una equivalente plegada), no en la pantalla principal. Si algún día existe `docs/PRINCIPIOS-DE-INGENIERIA.md` (DOC-005), enlazar este principio allí.

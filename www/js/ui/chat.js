@@ -1508,7 +1508,7 @@ function onBack() {
 
 // Cuenta de mensajes por rol + estimación de cuánto contexto del modelo
 // ocupa la conversación en este momento (aproximado: ver `estimateContextUsage`
-// en prompt.js). Solo informativo (se muestra al abrir el menú del chat).
+// en prompt.js). Solo informativo (UI-020: dentro de "Diagnóstico" del menú del chat, plegado por defecto).
 function buildUsageInfo() {
   const field = document.createElement('div');
   field.className = 'field';
@@ -1540,6 +1540,7 @@ function buildUsageInfo() {
 }
 
 // UI-019: el menú (⋮) agrupa las opciones por categoría; ninguna cambia de comportamiento, solo de lugar.
+// UI-020 ("esconder, no eliminar"): el conteo de mensajes y el contexto viven en "Diagnóstico", plegado por defecto.
 function menuItem(label, onClick) {
   const btn = document.createElement('button');
   btn.type = 'button';
@@ -1562,9 +1563,47 @@ function menuSection(title, items) {
   return section;
 }
 
+// Sección plegable, cerrada de entrada. El contenido se calcula la primera vez que se abre (mismos cálculos de siempre).
+function buildDiagnostics() {
+  const wrap = document.createElement('div');
+  wrap.className = 'menu-section';
+
+  const toggle = document.createElement('button');
+  toggle.type = 'button';
+  toggle.className = 'menu-item menu-fold';
+  toggle.setAttribute('aria-expanded', 'false');
+  const label = document.createElement('span');
+  label.textContent = 'Diagnóstico';
+  const chevron = document.createElement('span');
+  chevron.className = 'menu-fold__chevron';
+  chevron.setAttribute('aria-hidden', 'true');
+  chevron.textContent = '›';
+  toggle.append(label, chevron);
+
+  const body = document.createElement('div');
+  body.className = 'menu-fold__body';
+  body.hidden = true;
+  let built = false;
+
+  toggle.addEventListener('click', () => {
+    const open = body.hidden;
+    if (open && !built) {
+      built = true;
+      const note = document.createElement('div');
+      note.className = 'field__hint';
+      note.textContent = 'Información técnica. No hace falta entenderla para usar la app.';
+      body.append(note, buildUsageInfo());
+    }
+    body.hidden = !open;
+    toggle.setAttribute('aria-expanded', String(open));
+  });
+
+  wrap.append(toggle, body);
+  return wrap;
+}
+
 function onMenu() {
   const wrap = document.createElement('div');
-  wrap.appendChild(buildUsageInfo());
 
   // Navegación (sin encabezado)
   wrap.appendChild(menuItem('Ajustes', () => openSettings(app)));
@@ -1609,6 +1648,8 @@ function onMenu() {
       }),
     ])
   );
+
+  wrap.appendChild(buildDiagnostics());
 
   app.openSheet(wrap);
 }
