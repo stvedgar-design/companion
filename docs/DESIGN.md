@@ -36,7 +36,7 @@ posibles (eso está en `themes.css` mismo, es la fuente de verdad).
 | `--color-danger` | errores, acciones destructivas | `#f0566a` |
 | `--color-ok` | estados correctos | `#6ee7a8` |
 | `--color-overlay` | capa oscura detrás de la hoja inferior | `rgba(6,6,12,.6)` |
-| `--color-muted-on-accent` | *cursiva* sobre la burbuja del usuario (la regla de chat.css ya la respeta; UI-008 dejó de forzar `rgba(255,255,255,.72)`) — blanco casi opaco (.95-.96) salvo iMessage claro (negro .85, coherente con su texto negro) | `rgba(255,255,255,.72)` |
+| `--color-muted-on-accent` | *cursiva* sobre la burbuja del usuario (la regla de chat.css ya la respeta). UI-021: color SÓLIDO teñido con la identidad de cada skin (lavanda en Nomi/Glass/Penumbra, durazno en Penumbra Claude, azul en iMessage oscuro, azul marino en iMessage claro) para distinguirse del texto normal (blanco/negro puro); valores en la tabla "Cursiva del usuario" de abajo | `rgba(255,255,255,.72)` |
 | `--grad-user` | fondo de la burbuja del usuario — degradado o color plano según el skin | `linear-gradient(135deg,#7a12d6,#9b3ff0)` |
 | `--grad-avatar` | fondo del avatar por defecto | `linear-gradient(135deg,#5b1fa8,#c04bd6)` |
 | `--font` | familia tipográfica — varía por skin (Literata en Nomi/Glass, fuente del sistema en iMessage) | `'Literata', Georgia, 'Times New Roman', serif` |
@@ -102,10 +102,24 @@ son degradados sutiles (solo se usan en `background`). Nombres en el selector: "
 | `--color-accent` / `-2` | `#9146cf` / `#b47ae6` | `#7d3fc4` / `#9a63dc` | `#b3512f` / `#e08a66` | `#a94a29` / `#c8694a` |
 | `--color-em` (acciones del personaje) | `#e6ad82` | `#8e4626` | `#e5a07c` | `#9a4424` |
 | `--grad-user` (135°) | `#6b2fa3 → #8747c0` | `#7a3cc0 → #8e52d0` | `#a3462a → #b3522f` | `#a3462a → #b3522f` |
-| `--color-on-user` / `--color-muted-on-accent` | `#fff` / `.96` | `#fff` / `.96` | `#fff` / `.98` | `#fff` / `.98` |
+| `--color-on-user` / `--color-muted-on-accent` | `#fff` / `#e5d0ff` | `#fff` / `#efe3ff` | `#fff` / `#ffdfcc` | `#fff` / `#ffdfcc` |
 | `--bubble-edge` | `inset 0 0 0 1px rgba(255,238,255,.09)` | `inset 0 0 0 1px rgba(255,255,255,.7), 0 1px 2px rgba(60,40,90,.1)` | `inset 0 0 0 1px rgba(255,236,220,.09)` | `inset 0 0 0 1px rgba(255,255,255,.75), 0 1px 2px rgba(80,50,30,.1)` |
 
-Contraste logrado (WCAG, peor tramo del degradado; el test `contrast.test.mjs` los vigila): texto/personaje 10,8–13,1; cursiva/personaje 4,8–7,8; texto/usuario 4,9–5,7; cursiva/usuario 4,7–5,4; blanco sobre el acento (botón enviar) 5,1–6,2; texto secundario sobre el fondo 5,9–7,4.
+Contraste logrado (WCAG, peor tramo del degradado; el test `contrast.test.mjs` los vigila): texto/personaje 10,8–13,1; cursiva/personaje 4,8–7,8; texto/usuario 4,9–5,7; cursiva/usuario 4,0–5,4 (UI-021: ver tabla de abajo); blanco sobre el acento (botón enviar) 5,1–6,2; texto secundario sobre el fondo 5,9–7,4.
+
+### Cursiva del usuario (UI-021, decisión del usuario)
+
+En la burbuja del usuario el texto normal ya es blanco (negro en iMessage claro), sin margen para distinguir la cursiva por brillo. Se le dio a la cursiva un color sólido teñido con la identidad del skin; el precio es contraste: **4,0:1 como piso** (el texto llega a 4,5–5,7) en vez de los 4,5 de UI-008. Todo por `--color-muted-on-accent`; la cursiva del PERSONAJE (`--color-em`) no cambió.
+
+| Skin | Oscuro | Claro | Contraste (oscuro / claro) |
+|---|---|---|---|
+| Nomi | `#f1e6ff` | `#f1e6ff` | 4,0 / 4,0 |
+| Glass | `#dbc4fc` | `#f4ecff` | 4,0 / **3,4** (el texto blanco ya solo llega a 3,88) |
+| iMessage | `#e8f3ff` | `#082046` | **3,3** (el texto blanco ya solo llega a 3,65) / 4,0 |
+| Penumbra | `#e5d0ff` | `#efe3ff` | 4,0 / 4,0 |
+| Penumbra Claude | `#ffdfcc` | `#ffdfcc` | 4,0 / 4,0 |
+
+`tests/contrast.test.mjs` vigila los pisos (4,0; 3,3 en Glass claro; 3,2 en iMessage oscuro) y que la cursiva sea de un color distinto al del texto en los 10 skins/modos.
 
 ## Métricas técnicas: "esconder, no eliminar" (UI-020)
 

@@ -67,18 +67,22 @@ function roles(t) {
 // Umbral por skin/modo. 4.5 = objetivo WCAG AA. Las excepciones son el MÁXIMO que se logra sin cambiar el
 // color de la burbuja del usuario (color de identidad del skin): ver docs/HISTORIAL.md, "UI-008".
 const AA = 4.5;
+// UI-021: la cursiva del usuario se tiñe con el color de cada skin para distinguirse del texto (que ya es blanco/negro
+// puro, sin margen). Decisión del usuario: 4,0:1 como piso en los skins con margen; en los dos skins donde el texto
+// mismo no llega a 4 (Glass claro, iMessage oscuro) la cursiva queda ~0,5 por debajo del texto.
+const EM4 = 4.0;
 const FLOORS = {
-  'nomi/dark':      { charText: 7, charEm: AA, userText: AA,  userEm: AA },
-  'nomi/light':     { charText: 7, charEm: AA, userText: AA,  userEm: AA },
-  'glass/dark':     { charText: 7, charEm: AA, userText: AA,  userEm: AA },
-  'glass/light':    { charText: 7, charEm: AA, userText: 3.8, userEm: 3.6 }, // burbuja violeta clara: blanco da 3.88 como máximo
-  'imessage/dark':  { charText: 7, charEm: AA, userText: 3.6, userEm: 3.4 }, // azul de iOS con texto blanco: 3.65 como máximo
-  'imessage/light': { charText: 7, charEm: AA, userText: AA,  userEm: AA },
+  'nomi/dark':      { charText: 7, charEm: AA, userText: AA,  userEm: EM4 },
+  'nomi/light':     { charText: 7, charEm: AA, userText: AA,  userEm: EM4 },
+  'glass/dark':     { charText: 7, charEm: AA, userText: AA,  userEm: EM4 },
+  'glass/light':    { charText: 7, charEm: AA, userText: 3.8, userEm: 3.3 }, // burbuja violeta clara: blanco da 3.88 como máximo
+  'imessage/dark':  { charText: 7, charEm: AA, userText: 3.6, userEm: 3.2 }, // azul de iOS con texto blanco: 3.65 como máximo
+  'imessage/light': { charText: 7, charEm: AA, userText: AA,  userEm: EM4 },
   // UI-009: los skins nuevos nacen con 4,5:1 en todos los roles (el contraste es parte del diseño de la paleta).
-  'penumbra/dark':         { charText: 7, charEm: AA, userText: AA, userEm: AA },
-  'penumbra/light':        { charText: 7, charEm: AA, userText: AA, userEm: AA },
-  'penumbra-claude/dark':  { charText: 7, charEm: AA, userText: AA, userEm: AA },
-  'penumbra-claude/light': { charText: 7, charEm: AA, userText: AA, userEm: AA },
+  'penumbra/dark':         { charText: 7, charEm: AA, userText: AA, userEm: EM4 },
+  'penumbra/light':        { charText: 7, charEm: AA, userText: AA, userEm: EM4 },
+  'penumbra-claude/dark':  { charText: 7, charEm: AA, userText: AA, userEm: EM4 },
+  'penumbra-claude/light': { charText: 7, charEm: AA, userText: AA, userEm: EM4 },
 };
 
 test('UI-008/UI-009: contraste de texto y cursiva sobre cada burbuja, en los 10 skins/modos', () => {
@@ -89,6 +93,16 @@ test('UI-008/UI-009: contraste de texto y cursiva sobre cada burbuja, en los 10 
     for (const [role, floor] of Object.entries(FLOORS[key])) {
       assert.ok(r[role] >= floor, `${key} ${role}: ${r[role].toFixed(2)} < ${floor}`);
     }
+  }
+});
+
+test('UI-021: la cursiva del usuario es un color distinto del texto del usuario en cada skin/modo, teñido con su identidad', () => {
+  for (const [key, t] of Object.entries(loadSkins())) {
+    const text = parseColor(t['--color-on-user'] || t['--color-text']);
+    const em = parseColor(t['--color-muted-on-accent']);
+    assert.ok(em && em.a === 1, `${key}: la cursiva del usuario es un color sólido`);
+    const dist = Math.abs(em.r - text.r) + Math.abs(em.g - text.g) + Math.abs(em.b - text.b);
+    assert.ok(dist >= 24, `${key}: cursiva demasiado parecida al texto (distancia ${dist.toFixed(0)})`);
   }
 });
 
