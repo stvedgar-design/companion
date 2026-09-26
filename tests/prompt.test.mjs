@@ -13,7 +13,8 @@ import {
   formatContinuityBlock,
   continuityBlockChars,
   historyStartIndex,
-  CONTINUITY_RESERVE_CHARS
+  CONTINUITY_RESERVE_CHARS,
+  formatRelationshipBlock
 } from '../www/js/api/prompt.js';
 
 function makeCard(overrides = {}) {
@@ -661,4 +662,65 @@ test('LAT-001: modo texto simple no cambia (no usa mensaje de relleno)', () => {
   const { prompt } = buildPlainPrompt(card, all, settings);
   const firstLine = prompt.split('\n[Start of chat]\n')[1].split('\n')[0];
   assert.ok(firstLine.startsWith('Luna: ') || firstLine.startsWith('Edgar: '));
+});
+
+// ---------- MEM-008: estado de la relación en la cabecera ----------
+
+test('MEM-008: formatRelationshipBlock — una frase por nivel, con los nombres reales; nada sin recuerdos', () => {
+  assert.equal(formatRelationshipBlock('few', 'Mia', 'Sam'), 'Relationship so far: Sam and Mia are still getting to know each other.');
+  assert.equal(formatRelationshipBlock('several', 'Mia', 'Sam'), 'Relationship so far: Sam and Mia have already shared quite a lot.');
+  assert.equal(formatRelationshipBlock('many', 'Luna', 'Edgar'), 'Relationship so far: Edgar and Luna have a long shared history.');
+  for (const level of ['none', '', undefined, null, 'constructor', 'toString', 'otro']) {
+    assert.equal(formatRelationshipBlock(level, 'Mia', 'Sam'), '', String(level));
+  }
+});
+
+test('MEM-008: la línea va en la CABECERA, justo antes de los "siempre presentes" (ambos modos); sin nivel el prompt es IDÉNTICO', () => {
+  const card = makeCard({ description: 'Una guardiana.', scenario: 'Una torre.' });
+  const settings = makeSettings();
+  const msgs = [{ role: 'char', text: 'Hola.', ts: 1 }, { role: 'user', text: 'Hola Luna', ts: 2 }];
+  const always = 'Always keep in mind:\n- A Edgar le gusta el té.';
+  const LINE = 'Relationship so far: Edgar and Luna have already shared quite a lot.';
+
+  const plain = buildPlainPrompt(card, msgs, settings, '', always, '', '', false, { relationship: 'several' }).prompt;
+  assert.ok(plain.includes(`Scenario: Una torre.\n\n${LINE}\n\n${always}\n\n[Start of chat]`));
+
+  const chat = buildChatMessages(card, msgs, settings, '', always, '', '', false, { relationship: 'several' }).messages;
+  assert.ok(chat[0].content.endsWith(`Scenario: Una torre.\n\n${LINE}\n\n${always}`));
+  assert.ok(!chat.slice(1).some((m) => m.content.includes('Relationship so far')), 'solo en la cabecera, nunca en los mensajes');
+
+  // Sin nivel, con 'none' o con extras vacíos: idéntico al de antes.
+  const base = { plain: buildPlainPrompt(card, msgs, settings, '', always), chat: buildChatMessages(card, msgs, settings, '', always) };
+  for (const extras of [undefined, {}, { relationship: '' }, { relationship: 'none' }, { continuity: '' }]) {
+    assert.deepEqual(buildPlainPrompt(card, msgs, settings, '', always, '', '', false, extras), base.plain);
+    assert.deepEqual(buildChatMessages(card, msgs, settings, '', always, '', '', false, extras), base.chat);
+  }
+  assert.ok(!base.plain.prompt.includes('Relationship so far'));
+});
+
+test('MEM-008: sin "siempre presentes" la línea igual va en la cabecera; la caché no se mueve turno a turno (misma cabecera)', () => {
+  const card = makeCard();
+  const settings = makeSettings();
+  const a = buildChatMessages(card, [{ role: 'user', text: 'uno', ts: 1 }], settings, '', '', '', '', false, { relationship: 'few' }).messages[0].content;
+  const b = buildChatMessages(card, [{ role: 'user', text: 'otro texto distinto', ts: 1 }], settings, '', '', 'Known facts:\n- x', 'nota', true, { relationship: 'few', continuity: 'Resumen.' }).messages[0].content;
+  assert.equal(a, b);
+  assert.ok(a.includes('Relationship so far: Edgar and Luna are still getting to know each other.'));
+});
+
+test('MEM-008: la línea cuenta en el presupuesto — estimateContextUsage e historyStartIndex la incluyen y siguen coincidiendo con el armador', () => {
+  const card = makeCard();
+  const settings = makeSettings({ ctx: 1024, maxLen: 200, mode: 'chat' });
+  const msgs = Array.from({ length: 60 }, (_, i) => ({ role: i % 2 ? 'user' : 'char', text: `#${i}# ` + 'palabra '.repeat(10), ts: i }));
+  const noRel = estimateContextUsage(card, msgs, settings);
+  const withRel = estimateContextUsage(card, msgs, settings, '', '', 0, { relationship: 'many' });
+  assert.ok(withRel.approxTokens > noRel.approxTokens);
+  for (const mode of ['chat', 'plain']) {
+    const st = { ...settings, mode };
+    const sent = mode === 'chat'
+      ? buildChatMessages(card, msgs, st, '', '', '', '', false, { relationship: 'many' }).messages.map((m) => m.content).join('\n')
+      : buildPlainPrompt(card, msgs, st, '', '', '', '', false, { relationship: 'many' }).prompt;
+    const idx = historyStartIndex(card, msgs, st, '', '', 0, 0, 'many');
+    assert.ok(idx > 0);
+    assert.ok(sent.includes(`#${idx}# `) && !sent.includes(`#${idx - 1}# `), mode);
+  }
 });

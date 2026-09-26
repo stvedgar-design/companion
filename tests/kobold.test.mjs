@@ -437,6 +437,42 @@ test('generateReply no agrega ningún bloque de lorebook si ninguna entrada matc
   }
 });
 
+test('MEM-008: la cabecera lleva "Relationship so far:" según cuántos recuerdos tiene el personaje; sin recuerdos, nada', async () => {
+  const entry = (i) => ({ id: String(i), keys: ['nada' + i], content: 'Hecho número ' + i + ' de la historia.', updated: 1, source: 'auto' });
+  const cases = [
+    [0, null],
+    [1, 'Edgar and Luna are still getting to know each other.'],
+    [4, 'Edgar and Luna are still getting to know each other.'],
+    [5, 'Edgar and Luna have already shared quite a lot.'],
+    [11, 'Edgar and Luna have already shared quite a lot.'],
+    [12, 'Edgar and Luna have a long shared history.'],
+  ];
+  for (const [count, phrase] of cases) {
+    let capturedPrompt = '';
+    const { server } = createFakeServer({
+      onGenerateStream: async (res, body) => {
+        capturedPrompt = body.prompt;
+        res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+        res.write('data: {"token":"ok"}\n\n');
+        res.end();
+      }
+    });
+    const base = await listen(server);
+    try {
+      await generateReply({
+        character: makeCharacter({ lorebook: Array.from({ length: count }, (_, i) => entry(i)) }),
+        chat: { scenario: '' },
+        messages: [{ role: 'user', text: 'Hola', ts: 1 }],
+        settings: makeSettings(base)
+      });
+      if (phrase === null) assert.ok(!capturedPrompt.includes('Relationship so far'), `count=${count}`);
+      else assert.ok(capturedPrompt.includes(`Relationship so far: ${phrase}`), `count=${count}`);
+    } finally {
+      server.close();
+    }
+  }
+});
+
 test('generateReply comparte el lorebook del personaje sin importar el chat pasado', async () => {
   let capturedPrompt = '';
   const { server } = createFakeServer({

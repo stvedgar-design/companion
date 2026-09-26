@@ -134,6 +134,29 @@ export function scenarioGreeting(character, settings, chatScenario) {
   ];
 }
 
+// MEM-008: estado de la relación en la conversación. Va en la CABECERA, junto a los recuerdos "siempre presentes"
+// (solo cambia cuando el lorebook cruza un umbral de cantidad, así que no se mueve turno a turno). El nivel lo
+// calcula `relationshipSummary().level` (api/relationship.js); aquí solo se elige la frase, en inglés porque el
+// prompt lo está. Sin recuerdos (`none`) o con un nivel desconocido no se envía nada.
+const RELATIONSHIP_LABEL = 'Relationship so far:';
+const RELATIONSHIP_TEMPLATES = Object.freeze({
+  few: (U, N) => `${U} and ${N} are still getting to know each other.`,
+  several: (U, N) => `${U} and ${N} have already shared quite a lot.`,
+  many: (U, N) => `${U} and ${N} have a long shared history.`,
+});
+
+/**
+ * Texto de la línea "Relationship so far: …" o '' si no aplica.
+ * @param {string} level  'none'|'few'|'several'|'many' (de `relationshipSummary().level`)
+ * @param {string} charName
+ * @param {string} userName
+ * @returns {string}
+ */
+export function formatRelationshipBlock(level, charName, userName) {
+  const make = Object.prototype.hasOwnProperty.call(RELATIONSHIP_TEMPLATES, level) ? RELATIONSHIP_TEMPLATES[level] : null;
+  return make ? `${RELATIONSHIP_LABEL} ${make(userName, charName)}` : '';
+}
+
 // Bloque de cabecera común a ambos formatos de prompt: system_prompt de la
 // card (si existe), una instrucción breve de rol, y los campos de la card
 // con las macros ya resueltas. `chatScenario` es el escenario escrito a
@@ -141,8 +164,9 @@ export function scenarioGreeting(character, settings, chatScenario) {
 // escenario de la card, nunca lo reemplaza. `loreBlock` es el texto ya
 // armado (ver `formatLoreBlock` en api/lorebook.js) con las entradas del
 // lorebook automático que matchearon por keyword en los últimos mensajes;
-// '' si ninguna matcheó o el chat todavía no tiene lorebook.
-function headBlock(card, settings, chatScenario, loreBlock) {
+// '' si ninguna matcheó o el chat todavía no tiene lorebook. `relationship` = nivel de MEM-008 ('few'|'several'|'many';
+// cualquier otro valor, o ausente, no añade nada).
+function headBlock(card, settings, chatScenario, loreBlock, relationship = '') {
   const N = card.name;
   const U = (settings && settings.user) || 'User';
   const sub = (s) => subMacros(s, N, U);
@@ -163,6 +187,8 @@ function headBlock(card, settings, chatScenario, loreBlock) {
   if (chatScenario) scenarioLines.push(sub(chatScenario));
   if (scenarioLines.length) parts.push(`Scenario: ${scenarioLines.join('\n')}`);
 
+  const relationshipLine = formatRelationshipBlock(relationship, N, U);
+  if (relationshipLine) parts.push(relationshipLine);
   if (loreBlock) parts.push(loreBlock);
 
   if (card.mes_example) {
@@ -272,15 +298,16 @@ function stableFront(kept, totalCount) {
  * @param {string} [varietyNote] FMT-004: nota breve para que el personaje varíe su vocabulario. Va junto al bloque
  *   "por tema", al FINAL y solo en el prompt construido.
  * @param {boolean} [prefill] FMT-002: si es true, el prompt termina con `FORMAT_PREFILL` (la respuesta arranca dentro de una acción).
- * @param {{ continuity?: string }} [extras] MEM-007: `continuity` = texto del resumen de continuidad del chat; va al FINAL
- *   (primer bloque, antes del "por tema"). Ausente o vacío: el prompt queda idéntico al de antes.
+ * @param {{ continuity?: string, relationship?: string }} [extras] MEM-007: `continuity` = texto del resumen de continuidad del chat; va al FINAL
+ *   (primer bloque, antes del "por tema"). MEM-008: `relationship` = nivel (`'few'|'several'|'many'`) de `relationshipSummary()`;
+ *   añade "Relationship so far: …" a la CABECERA, junto a los "siempre presentes". Ausente o vacío: el prompt queda idéntico al de antes.
  * @returns {{ prompt: string, stop: string[] }}
  */
 export function buildPlainPrompt(card, messages, settings, chatScenario = '', loreBlock = '', topicBlock = '', varietyNote = '', prefill = false, extras = {}) {
   const N = card.name;
   const U = (settings && settings.user) || 'User';
 
-  const head = headBlock(card, settings, chatScenario, loreBlock) + '\n\n[Start of chat]';
+  const head = headBlock(card, settings, chatScenario, loreBlock, extras && extras.relationship) + '\n\n[Start of chat]';
   const post = card.post_history_instructions
     ? `\n[${subMacros(card.post_history_instructions, N, U)}]`
     : '';
@@ -332,7 +359,7 @@ export function buildChatMessages(card, messages, settings, chatScenario = '', l
   const N = card.name;
   const U = (settings && settings.user) || 'User';
 
-  let head = headBlock(card, settings, chatScenario, loreBlock);
+  let head = headBlock(card, settings, chatScenario, loreBlock, extras && extras.relationship);
   if (card.post_history_instructions) {
     head += '\n\n' + subMacros(card.post_history_instructions, N, U);
   }
@@ -381,7 +408,7 @@ export function buildChatMessages(card, messages, settings, chatScenario = '', l
  * @param {string} [chatScenario]
  * @param {string} [loreBlock] Bloque estable de la cabecera ("siempre presentes").
  * @param {number} [topicReserveChars] MEM-004: caracteres que se reservan para el bloque "por tema" (va al final del prompt).
- * @param {{ continuity?: string }} [extras] MEM-007: el resumen de continuidad (va al final) también ocupa contexto.
+ * @param {{ continuity?: string, relationship?: string }} [extras] MEM-007: el resumen de continuidad (va al final) también ocupa contexto. MEM-008: `relationship` (nivel) suma la línea de la cabecera.
  * @returns {{ approxTokens: number, budgetTokens: number, ratio: number }}
  *   `ratio` es approxTokens/budgetTokens, sin recortar a 1 (puede superar 1
  *   si ya no entra todo el historial y algunos mensajes se recortarían).
@@ -389,7 +416,7 @@ export function buildChatMessages(card, messages, settings, chatScenario = '', l
 export function estimateContextUsage(card, messages, settings, chatScenario = '', loreBlock = '', topicReserveChars = 0, extras = {}) {
   const ctx = (settings && settings.ctx) || 4096;
   const maxLen = (settings && settings.maxLen) || 220;
-  const head = headBlock(card, settings, chatScenario, loreBlock);
+  const head = headBlock(card, settings, chatScenario, loreBlock, extras && extras.relationship);
   const historyChars = messages.reduce((sum, m) => sum + String(m.text || '').length + LINE_OVERHEAD, 0);
   const approxTokens = Math.ceil((head.length + historyChars + Math.max(0, topicReserveChars || 0) + continuityBlockChars(extras && extras.continuity)) / CHARS_PER_TOKEN);
   const budgetTokens = Math.max(1, ctx - maxLen);
@@ -408,19 +435,20 @@ export function estimateContextUsage(card, messages, settings, chatScenario = ''
  * @param {string} [loreBlock] Bloque "siempre presentes" de la cabecera.
  * @param {number} [endChars] Caracteres del bloque final (por tema + continuidad) que se descuentan del presupuesto.
  * @param {number} [extraChars] Reserva adicional hipotética.
+ * @param {string} [relationship] MEM-008: nivel de la relación (la línea de la cabecera ocupa presupuesto).
  * @returns {number} 0 si todo cabe; `messages.length - 1` como mucho (siempre queda al menos 1 mensaje).
  */
-export function historyStartIndex(card, messages, settings, chatScenario = '', loreBlock = '', endChars = 0, extraChars = 0) {
+export function historyStartIndex(card, messages, settings, chatScenario = '', loreBlock = '', endChars = 0, extraChars = 0, relationship = '') {
   const N = card.name;
   const U = (settings && settings.user) || 'User';
   const end = Math.max(0, endChars || 0) + Math.max(0, extraChars || 0);
   if (settings && settings.mode === 'chat') {
-    let head = headBlock(card, settings, chatScenario, loreBlock);
+    let head = headBlock(card, settings, chatScenario, loreBlock, relationship);
     if (card.post_history_instructions) head += '\n\n' + subMacros(card.post_history_instructions, N, U);
     const kept = stableFront(pickHistory(messages, historyBudgetChars(settings, head.length, end), (m) => m.text.length), messages.length);
     return messages.length - kept.length;
   }
-  const head = headBlock(card, settings, chatScenario, loreBlock) + '\n\n[Start of chat]';
+  const head = headBlock(card, settings, chatScenario, loreBlock, relationship) + '\n\n[Start of chat]';
   const post = card.post_history_instructions ? `\n[${subMacros(card.post_history_instructions, N, U)}]` : '';
   const cue = `\n${N}:`;
   const lines = messages.map((m) => `${m.role === 'user' ? U : N}: ${m.text}`);

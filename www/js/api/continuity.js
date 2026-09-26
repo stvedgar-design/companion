@@ -12,6 +12,7 @@
 
 import { historyStartIndex, continuityBlockChars, buildChatMessages, buildPlainPrompt, CONTINUITY_RESERVE_CHARS } from './prompt.js';
 import { loreBudgetPreview } from './lorebook.js';
+import { relationshipSummary } from './relationship.js';
 
 /** Tope de caracteres de CADA recuento nuevo (lo que se pide y lo que se conserva de la respuesta). */
 export const CONTINUITY_RECAP_CHARS = 400;
@@ -243,9 +244,10 @@ export function planForContext(ctx, opts = {}) {
   const continuity = continuityBlockChars(summary.text);
   const endChars = preview.topicReserve + continuity + (preview.topicReserve && continuity ? 1 : 0);
   const scenario = (chat && chat.scenario) || '';
-  const windowStart = historyStartIndex(character.card, messages, settings, scenario, preview.alwaysBlock, endChars, 0);
+  const relationship = relationshipSummary((character && character.lorebook) || []).level;
+  const windowStart = historyStartIndex(character.card, messages, settings, scenario, preview.alwaysBlock, endChars, 0, relationship);
   const look = CONTINUITY_LOOKAHEAD_CHARS * (opts.manual ? CONTINUITY_MANUAL_LOOKAHEAD_FACTOR : 1);
-  const triggerStart = historyStartIndex(character.card, messages, settings, scenario, preview.alwaysBlock, endChars, look);
+  const triggerStart = historyStartIndex(character.card, messages, settings, scenario, preview.alwaysBlock, endChars, look, relationship);
   return planContinuityUpdate({ messages, coveredUntil: summary.coveredUntil, windowStart, triggerStart });
 }
 
@@ -313,15 +315,18 @@ export function buildContinuationRequest(ctx, instruction) {
   const card = character.card;
   const scenario = (chat && chat.scenario) || '';
   const always = loreBudgetPreview((character && character.lorebook) || []).alwaysBlock;
+  // MEM-008: la cabecera incluye la línea de la relación, igual que en el chat normal (así sigue siendo continuación del prefijo).
+  const relationship = relationshipSummary((character && character.lorebook) || []).level;
+  const extras = { relationship };
   if (settings && settings.mode === 'chat') {
-    const built = buildChatMessages(card, messages, settings, scenario, always);
+    const built = buildChatMessages(card, messages, settings, scenario, always, '', '', false, extras);
     return {
       mode: 'chat',
       messages: [...built.messages, { role: 'user', content: instruction }, { role: 'assistant', content: CONTINUITY_PREFILL }],
       stop: ['\n'],
     };
   }
-  const built = buildPlainPrompt(card, messages, settings, scenario, always);
+  const built = buildPlainPrompt(card, messages, settings, scenario, always, '', '', false, extras);
   const cue = `\n${card.name}:`;
   const base = built.prompt.endsWith(cue) ? built.prompt.slice(0, -cue.length) : built.prompt;
   return { mode: 'plain', prompt: `${base}\n${instruction}\n${CONTINUITY_PREFILL}`, stop: ['\n'] };

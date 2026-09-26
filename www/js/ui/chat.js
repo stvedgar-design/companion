@@ -1464,7 +1464,7 @@ function buildUsageInfo() {
     const lore = loreBudgetPreview(character.lorebook || []);
     const { approxTokens, budgetTokens, ratio } = estimateContextUsage(
       character.card, messages, settings, chat ? chat.scenario : '', lore.alwaysBlock, lore.topicReserve,
-      { continuity: chat && chat.continuitySummary ? chat.continuitySummary.text : '' }
+      { continuity: chat && chat.continuitySummary ? chat.continuitySummary.text : '', relationship: relationshipSummary(character.lorebook || []).level }
     );
     const pct = Math.round(Math.min(ratio, 1) * 100);
     hint.textContent = ratio >= 1

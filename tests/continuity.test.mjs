@@ -193,8 +193,10 @@ test('buildContinuationRequest (plantilla): son los mismos mensajes del chat nor
   const messages = makeMessages(9);
   const chat = { scenario: '', continuitySummary: { text: 'Resumen viejo.', coveredUntil: 0, updated: 1 } };
   const req = buildContinuationRequest({ character, chat, messages, settings }, '[INSTR]');
-  const normal = buildChatMessages(character.card, messages, settings, '', 'Always keep in mind:\n- Sam es alérgico a los cacahuetes.');
+  // MEM-008: con 1 recuerdo el nivel es "few" y la cabecera lleva la línea de la relación (igual que en el chat normal).
+  const normal = buildChatMessages(character.card, messages, settings, '', 'Always keep in mind:\n- Sam es alérgico a los cacahuetes.', '', '', false, { relationship: 'few' });
   assert.equal(req.mode, 'chat');
+  assert.ok(normal.messages[0].content.includes('Relationship so far: Sam and Mia are still getting to know each other.'));
   assert.deepEqual(req.messages.slice(0, -2), normal.messages);          // mismo prefijo exacto: la caché del servidor se reutiliza
   assert.deepEqual(req.messages.slice(-2), [{ role: 'user', content: '[INSTR]' }, { role: 'assistant', content: CONTINUITY_PREFILL }]);
   assert.deepEqual(req.stop, ['\n']);

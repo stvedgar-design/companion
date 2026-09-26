@@ -5,6 +5,7 @@
 
 import { buildPlainPrompt, buildChatMessages, cleanReply, trimPartial, FORMAT_PREFILL } from './prompt.js';
 import { buildLoreBlocks } from './lorebook.js';
+import { relationshipSummary } from './relationship.js';
 import { VARIETY_NOTE, varietyNeeded } from './variety.js';
 
 const TOP_P = 0.92;
@@ -370,7 +371,9 @@ export async function generateReply({ character, chat, messages, settings, signa
   // MEM-007: resumen de continuidad de ESTE chat (lo que ya no cabe en la ventana). Va al FINAL del prompt, junto al bloque
   // "por tema"; sin resumen guardado no se pasa nada y el prompt queda idéntico al de siempre.
   const continuity = (chat && chat.continuitySummary && chat.continuitySummary.text) || '';
-  const extras = continuity ? { continuity } : {};
+  // MEM-008: nivel de la relación (según cuántos recuerdos tiene el personaje); va a la CABECERA. Sin recuerdos, no se envía nada.
+  const relationship = relationshipSummary((character && character.lorebook) || []).level;
+  const extras = { ...(continuity ? { continuity } : {}), ...(relationship !== 'none' ? { relationship } : {}) };
   const genkey = makeGenKey();
   const mode = settings.mode === 'chat' ? 'chat' : 'plain';
   const maxLen = settings.maxLen || 220;
