@@ -45,6 +45,8 @@ ser la última con contexto completo:
   usuario la suba al Proyecto de Claude.ai, donde revisa el arquitecto. **NINGUNA instancia de
   Claude Code debe leerla, editarla ni usarla como fuente de verdad**: los archivos originales
   mandan. Está en `.gitignore` y nunca se commitea.
+- **Principios de ingeniería (DOC-005):** `docs/PRINCIPIOS-DE-INGENIERIA.md` es lectura obligatoria antes de
+  tocar la interfaz, el chat o los datos (criterios de rendimiento, guardado incremental, esquema, privacidad).
 - **Orden de lectura (DOC-003):** este archivo (secciones 0, 3 y 4) y luego
   `docs/NOTES.md` completo; `docs/HISTORIAL.md` solo bajo demanda.
 - **Dónde está cada cosa**: `docs/NOTES.md` = estado vigente, principios y
