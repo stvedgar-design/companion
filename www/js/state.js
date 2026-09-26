@@ -4,6 +4,7 @@
 // Única API asíncrona y estable; la estructura interna del backend es libre.
 
 import { normalizeVariants } from './variants.js';
+import { sanitizeMeta } from './perf.js';
 
 /**
  * @typedef {Object} Card  Card normalizada: todos los campos siempre presentes.
@@ -84,6 +85,9 @@ import { normalizeVariants } from './variants.js';
  *   UI-017, solo mensajes del personaje regenerados: TODAS las versiones de la respuesta (2 o más; ausente = una sola).
  * @property {number} [activeVariant]  Índice de la versión que se ve. `text`/`loreUsed` son SIEMPRE los de esa versión
  *   (ver `variants.js`), así que el prompt, la exportación y la vista previa no necesitan saber de variantes.
+ * @property {{ ttftMs: number, totalMs: number, chars: number }} [meta]
+ *   UI-001, solo mensajes del personaje generados por el servidor: tiempo hasta el primer fragmento, tiempo total (ms) y
+ *   caracteres de la respuesta. Ausente = mensaje anterior a UI-001 / sin dato. No viaja nunca al modelo (el prompt solo lee `text`).
  */
 
 /**
@@ -216,9 +220,14 @@ export function sanitizeLoreUsed(raw) {
   return clean;
 }
 
-// Solo toca `loreUsed` y (UI-017) `variants`/`activeVariant`; cualquier otro campo del mensaje (y los mensajes sin ellos) pasan tal cual.
+// Solo toca `loreUsed`, (UI-017) `variants`/`activeVariant` y (UI-001) `meta`; cualquier otro campo del mensaje (y los mensajes sin ellos) pasan tal cual.
 export function sanitizeMessage(m) {
   if (!m || typeof m !== 'object') return m;
+  if ('meta' in m) {
+    const { meta, ...rest } = m;
+    const clean = m.role === 'char' ? sanitizeMeta(meta) : undefined;
+    m = clean === undefined ? rest : { ...rest, meta: clean };
+  }
   if ('loreUsed' in m) {
     const { loreUsed, ...rest } = m;
     const clean = m.role === 'char' ? sanitizeLoreUsed(loreUsed) : undefined;

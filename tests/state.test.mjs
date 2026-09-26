@@ -892,6 +892,60 @@ test('UI-010: importBackup v2 acepta mensajes con y sin loreUsed', async () => {
   assert.equal(msgs[1].loreUsed[0].always, true);
 });
 
+// ---------- UI-001: `meta` (tiempos por respuesta) en los mensajes ----------
+
+test('UI-001: meta se guarda y se lee en mensajes del personaje; los anteriores (sin meta) cargan igual', async () => {
+  const state = createState(createMemoryBackend());
+  await state.saveCharacter(makeCharacter({ id: 'x' }));
+  const chat = await state.createChat('x', {});
+  await state.saveChatMessages(chat.id, [
+    { role: 'user', text: 'hola', ts: 1 },
+    { role: 'char', text: 'viejo', ts: 2 },
+    { role: 'char', text: 'nuevo', ts: 3, meta: { ttftMs: 900.2, totalMs: 6400, chars: 5 } },
+  ]);
+  const msgs = await state.getChatMessages(chat.id);
+  assert.equal('meta' in msgs[1], false);
+  assert.deepEqual(msgs[2].meta, { ttftMs: 900, totalMs: 6400, chars: 5 });
+});
+
+test('UI-001: un meta malformado (o en un mensaje del usuario) se descarta sin tocar el resto del mensaje', async () => {
+  const state = createState(createMemoryBackend());
+  await state.saveCharacter(makeCharacter({ id: 'x' }));
+  const chat = await state.createChat('x', {});
+  await state.saveChatMessages(chat.id, [
+    { role: 'char', text: 'a', ts: 1, meta: 'basura', extra: 42 },
+    { role: 'char', text: 'b', ts: 2, meta: { ttftMs: -5, totalMs: 1, chars: 1 } },
+    { role: 'user', text: 'c', ts: 3, meta: { ttftMs: 1, totalMs: 2, chars: 3 } }, // el usuario nunca lleva meta
+  ]);
+  const msgs = await state.getChatMessages(chat.id);
+  assert.deepEqual(msgs[0], { role: 'char', text: 'a', ts: 1, extra: 42 });
+  assert.deepEqual(msgs[1], { role: 'char', text: 'b', ts: 2 });
+  assert.deepEqual(msgs[2], { role: 'user', text: 'c', ts: 3 });
+});
+
+test('UI-001: importBackup v1 y v2 con y sin meta siguen importando; meta sobrevive a la copia de seguridad', async () => {
+  const backend = createMemoryBackend();
+  const state = createState(backend);
+  const chatRec = { id: 'c1', characterId: 'x', title: '', scenario: '', created: 1, updated: 1, last: '', lastExportAt: 0 };
+  const v2 = {
+    app: 'companion', version: 2, exported: 1, settings: {},
+    characters: [makeCharacter({ id: 'x' })],
+    chats: { c1: chatRec },
+    chatMessages: { c1: [
+      { role: 'char', text: 'sin meta', ts: 1 },
+      { role: 'char', text: 'con meta', ts: 2, meta: { ttftMs: 100, totalMs: 2000, chars: 8 } },
+    ] },
+  };
+  await state.importBackup({ async text() { return JSON.stringify(v2); } });
+  const msgs = await state.getChatMessages('c1');
+  assert.equal(msgs.length, 2);
+  assert.equal('meta' in msgs[0], false);
+  assert.deepEqual(msgs[1].meta, { ttftMs: 100, totalMs: 2000, chars: 8 });
+  // ida y vuelta por exportBackup
+  const out = JSON.parse(await (await state.exportBackup()).text());
+  assert.deepEqual(out.chatMessages.c1[1].meta, { ttftMs: 100, totalMs: 2000, chars: 8 });
+});
+
 // ---------- UI-007: Settings.glassEffect ----------
 
 test('UI-007: glassEffect es "full" por defecto y solo acepta full/bars/off (copias previas sin el campo cargan en "full")', async () => {
