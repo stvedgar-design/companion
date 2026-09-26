@@ -132,6 +132,11 @@
    --color-muted-on-accent; ahora respeta el token de cada skin (el valor de la derecha es solo el respaldo). */
 .chat-row--user .chat-bubble em { color: var(--color-muted-on-accent, rgba(255, 255, 255, 0.72)); }
 .chat-bubble strong { font-weight: 600; }
+/* UI-023 (experimental, apagado por defecto): con "Tipografía dividida" (html[data-split-font="on"]), el texto normal (diálogo) de
+   los mensajes del PERSONAJE que traen acciones en cursiva usa --font-dialogue (sans); la cursiva sigue con la del skin (--font).
+   `chat.js` marca con `.chat-bubble--split` solo las burbujas que contienen <em>, así que un personaje sin cursiva (Ani) nunca cambia. */
+[data-split-font="on"] .chat-row--char .chat-bubble--split { font-family: var(--font-dialogue); }
+[data-split-font="on"] .chat-row--char .chat-bubble--split em { font-family: var(--font); }
 
 /* --- UI-010: indicador de memoria usada (gris = ningún recuerdo, acento del skin = usó alguno) --- */
 .chat-row__meta { margin-top: 2px; display: flex; align-items: center; gap: var(--space-2); }

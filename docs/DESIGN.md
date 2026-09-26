@@ -128,6 +128,16 @@ En la burbuja del usuario el texto normal ya es blanco (negro en iMessage claro)
 - **Punto de estado** (`.home-status`, `data-state` + `data-part`): el TONO cambia con la franja del día (las 4 de UI-018) y la FORMA dice el estado: conectado = disco relleno de 10 px; sin conexión = anillo hueco rojo de 14 px; comprobando = punto gris de 8 px. Tonos (oscuro / claro): madrugada `#8f9cff` / `#4a58d6`, mañana `#62d69a` / `#1a8a57`, tarde `#f0c14b` / `#9a6400`, noche `#c29cff` / `#7a3fc4`; nunca rojos (no se confunden con un error) y ≥3:1 sobre el fondo de los 10 skins/modos (vigilado por `contrast.test.mjs`). Son los únicos colores fijos fuera de `themes.css`: no dependen de la paleta del skin.
 - **Menos líneas divisorias**: se quitó el `border-bottom` de `.menu-item` (menú del chat, "Diagnóstico", "Elegir saludo"…).
 
+## Tipografía dividida (UI-023, experimental)
+
+Ajuste en Ajustes → Apariencia (`Settings.splitTypography`, **apagado por defecto**; con él apagado no se emite ninguna regla nueva y el aspecto es idéntico al anterior). Encendido, pone `data-split-font="on"` en `<html>` (`shell.applySplitTypography`, al instante y al arrancar) y `chat.css` hace que, **solo en burbujas del personaje que contienen cursiva** (`chat.js` les pone `.chat-bubble--split`), el texto normal (diálogo) use el token `--font-dialogue` y la cursiva siga con `--font` del skin. Un personaje sin cursiva (Ani) nunca lleva la marca, así que no se afecta sin ningún caso especial.
+
+| Token | Valor | Nota |
+|---|---|---|
+| `--font-dialogue` (en `tokens.css`, global; ningún skin lo redefine) | `-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif` | La misma pila de sistema que iMessage: no hay archivos que incluir ni licencia que verificar (Roboto en Android). El tamaño (17 px) y los colores no cambian, así que el contraste tampoco. |
+
+En iMessage el ajuste no se nota (su `--font` ya es esa pila). Opinión del usuario tras probarlo: **pendiente** (es quien decide si algún día queda encendido por defecto).
+
 ## Métricas técnicas: "esconder, no eliminar" (UI-020)
 
 Principio del proyecto (decisión del usuario): los datos técnicos (conteo de mensajes, contexto usado, y toda medición futura como las de UI-001/UI-005) **se siguen calculando y siguen disponibles** para Claude Code y el arquitecto, pero **no se muestran de entrada** al usuario final, cuya experiencia es chatear. Su lugar es la sección plegable **"Diagnóstico"** del menú ⋮ del chat (`buildDiagnostics` en `www/js/ui/chat.js`; cerrada por defecto; texto de aviso "Información técnica. No hace falta entenderla para usar la app."). Contratos posteriores que midan algo deben añadirlo dentro de esa sección (o de una equivalente plegada), no en la pantalla principal. Si algún día existe `docs/PRINCIPIOS-DE-INGENIERIA.md` (DOC-005), enlazar este principio allí.

@@ -320,6 +320,14 @@ function formatOpts(role) {
   return { role, quoteDialogue: !!settings && settings.formatAssist !== false };
 }
 
+// Pinta el texto de una burbuja. UI-023: marca con `.chat-bubble--split` las del personaje que traen cursiva (formato Nomi);
+// solo tiene efecto visual si el usuario activó "Tipografía dividida" (ver chat.css).
+function setBubbleContent(bubble, m) {
+  const html = formatMessage(m.text, formatOpts(m.role));
+  bubble.innerHTML = html;
+  bubble.classList.toggle('chat-bubble--split', m.role === 'char' && html.includes('<em>'));
+}
+
 function buildMessageRow(m, i) {
   const isLast = i === messages.length - 1;
   const row = document.createElement('div');
@@ -331,7 +339,7 @@ function buildMessageRow(m, i) {
   if (m.role === 'char' && !m.text && busy && isLast) {
     bubble.appendChild(buildDots());
   } else {
-    bubble.innerHTML = formatMessage(m.text, formatOpts(m.role));
+    setBubbleContent(bubble, m);
   }
   row.appendChild(bubble);
 
@@ -727,7 +735,7 @@ function updateStreamingBubble() {
   const bubble = lastRow.querySelector('.chat-bubble');
   if (!bubble) return;
   if (msg.text) {
-    bubble.innerHTML = formatMessage(msg.text, formatOpts(msg.role));
+    setBubbleContent(bubble, msg);
   } else {
     bubble.replaceChildren(buildDots());
   }

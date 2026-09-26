@@ -176,3 +176,17 @@ test('UI-022: "sin conexión" se distingue por la forma (anillo hueco), no solo 
   assert.match(err, /background:\s*transparent/);
   assert.match(err, /border:\s*[\d.]+px solid var\(--color-danger\)/);
 });
+
+// ---- UI-023: tipografía dividida (experimental) ----
+
+test('UI-023: el token --font-dialogue existe y la regla solo actúa con html[data-split-font="on"], solo en el personaje y sin tocar la cursiva', () => {
+  assert.match(css('tokens.css'), /--font-dialogue:\s*[^;]*sans-serif;/);
+  const chat = css('chat.css');
+  // ninguna regla usa --font-dialogue fuera del atributo (apagado = idéntico a antes)
+  for (const m of chat.matchAll(/([^{}]*)\{[^}]*--font-dialogue[^}]*\}/g)) {
+    assert.match(m[1], /\[data-split-font="on"\] \.chat-row--char \.chat-bubble--split/, m[1]);
+  }
+  assert.match(chat, /\[data-split-font="on"\] \.chat-row--char \.chat-bubble--split em\s*\{\s*font-family:\s*var\(--font\);/);
+  // ningún skin redefine --font-dialogue (es uno solo, global)
+  assert.ok(!/--font-dialogue/.test(css('themes.css')));
+});

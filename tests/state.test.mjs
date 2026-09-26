@@ -63,6 +63,7 @@ test('getSettings devuelve valores por defecto cuando no hay nada guardado', asy
     continuityAuto: false, // MEM-007
     varietyAssist: false,
     formatAssist: true,
+    splitTypography: false, // UI-023
   });
 });
 
@@ -908,6 +909,22 @@ test('UI-007: glassEffect es "full" por defecto y solo acepta full/bars/off (cop
   const old = await createState(backend).getSettings();
   assert.equal(old.glassEffect, 'full');
   assert.equal(old.theme, 'glass');
+});
+
+// ---------- UI-023: Settings.splitTypography ----------
+
+test('UI-023: splitTypography es false por defecto, solo acepta true y las copias previas cargan en false', async () => {
+  const state = createState(createMemoryBackend());
+  assert.equal((await state.getSettings()).splitTypography, false);
+  assert.equal((await state.saveSettings({ splitTypography: true })).splitTypography, true);
+  for (const bad of ['true', 1, null, undefined, 'on']) {
+    assert.equal((await state.saveSettings({ splitTypography: bad })).splitTypography, false, String(bad));
+  }
+  const backend = createMemoryBackend();
+  await backend.put('settings', 'main', { url: 'http://x:5001', user: 'Sam', theme: 'penumbra', themeMode: 'light' });
+  const old = await createState(backend).getSettings();
+  assert.equal(old.splitTypography, false);
+  assert.equal(old.theme, 'penumbra');
 });
 
 // ---------- MEM-007: resumen de continuidad por chat ----------

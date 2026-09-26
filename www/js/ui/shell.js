@@ -75,6 +75,13 @@ export function applyGlassEffect(value) {
   document.documentElement.dataset.glass = GLASS_EFFECTS.includes(value) ? value : 'full';
 }
 
+// UI-023: "Tipografía dividida" (experimental, apagada por defecto). Solo un atributo en <html>: chat.css cambia la fuente del
+// diálogo de los mensajes con acciones únicamente cuando vale "on"; sin el atributo, todo se ve exactamente como siempre.
+export function applySplitTypography(on) {
+  if (on === true) document.documentElement.dataset.splitFont = 'on';
+  else delete document.documentElement.dataset.splitFont;
+}
+
 // Claro/oscuro, aplica sobre cualquier skin (ver themes.css).
 export function applyThemeMode(mode) {
   document.documentElement.dataset.mode = mode === 'light' ? 'light' : 'dark';

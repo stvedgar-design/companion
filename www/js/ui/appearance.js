@@ -4,7 +4,7 @@
 // es por personaje, se edita desde el menú ⋮ del chat (ver ui/chat-background.js).
 
 import { getSettings, saveSettings } from '../state.js';
-import { applyTheme, applyThemeMode, applyGlassEffect } from './shell.js';
+import { applyTheme, applyThemeMode, applyGlassEffect, applySplitTypography } from './shell.js';
 
 const SKINS = [
   { value: 'nomi', label: 'Nomi' },
@@ -50,6 +50,14 @@ export function openAppearance(app) {
       <div class="field__hint">Solo para el skin Glass. Las opciones más ligeras pueden ir mejor en teléfonos modestos; las superficies siguen siendo translúcidas.</div>
     </div>
 
+    <div class="field">
+      <label class="field__label" style="display:flex;align-items:center;gap:var(--space-2, 8px)">
+        <input type="checkbox" id="appearance-split" style="accent-color:var(--color-accent, #8b1fe0)">
+        <span>Tipografía dividida: narración en un estilo, diálogo en otro</span>
+      </label>
+      <div class="field__hint">Experimental. En los mensajes del personaje que traen acciones en cursiva, el diálogo se ve con letra sin serifas y la acción conserva la letra del skin. Apagado, todo se ve como siempre.</div>
+    </div>
+
     <div class="field__hint">El fondo de chat (imagen, brillo, etc.) es por personaje — se edita desde el menú ⋮ dentro de cada chat.</div>
   `;
 
@@ -59,6 +67,7 @@ export function openAppearance(app) {
     skinBtns: Array.from(node.querySelectorAll('[data-value]')),
     glassField: q('#appearance-glass-field'),
     glass: q('#appearance-glass'),
+    split: q('#appearance-split'),
   };
 
   function renderMode(themeMode) {
@@ -85,6 +94,13 @@ export function openAppearance(app) {
     renderMode(settings.themeMode);
     renderSkin(settings.theme);
     els.glass.value = settings.glassEffect;
+    els.split.checked = settings.splitTypography === true;
+  });
+
+  els.split.addEventListener('change', async () => {
+    const splitTypography = els.split.checked;
+    await saveSettings({ splitTypography });
+    applySplitTypography(splitTypography);
   });
 
   els.glass.addEventListener('change', async () => {

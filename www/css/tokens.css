@@ -145,6 +145,9 @@
 
   /* Tipografía */
   --font: 'Literata', Georgia, 'Times New Roman', serif;
+  /* UI-023: tipografía del DIÁLOGO cuando "Tipografía dividida" está activa. Fuente de sistema (la misma pila que iMessage): sin
+     archivos que incluir ni licencias. La narración (cursiva) sigue con --font, la del skin. */
+  --font-dialogue: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
   --fs-xs: 12px;
   --fs-sm: 13px;
   --fs-md: 15px;

@@ -103,6 +103,7 @@ import { normalizeVariants } from './variants.js';
  * @property {boolean} continuityAuto // MEM-007: resumen de continuidad automático del chat (ver api/continuity.js)
  * @property {boolean} varietyAssist // FMT-004: nota de variedad al final del prompt cuando el personaje se repite
  * @property {boolean} formatAssist // FMT-002: la respuesta del personaje arranca ya dentro de una acción (`*`); true por defecto
+ * @property {boolean} splitTypography // UI-023 (experimental): en los mensajes del personaje con acciones en cursiva, el diálogo usa una tipografía sans y la acción la del skin; false por defecto
  */
 
 const DEFAULT_SETTINGS = Object.freeze({
@@ -124,6 +125,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   continuityAuto: false,
   varietyAssist: false,
   formatAssist: true,
+  splitTypography: false,
 });
 
 // Por defecto de los campos de fondo de chat en Character (ver
@@ -173,6 +175,7 @@ function sanitizeSettings(raw) {
     continuityAuto: typeof merged.continuityAuto === 'boolean' ? merged.continuityAuto : DEFAULT_SETTINGS.continuityAuto,
     varietyAssist: merged.varietyAssist === true,
     formatAssist: merged.formatAssist !== false,
+    splitTypography: merged.splitTypography === true,
   };
 }
 

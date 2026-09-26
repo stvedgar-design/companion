@@ -48,7 +48,8 @@ navegación), `setup`, `home`, `chats`, `chat`. Versión: `APP_VERSION`
   (boolean, `false` por defecto; MEM-002: solo `true` activa la extracción
   automática de memoria), `varietyAssist` (boolean, `false` por defecto; FMT-004:
   nota de variedad al final del prompt si el personaje se repite), `formatAssist`
-  (boolean, `true` por defecto; FMT-002: la respuesta arranca ya dentro de una acción `*`).
+  (boolean, `true` por defecto; FMT-002: la respuesta arranca ya dentro de una acción `*`), `splitTypography`
+  (boolean, `false` por defecto; UI-023: diálogo en sans y acción en la letra del skin, experimental).
 - `Character` (store `characters`): `id`, `name`, `avatar` (data URL),
   `card` (Card normalizada), `avatarMode`, `created`, `lorebook: LoreEntry[]`
   (por personaje, compartido entre sus chats), `lorebookPrevious: LoreEntry[]` y
@@ -80,7 +81,7 @@ personaje (MEM-001 v2: extracción aditiva de una línea vía KoboldCpp, inyecci
 por keyword, hoja "Ver lorebook" con editar/borrar/deshacer y "Actualizar memoria
 ahora"; MEM-002: la actualización automática cada 20 mensajes está APAGADA por
 defecto y se activa con un interruptor en esa hoja); 5 skins × claro/oscuro; fondo
-de chat por personaje; CI con gate de tests; versión visible en Ajustes; resumen de continuidad por chat (MEM-007, **apagado por defecto**: cuesta ~+2-4 s por respuesta); 435
+de chat por personaje; CI con gate de tests; versión visible en Ajustes; resumen de continuidad por chat (MEM-007, **apagado por defecto**: cuesta ~+2-4 s por respuesta); 437
 tests (`node --test tests/*.test.mjs`).
 
 **Verificado en un teléfono real (Hecho, reportado por el tester, 2026-09-24):**
@@ -242,6 +243,7 @@ personajes: segunda iteración visual"; auditoría de recuperabilidad →
 | UI-021 | Cursiva ausente en la burbuja del usuario | Autorizado — **cerrado el 2026-09-26 sin cambios de código**: no reproducible; el mensaje reportado no tenía asteriscos escritos | Ver "UI-021" (en `HISTORIAL.md`). |
 | UI-021 (ajuste) | Cursiva del usuario con color propio por skin | Autorizado — **implementado el 2026-09-26**; contraste piso 4,0:1 (decisión del usuario; 3,3–3,4 en Glass claro e iMessage oscuro); 429 tests; **pendiente de probar en el teléfono** | Solo `--color-muted-on-accent` en `themes.css`; tabla en `DESIGN.md`. Ver "UI-021 (ajuste)" (en `HISTORIAL.md`). |
 | UI-022 | Pulido de hub y chat: ícono de reintentar, tarjeta completa como "Continuar" (borrar = pulsación larga), punto de estado con tono por franja, menús sin líneas | Autorizado — **implementado el 2026-09-26** (sesión Q4); verificado en el navegador (375×812) con eventos simulados; 435 tests; **pendiente de probar en el teléfono (sobre todo la pulsación larga)** | `www/js/longpress.js` (puro); punto: `data-part` + `--dot-ok` en `home.css`; sin `border-bottom` en `.menu-item`. Ver "UI-022" (en `HISTORIAL.md`) y `DESIGN.md`. |
+| UI-023 | Tipografía distinta para narración y diálogo (experimental) | Autorizado — **implementado el 2026-09-26** (sesión Q4); **apagado por defecto**; verificado en el navegador (5 skins × claro/oscuro); 437 tests; **pendiente de probar en el teléfono y de la opinión del usuario (decide si algún día se enciende por defecto)** | `Settings.splitTypography`; `--font-dialogue` = pila de sistema (sin fuente nueva, +0 KB); marca `.chat-bubble--split` solo en burbujas del personaje con cursiva (Ani no se afecta). Ver "UI-023" (en `HISTORIAL.md`) y `DESIGN.md`. |
 | VER-005 | ¿Búsqueda de memoria por significado en el hardware del usuario? | Autorizado — **informe hecho el 2026-09-25** (sesión M1; solo `docs/`, sin código de producción). **Recomendación: no construir embeddings ni la tabla de sinónimos hoy.** Parte A (hardware real) **no se probó**; Parte B medida | KoboldCpp 1.121 sí trae `--embeddingsmodel` (Hecho, `--help` del binario). Tabla de sinónimos: 8/8 en lo que su autor previó, 2/16 en un juego "ciego"; difusa: tipeos 4/4 pero falsos positivos; casos de solo significado 0/7 con todo lo barato. Hallazgo: `--smartcache`. Ver "VER-005" (en `HISTORIAL.md`). |
 | BKP-001 | Importación de copias segura: confirmar, no pisar datos nuevos, todo o nada | **Autorizado; sin implementar** (sesión posterior a MEM-001 v2, solo cuando el usuario lo pida) | Punto de partida: hallazgos 2 y 10 de VER-001. |
 | MEM-001 (v1) | (Anulado) versión anterior de MEM-001 | **ANULADO**, reemplazado por MEM-001 v2 | Asumía que el servidor podía devolver una lista larga con saltos de línea. |
