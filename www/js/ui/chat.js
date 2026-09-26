@@ -29,6 +29,7 @@ import { makeAvatar } from '../cards/avatar.js';
 import { pickFiles, saveBlob, autoBackupBlob } from '../platform.js';
 import { averageColorFromDataUrl } from '../images.js';
 import { setGlassTint } from './shell.js';
+import { createThrottle, STREAM_PAINT_MS, lastReplyText, sanitizeMeta, estimateRowHeight, charsPerBubbleLine } from '../perf.js';
 
 const ICON_BACK = '<svg viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>';
 const ICON_MENU = '<svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/></svg>';
@@ -117,7 +118,7 @@ export function init(rootEl, appApi) {
   els.input.addEventListener('blur', onInputBlur);
   els.send.addEventListener('click', onSendClick);
   els.messages.addEventListener('click', onMessagesClick);
-  els.messages.addEventListener('scroll', onMessagesScroll);
+  els.messages.addEventListener('scroll', onMessagesScroll, { passive: true });
   els.scrollDown.addEventListener('click', () => scrollToBottom(true));
 
   // La hoja de fondo de chat (ui/chat-background.js) se abre encima de esta
@@ -303,16 +304,84 @@ function checkKeyboardFromVh() {
 
 /* ---------- lista de mensajes ---------- */
 
+// UI-001: reconstrucción TOTAL de la lista. Solo al abrir el chat y en cambios estructurales (borrar, editar hasta vaciar,
+// importar…) o como respaldo si el DOM no coincide con `messages`. Enviar, recibir y regenerar usan las funciones
+// incrementales de abajo (una fila a la vez). Se arma en un fragmento y se inserta de una vez.
 function renderMessages() {
   clearSelection();
-  els.messages.replaceChildren();
+  streamRow = null;
+  streamBubble = null;
+  streamReply = null;
+  streamPaint.cancel();
+  retryEl = null;
+  rowCharsPerLine = charsPerBubbleLine(els.messages.clientWidth); // una sola lectura de layout por reconstrucción
+  const frag = document.createDocumentFragment();
   messages.forEach((m, i) => {
-    els.messages.appendChild(buildMessageRow(m, i));
+    frag.appendChild(buildMessageRow(m, i));
   });
-  if (!busy && messages.length && messages[messages.length - 1].role === 'user') {
-    els.messages.appendChild(buildRetryButton());
-  }
+  els.messages.replaceChildren(frag);
+  syncRetryButton();
   scrollToBottom(true);
+}
+
+// Caracteres por línea de burbuja en esta pantalla (para estimar la altura de las filas fuera de pantalla; ver chat.css).
+let rowCharsPerLine = 32;
+
+// Fila en curso (respuesta que se está recibiendo), para no buscarla en cada fragmento.
+let streamRow = null;
+let streamBubble = null;
+let streamReply = null;
+// Cadencia del repintado mientras llega la respuesta (≈ cada 90 ms) y, con él, del scroll al fondo.
+const streamPaint = createThrottle(paintStreamingBubble, STREAM_PAINT_MS);
+let retryEl = null; // el ícono "Reintentar respuesta", si está en la lista
+
+function removeRetryButton() {
+  if (retryEl) retryEl.remove();
+  retryEl = null;
+}
+
+// El ícono de reintentar aparece tras el último mensaje SOLO si es del usuario y no hay respuesta en curso.
+function syncRetryButton() {
+  const want = !busy && messages.length > 0 && messages[messages.length - 1].role === 'user';
+  if (!want) {
+    removeRetryButton();
+    return;
+  }
+  if (retryEl && retryEl.parentNode === els.messages) return;
+  retryEl = buildRetryButton();
+  els.messages.appendChild(retryEl);
+}
+
+// ¿Las filas del DOM son exactamente las de `messages` (sin contar el ícono de reintentar)?
+function rowsMatchMessages() {
+  const extra = retryEl && retryEl.parentNode === els.messages ? 1 : 0;
+  return els.messages.childElementCount - extra === messages.length;
+}
+
+// Añade la fila del mensaje `i` (que acaba de agregarse al final de `messages`). Si el DOM no está en el estado esperado
+// se reconstruye todo (respaldo seguro). Devuelve la fila, o null si tuvo que reconstruir.
+function appendMessageRow(i) {
+  clearSelection();
+  removeRetryButton();
+  if (els.messages.childElementCount !== i || i !== messages.length - 1) {
+    renderMessages();
+    return null;
+  }
+  const row = buildMessageRow(messages[i], i);
+  els.messages.appendChild(row);
+  syncRetryButton();
+  return row;
+}
+
+// Sustituye la fila del mensaje `i` por una nueva (texto editado, versión elegida, respuesta terminada). Respaldo: reconstruir.
+function refreshMessageRow(i) {
+  const old = els.messages.children[i];
+  if (!old || old.dataset.index !== String(i) || !messages[i]) {
+    renderMessages();
+    return;
+  }
+  clearSelection();
+  old.replaceWith(buildMessageRow(messages[i], i));
 }
 
 // UI-012: las comillas como señal de diálogo van con el interruptor "Corregir formato automáticamente".
@@ -333,6 +402,8 @@ function buildMessageRow(m, i) {
   const row = document.createElement('div');
   row.className = 'chat-row ' + (m.role === 'user' ? 'chat-row--user' : 'chat-row--char');
   row.dataset.index = String(i);
+  // Altura estimada mientras la fila esté fuera de pantalla (chat.css: contain-intrinsic-size). No afecta a lo que se ve.
+  row.style.setProperty('--row-h', estimateRowHeight(m.text, rowCharsPerLine, loreIndicatorState(m) !== 'none' || variantCount(m) > 1) + 'px');
 
   const bubble = document.createElement('div');
   bubble.className = 'chat-bubble';
@@ -360,11 +431,7 @@ function buildMessageRow(m, i) {
         loreState === 'active' ? `Este mensaje usó ${m.loreUsed.length} recuerdo(s). Ver cuáles` : 'Este mensaje no usó ningún recuerdo'
       );
       btn.innerHTML = ICON_LORE;
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        openLoreUsedSheet(m);
-      });
-      meta.appendChild(btn);
+      meta.appendChild(btn); // el clic se atiende por delegación en onMessagesClick (sin un listener por fila)
     }
     if (showVariants) meta.appendChild(buildVariantNav(m, i)); // después del marcapáginas: este no cambia de sitio (UI-016)
     row.appendChild(meta);
@@ -388,10 +455,7 @@ function buildVariantNav(m, i) {
     b.setAttribute('aria-label', label);
     b.textContent = text;
     b.disabled = disabled;
-    b.addEventListener('click', (e) => {
-      e.stopPropagation();
-      onVariantStep(i, delta);
-    });
+    b.dataset.step = String(delta); // clic por delegación en onMessagesClick
     return b;
   };
   const count = document.createElement('span');
@@ -410,8 +474,7 @@ async function onVariantStep(i, delta) {
   if (next === m) return;
   clearSelection();
   messages[i] = next;
-  const row = els.messages.querySelector(`.chat-row[data-index="${i}"]`);
-  if (row) row.replaceWith(buildMessageRow(next, i));
+  refreshMessageRow(i);
   scrollToBottom(false);
   await persistChat(); // la versión activa es la que se envía al modelo en el próximo turno: debe quedar guardada
 }
@@ -420,6 +483,7 @@ async function onVariantStep(i, delta) {
 // MUEVE a la fila del mensaje seleccionado (no hay botones por fila, así el número de nodos no crece con el chat).
 let msgMenu = null;
 let menuIndex = -1; // índice del mensaje al que está asociado el menú; -1 = cerrado
+let selectedRow = null; // fila seleccionada (la que tiene el menú), para no buscarla en el DOM
 let menuOpenScrollTop = 0; // UI-016: posición de la lista al abrir (ya con el ajuste); un scroll solo cierra si se aleja de aquí
 
 function ensureMessageMenu() {
@@ -458,6 +522,7 @@ function openMessageMenu(row) {
   });
   row.appendChild(menu);
   row.classList.add('chat-row--selected');
+  selectedRow = row;
   menuIndex = i;
   // UI-016: el menú se abre debajo del mensaje; si queda fuera de la zona visible (típico en el último mensaje) se
   // desplaza la lista, sin animación, hasta verlo entero. Después se anota la posición: ese ajuste no cuenta como "scroll".
@@ -497,6 +562,17 @@ function buildRetryButton() {
 }
 
 function onMessagesClick(e) {
+  // UI-001: los botones de la línea bajo la burbuja (marcapáginas de memoria y selector de versiones) se atienden aquí,
+  // con un único listener para toda la lista.
+  const metaBtn = e.target.closest('.chat-lore, .chat-variants__btn');
+  if (metaBtn) {
+    const metaRow = metaBtn.closest('.chat-row');
+    const mi = metaRow ? Number(metaRow.dataset.index) : -1;
+    if (mi < 0 || !messages[mi]) return;
+    if (metaBtn.classList.contains('chat-lore')) openLoreUsedSheet(messages[mi]);
+    else if (!metaBtn.disabled) onVariantStep(mi, Number(metaBtn.dataset.step));
+    return;
+  }
   if (busy) return;
   if (e.target.closest('.chat-row__actions') || e.target.closest('.chat-row__meta')) return;
   const row = e.target.closest('.chat-row');
@@ -513,7 +589,8 @@ function onMessagesClick(e) {
 function clearSelection() {
   if (msgMenu && msgMenu.parentNode) msgMenu.remove();
   menuIndex = -1;
-  els.messages.querySelectorAll('.chat-row--selected').forEach((r) => r.classList.remove('chat-row--selected'));
+  if (selectedRow) selectedRow.classList.remove('chat-row--selected');
+  selectedRow = null;
 }
 
 /* ---------- acciones sobre un mensaje ---------- */
@@ -546,7 +623,8 @@ function openEditSheet(i) {
     }
     await persistChat();
     app.closeSheet();
-    renderMessages();
+    if (value) refreshMessageRow(i); // solo cambia esa fila
+    else renderMessages(); // borrar desplaza los índices: reconstrucción total
   });
 
   wrap.append(title, textarea, saveBtn);
@@ -579,21 +657,41 @@ function isNearBottom() {
 
 function scrollToBottom(force) {
   if (force || atBottom) {
-    els.messages.scrollTop = els.messages.scrollHeight;
+    // Con content-visibility las filas fuera de pantalla usan una altura estimada: al llegar abajo se miden las reales y el
+    // final se corre un poco. Se repite (máx. 4 veces) hasta que el fondo deja de moverse.
+    const el = els.messages;
+    for (let k = 0; k < 4; k++) {
+      const target = el.scrollHeight;
+      el.scrollTop = target;
+      if (el.scrollHeight === target) break;
+    }
     atBottom = true;
   }
   updateScrollDownVisibility();
+}
+
+// Mientras llega una respuesta: solo baja (una lectura y una escritura) si el usuario estaba abajo; el botón "volver
+// abajo" se actualiza solo con el siguiente evento de scroll (a lo más una vez por cuadro).
+function followStreamToBottom() {
+  if (atBottom) els.messages.scrollTop = els.messages.scrollHeight;
 }
 
 function updateScrollDownVisibility() {
   els.scrollDown.hidden = isNearBottom();
 }
 
+// UI-001: el listener es pasivo y el trabajo (que lee el layout) se hace como máximo UNA vez por cuadro.
+let scrollFrame = 0;
 function onMessagesScroll() {
-  // UI-006/UI-016: el menú se cierra al alejarse con el scroll (no por el ajuste al abrirlo ni por un temblor del dedo).
-  if (shouldCloseOnScroll({ open: menuIndex >= 0, scrollTop: els.messages.scrollTop, openScrollTop: menuOpenScrollTop })) clearSelection();
-  atBottom = isNearBottom();
-  updateScrollDownVisibility();
+  if (scrollFrame) return;
+  scrollFrame = requestAnimationFrame(() => {
+    scrollFrame = 0;
+    // UI-006/UI-016: el menú se cierra al alejarse con el scroll (no por el ajuste al abrirlo ni por un temblor del dedo).
+    const top = els.messages.scrollTop;
+    if (shouldCloseOnScroll({ open: menuIndex >= 0, scrollTop: top, openScrollTop: menuOpenScrollTop })) clearSelection();
+    atBottom = isNearBottom();
+    updateScrollDownVisibility();
+  });
 }
 
 /* ---------- composer ---------- */
@@ -659,7 +757,8 @@ async function onSendClick() {
   sendInFlight = true;
   try {
     messages.push({ role: 'user', text, ts: Date.now() });
-    renderMessages();
+    appendMessageRow(messages.length - 1);
+    scrollToBottom(true);
     await persistChat();
     await generate();
   } finally {
@@ -685,9 +784,18 @@ async function generate(opts = {}) {
   const history = messages.slice();
   const reply = { role: 'char', text: '', ts: Date.now() };
   messages.push(reply);
-  renderMessages();
+  // La fila con los puntos de "escribiendo". Si hubo que reconstruir todo (respaldo), la fila de la respuesta es la última.
+  const row = appendMessageRow(messages.length - 1) || els.messages.lastElementChild;
+  scrollToBottom(true);
+  streamRow = row;
+  streamBubble = row ? row.firstElementChild : null;
+  streamReply = reply;
 
   abortCtl = new AbortController();
+  // UI-001: tiempos de ESTA respuesta (hasta el primer fragmento y total), medidos desde que se pide.
+  const startedAt = performance.now();
+  let firstChunkAt = 0;
+  let replyMeta = null;
 
   try {
     const result = await generateReplyNonEmpty({
@@ -697,11 +805,16 @@ async function generate(opts = {}) {
       settings,
       signal: abortCtl.signal,
       onToken: (chunk) => {
+        if (!firstChunkAt) firstChunkAt = performance.now();
         reply.text += chunk;
-        updateStreamingBubble();
+        streamPaint.schedule(); // repinta como mucho cada ~90 ms; la cola final se vacía abajo
       },
     });
     reply.text = (result && result.text) || '';
+    // Una respuesta completa (no cortada por el usuario) guarda sus tiempos.
+    if (reply.text && firstChunkAt && !(result && result.aborted)) {
+      replyMeta = { ttftMs: firstChunkAt - startedAt, totalMs: performance.now() - startedAt, chars: reply.text.length };
+    }
     // UI-010: qué recuerdos viajaron en el prompt de ESTE mensaje (copia; `[]` si ninguno).
     if (result && Array.isArray(result.loreUsed)) reply.loreUsed = result.loreUsed;
     // Vacía tras el reintento automático: no se guarda nada (ver `finally`) y
@@ -712,38 +825,76 @@ async function generate(opts = {}) {
   } catch (err) {
     app.toast((err && err.message) || 'No se pudo generar la respuesta.');
   } finally {
+    streamPaint.cancel(); // el texto final se pinta al reconstruir la fila (abajo): no hace falta la cola
     const idx = messages.indexOf(reply);
+    const meta = replyMeta ? sanitizeMeta(replyMeta) : undefined;
     if (previous) {
       // UI-017: con texto (aunque sea parcial, como siempre) pasa a ser una versión más; sin texto se conserva la anterior.
-      if (idx >= 0) messages[idx] = reply.text ? addVariant(previous, { text: reply.text, loreUsed: reply.loreUsed, ts: reply.ts }) : previous;
+      if (idx >= 0) {
+        messages[idx] = reply.text ? addVariant(previous, { text: reply.text, loreUsed: reply.loreUsed, ts: reply.ts }) : previous;
+        // UI-001: la versión nueva lleva SUS tiempos (addVariant conserva los del mensaje anterior); si no hay dato, ninguno.
+        if (reply.text) {
+          const { meta: _old, ...noMeta } = messages[idx];
+          messages[idx] = meta ? { ...noMeta, meta } : noMeta;
+        }
+      }
     } else if (!reply.text && idx >= 0) {
       messages.splice(idx, 1);
+    } else if (meta) {
+      reply.meta = meta;
     }
     busy = false;
     abortCtl = null;
     syncSendButton();
+    finishStreamRow(idx);
     await persistChat();
-    renderMessages();
   }
 }
 
-function updateStreamingBubble() {
-  const rows = els.messages.querySelectorAll('.chat-row');
-  const lastRow = rows[rows.length - 1];
-  const msg = messages[messages.length - 1];
-  if (!lastRow || !msg) return;
-  const bubble = lastRow.querySelector('.chat-bubble');
-  if (!bubble) return;
-  if (msg.text) {
-    setBubbleContent(bubble, msg);
+// UI-001: al terminar la respuesta solo se rehace SU fila (o se quita, si quedó vacía); el resto de la lista no se toca.
+function finishStreamRow(idx) {
+  const row = streamRow;
+  streamRow = null;
+  streamBubble = null;
+  streamReply = null;
+  const matches = row && row.parentNode === els.messages && idx >= 0 && row.dataset.index === String(idx) && idx === messages.length - 1;
+  if (matches) {
+    clearSelection();
+    row.replaceWith(buildMessageRow(messages[idx], idx));
+    syncRetryButton();
+    scrollToBottom(false);
+  } else if (row && row.parentNode === els.messages && idx < 0 && row.dataset.index === String(messages.length)) {
+    // Respuesta vacía que se quitó de `messages`: se quita su fila (y reaparece el ícono de reintentar).
+    row.remove();
+    syncRetryButton();
+    if (!rowsMatchMessages()) renderMessages();
   } else {
-    bubble.replaceChildren(buildDots());
+    renderMessages(); // el DOM no coincide con `messages` (p. ej. se cambió de chat a mitad): reconstrucción total
   }
-  scrollToBottom(false);
+}
+
+// Repinta la burbuja de la respuesta en curso (la cadencia la marca `streamPaint`). Sin búsquedas en el DOM: usa la referencia.
+function paintStreamingBubble() {
+  if (!streamBubble || !streamReply) return;
+  if (streamReply.text) {
+    setBubbleContent(streamBubble, streamReply);
+  } else {
+    streamBubble.replaceChildren(buildDots());
+  }
+  followStreamToBottom();
 }
 
 function cancelGeneration() {
   if (abortCtl) abortCtl.abort();
+}
+
+// Quita del DOM la última fila de mensaje (la que acaba de salir de `messages`); si el DOM no coincide, reconstruye.
+function removeLastRow() {
+  clearSelection();
+  removeRetryButton();
+  const last = els.messages.lastElementChild;
+  if (last && last.classList.contains('chat-row') && last.dataset.index === String(messages.length)) last.remove();
+  if (!rowsMatchMessages()) renderMessages();
 }
 
 function regenerate() {
@@ -753,6 +904,7 @@ function regenerate() {
     // UI-017: la respuesta anterior sale de la lista solo mientras se genera (el historial que viaja termina en el
     // mensaje del usuario) y vuelve como una de las versiones. Lo guardado en disco no cambia hasta terminar.
     messages.pop();
+    removeLastRow(); // la respuesta anterior sale de la vista solo mientras se genera
     generate({ previous: last });
   } else {
     generate();
@@ -1551,6 +1703,21 @@ function buildUsageInfo() {
   return field;
 }
 
+// UI-001: "Última respuesta: X s" (tiempo total de la última respuesta del personaje que trae `meta`). Solo informativo.
+function buildLastReplyInfo() {
+  const field = document.createElement('div');
+  field.className = 'field';
+  const label = document.createElement('div');
+  label.className = 'field__label';
+  let text = '';
+  for (let i = messages.length - 1; i >= 0 && !text; i--) {
+    if (messages[i].role === 'char') text = lastReplyText(messages[i].meta);
+  }
+  label.textContent = text || 'Última respuesta: sin datos todavía';
+  field.appendChild(label);
+  return field;
+}
+
 // UI-019: el menú (⋮) agrupa las opciones por categoría; ninguna cambia de comportamiento, solo de lugar.
 // UI-020 ("esconder, no eliminar"): el conteo de mensajes y el contexto viven en "Diagnóstico", plegado por defecto.
 function menuItem(label, onClick) {
@@ -1604,7 +1771,7 @@ function buildDiagnostics() {
       const note = document.createElement('div');
       note.className = 'field__hint';
       note.textContent = 'Información técnica. No hace falta entenderla para usar la app.';
-      body.append(note, buildUsageInfo());
+      body.append(note, buildUsageInfo(), buildLastReplyInfo());
     }
     body.hidden = !open;
     toggle.setAttribute('aria-expanded', String(open));

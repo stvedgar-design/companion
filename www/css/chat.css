@@ -101,6 +101,15 @@
   flex-direction: column;
   max-width: 88%;
 }
+/* UI-001: el navegador no calcula ni pinta las filas fuera de pantalla (el costo pasa a ser proporcional a lo visible, no al total
+   del chat). `auto` en contain-intrinsic-size recuerda la altura real de cada fila ya vista, para que la barra de scroll no salte. */
+@supports (content-visibility: auto) {
+  .chat-row {
+    content-visibility: auto;
+    contain-intrinsic-size: auto var(--row-h, 84px); /* --row-h: estimación por fila puesta desde chat.js (según el largo del texto) */
+    flex-shrink: 0; /* sin esto, con la contención las filas (hijas de una columna flex con scroll) se encogen a 0 px */
+  }
+}
 .chat-row--char { align-self: flex-start; align-items: flex-start; }
 .chat-row--user { align-self: flex-end; align-items: flex-end; }
 

@@ -122,3 +122,25 @@ export function lastReplyText(meta) {
   if (!m) return '';
   return `Última respuesta: ${(m.totalMs / 1000).toFixed(1).replace('.', ',')} s`;
 }
+
+/**
+ * Altura estimada (px) de una fila de mensaje, para `contain-intrinsic-size` (chat.css): mientras una fila está fuera de
+ * pantalla el navegador no la mide y usa este valor; cuando se ve por primera vez recuerda su altura real. Cuanto mejor la
+ * estimación, menos se mueve la barra de scroll. Es una aproximación: burbuja = relleno vertical + líneas × alto de línea
+ * (17 px × 1,5), con ~8 % de margen por el corte de palabras; más la línea inferior (memoria/versiones) si la hay.
+ * @param {string} text
+ * @param {number} charsPerLine caracteres que caben en una línea de la burbuja (según el ancho de la pantalla)
+ * @param {boolean} [hasMeta]
+ */
+export function estimateRowHeight(text, charsPerLine, hasMeta = false) {
+  const len = typeof text === 'string' ? text.replace(/\*/g, '').length : 0;
+  const perLine = Number.isFinite(charsPerLine) && charsPerLine >= 8 ? charsPerLine : 30;
+  const lines = Math.max(1, Math.ceil((len * 1.08) / perLine));
+  return Math.round(24 + lines * 25.5 + (hasMeta ? 34 : 0));
+}
+
+/** Caracteres por línea de una burbuja para un ancho de lista dado (px): 88 % del ancho útil menos el relleno, a ~8,4 px por carácter. */
+export function charsPerBubbleLine(listWidthPx) {
+  const w = Number.isFinite(listWidthPx) && listWidthPx > 0 ? listWidthPx : 375;
+  return Math.max(8, Math.floor((0.88 * (w - 32) - 32) / 8.4));
+}

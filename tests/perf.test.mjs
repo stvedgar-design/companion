@@ -1,7 +1,7 @@
 // tests/perf.test.mjs — UI-001: cadencia de repintado, resumen de fluidez y saneado de `meta` (puro, sin DOM)
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createThrottle, summarizeFrames, formatFluencyReport, sanitizeMeta, lastReplyText, STREAM_PAINT_MS, SLOW_FRAME_MS } from '../www/js/perf.js';
+import { createThrottle, summarizeFrames, formatFluencyReport, sanitizeMeta, lastReplyText, estimateRowHeight, charsPerBubbleLine, STREAM_PAINT_MS, SLOW_FRAME_MS } from '../www/js/perf.js';
 
 // Reloj simulado: avanza a mano y dispara los temporizadores vencidos.
 function fakeClock() {
@@ -116,4 +116,22 @@ test('UI-001 lastReplyText: "Última respuesta: X,Y s" con coma decimal; vacío 
   assert.equal(lastReplyText({ ttftMs: 0, totalMs: 12345, chars: 1 }), 'Última respuesta: 12,3 s');
   assert.equal(lastReplyText(undefined), '');
   assert.equal(lastReplyText({ totalMs: 5 }), '');
+});
+
+test('UI-001 estimateRowHeight: crece con el largo del texto, ignora los asteriscos, suma la línea inferior y tolera datos raros', () => {
+  const short = estimateRowHeight('hola', 32);
+  const long = estimateRowHeight('x'.repeat(400), 32);
+  assert.equal(short, 50); // 24 + 1 línea (25,5) redondeado
+  assert.ok(long > short * 5, `${long} vs ${short}`);
+  assert.equal(estimateRowHeight('*hola*', 32), short); // los asteriscos no ocupan sitio
+  assert.equal(estimateRowHeight('hola', 32, true), short + 34);
+  assert.equal(estimateRowHeight(undefined, 32), short);
+  assert.equal(estimateRowHeight('hola', NaN), short);
+});
+
+test('UI-001 charsPerBubbleLine: ~32 caracteres en 375 px, más en pantallas anchas, nunca menos de 8', () => {
+  assert.equal(charsPerBubbleLine(375), 32);
+  assert.ok(charsPerBubbleLine(768) > 60);
+  assert.equal(charsPerBubbleLine(20), 8);
+  assert.equal(charsPerBubbleLine(NaN), 32);
 });
