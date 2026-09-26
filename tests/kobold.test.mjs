@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { normUrl, connect, generateReply, generateReplyNonEmpty, completeOnce } from '../www/js/api/kobold.js';
+import { normUrl, connect, generateReply, generateReplyNonEmpty, completeOnce, completeChatOnce } from '../www/js/api/kobold.js';
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -835,5 +835,124 @@ test('generateReply devuelve loreUsed: [] sin coincidencias y las entradas realm
     assert.equal(some.loreUsed[1].content, 'Se conocieron en un café.');
   } finally {
     server.close();
+  }
+});
+
+// ---------- MEM-007: resumen de continuidad en el prompt y completeChatOnce ----------
+
+const SUMMARY = { text: 'Sam told Mia about the bakery job on Elm Street.', coveredUntil: 5, updated: 6 };
+
+test('MEM-007 (plantilla): generateReply pone el resumen del chat al principio del último mensaje del usuario; sin resumen no añade nada', async () => {
+  const bodies = [];
+  const { server } = createFakeServer({
+    onChatStream: async (res, body) => {
+      bodies.push(body);
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+      res.write('data: {"choices":[{"delta":{"content":"ok"}}]}\n\n');
+      res.write('data: [DONE]\n\n');
+      res.end();
+    }
+  });
+  const base = await listen(server);
+  try {
+    const messages = [{ role: 'char', text: 'Hola', ts: 1 }, { role: 'user', text: 'Buenas', ts: 2 }];
+    const settings = makeSettings(base, { mode: 'chat' });
+    await generateReply({ character: makeCharacter(), chat: { scenario: '', continuitySummary: SUMMARY }, messages, settings });
+    await generateReply({ character: makeCharacter(), chat: { scenario: '', continuitySummary: { text: '', coveredUntil: 0, updated: 0 } }, messages, settings });
+    await generateReply({ character: makeCharacter(), chat: { scenario: '' }, messages, settings });
+    const lastUser = (b) => b.messages.filter((m) => m.role === 'user').pop().content;
+    assert.ok(lastUser(bodies[0]).startsWith('[Earlier in this conversation: Sam told Mia about the bakery job on Elm Street.]'));
+    assert.ok(lastUser(bodies[0]).endsWith('Buenas'));
+    assert.ok(!bodies[0].messages[0].content.includes('bakery'));        // la cabecera (system) no cambia: no invalida la caché del servidor
+    assert.equal(lastUser(bodies[1]), 'Buenas');
+    assert.equal(lastUser(bodies[2]), 'Buenas');
+    assert.deepEqual(bodies[1].messages, bodies[2].messages);            // sin resumen, IDÉNTICO
+  } finally {
+    server.close();
+  }
+});
+
+test('MEM-007 (texto simple y respaldo sin streaming): el resumen también viaja en esos caminos', async () => {
+  const prompts = [];
+  const { server } = createFakeServer({
+    onGenerateStream: async (res, body) => {
+      prompts.push(body.prompt);
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+      res.write('data: {"token":"ok"}\n\n');
+      res.end();
+    }
+  });
+  const fallback = createFakeServer({ streamStatus: 404 });
+  const base = await listen(server);
+  const fallbackBase = await listen(fallback.server);
+  try {
+    const messages = [{ role: 'user', text: 'Buenas', ts: 2 }];
+    await generateReply({ character: makeCharacter(), chat: { scenario: '', continuitySummary: SUMMARY }, messages, settings: makeSettings(base) });
+    assert.match(prompts[0], /\[Earlier in this conversation: Sam told Mia about the bakery job on Elm Street\.\]\nEdgar: Buenas/);
+    // Respaldo (el streaming responde 404): el mismo armador de prompt, con el mismo resumen.
+    const seen = [];
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = async (url, init) => {
+      if (String(url).endsWith('/api/v1/generate')) seen.push(JSON.parse(init.body).prompt);
+      return origFetch(url, init);
+    };
+    try {
+      await generateReply({ character: makeCharacter(), chat: { scenario: '', continuitySummary: SUMMARY }, messages, settings: makeSettings(fallbackBase) });
+    } finally {
+      globalThis.fetch = origFetch;
+    }
+    assert.equal(seen.length, 1);
+    assert.match(seen[0], /Earlier in this conversation: Sam told Mia about the bakery job/);
+  } finally {
+    server.close();
+    fallback.server.close();
+  }
+});
+
+test('completeChatOnce devuelve el texto, sin streaming, con stop "\\n" y genkey en el cuerpo', async () => {
+  let captured = null;
+  const { server } = createFakeServer({
+    onChatStream: async (res, body) => {
+      captured = body;
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ choices: [{ message: { role: 'assistant', content: ' Sam told Mia about his day.' } }] }));
+    }
+  });
+  const base = await listen(server);
+  try {
+    const text = await completeChatOnce([{ role: 'system', content: 's' }, { role: 'user', content: 'u' }], makeSettings(base), { maxLen: 130, temp: 0.3, genkey: 'G1' });
+    assert.equal(text, ' Sam told Mia about his day.');
+    assert.equal(captured.stream, false);
+    assert.deepEqual(captured.stop, ['\n']);
+    assert.equal(captured.max_tokens, 130);
+    assert.equal(captured.temperature, 0.3);
+    assert.equal(captured.genkey, 'G1');
+    assert.equal(captured.messages.length, 2);
+  } finally {
+    server.close();
+  }
+});
+
+test('completeChatOnce: errores claros (URL vacía, sin servidor, HTTP, respuesta rara) y cancelación con aviso al servidor', async () => {
+  await assert.rejects(() => completeChatOnce([], makeSettings('')), (err) => err.code === 'INVALID_URL');
+  await assert.rejects(() => completeChatOnce([], makeSettings('http://127.0.0.1:1')), (err) => err.code === 'NETWORK');
+  const bad = createFakeServer({ chatStatus: 404 });
+  const weird = createFakeServer({ onChatStream: async (res) => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end('{"nada":1}'); } });
+  const slow = createFakeServer({ onChatStream: async (res) => { await delay(400); res.writeHead(200); res.end('{}'); } });
+  const [b1, b2, b3] = [await listen(bad.server), await listen(weird.server), await listen(slow.server)];
+  try {
+    await assert.rejects(() => completeChatOnce([], makeSettings(b1)), (err) => err.code === 'HTTP');
+    await assert.rejects(() => completeChatOnce([], makeSettings(b2)), (err) => err.code === 'SERVER');
+    const ctl = new AbortController();
+    const pending = completeChatOnce([], makeSettings(b3), { signal: ctl.signal, genkey: 'GK' });
+    setTimeout(() => ctl.abort(), 50);
+    await assert.rejects(() => pending, (err) => err.code === 'ABORTED');
+    await delay(60);
+    assert.deepEqual(slow.state.abortCalls, ['GK']);                     // y le pide al servidor que corte
+    await assert.rejects(() => completeChatOnce([], makeSettings(b3), { signal: ctl.signal }), (err) => err.code === 'ABORTED'); // ya cancelada
+  } finally {
+    bad.server.close();
+    weird.server.close();
+    slow.server.close();
   }
 });

@@ -203,6 +203,63 @@ export async function completeOnce(prompt, settings, opts = {}) {
   return text;
 }
 
+/**
+ * Completado de una sola vez, sin streaming, contra `/v1/chat/completions` (modo "plantilla del modelo"). Lo usa el
+ * resumen de continuidad (MEM-007, api/continuity.js): pide el recuento como CONTINUACIÓN de los mismos mensajes del
+ * chat (más una instrucción y un inicio de respuesta ya escrito), con lo que el servidor reutiliza su caché de prompt
+ * (medido: la siguiente respuesta del chat no se encarece; ver docs/HISTORIAL.md, "MEM-007"). Mismo manejo de errores
+ * y de cancelación que `completeOnce`; `opts.genkey` va en el cuerpo (medido: este endpoint también lo respeta).
+ * @param {{ role: string, content: string }[]} messages
+ * @param {import('../state.js').Settings} settings
+ * @param {{ temp?: number, maxLen?: number, stop?: string[], signal?: AbortSignal, genkey?: string }} [opts]
+ * @returns {Promise<string>}
+ */
+export async function completeChatOnce(messages, settings, opts = {}) {
+  const base = normUrl(settings && settings.url);
+  if (!base) throw makeError(INVALID_URL_MSG, 'INVALID_URL');
+
+  const signal = opts.signal;
+  const aborted = () => !!(signal && signal.aborted);
+  if (aborted()) throw makeError('Cancelado.', 'ABORTED');
+
+  const body = {
+    messages,
+    max_tokens: opts.maxLen || settings.maxLen,
+    temperature: typeof opts.temp === 'number' ? opts.temp : settings.temp,
+    top_p: TOP_P,
+    stream: false,
+    stop: Array.isArray(opts.stop) ? opts.stop : ['\n']
+  };
+  if (opts.genkey) body.genkey = opts.genkey;
+
+  let res;
+  try {
+    res = await fetchWithTimeout(
+      base + '/v1/chat/completions',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
+      COMPLETE_ONCE_TIMEOUT_MS,
+      signal
+    );
+  } catch {
+    notifyServerAbort(base, opts.genkey);
+    if (aborted()) throw makeError('Cancelado.', 'ABORTED');
+    throw makeError(STREAM_NETWORK_MSG, 'NETWORK');
+  }
+  if (!res.ok) {
+    throw makeError(`El servidor respondió ${res.status}. ¿Es la URL de KoboldCpp?`, 'HTTP');
+  }
+  let data;
+  try {
+    data = await res.json();
+  } catch {
+    if (aborted()) throw makeError('Cancelado.', 'ABORTED');
+    throw makeError(SERVER_MSG, 'SERVER');
+  }
+  const text = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+  if (typeof text !== 'string') throw makeError(SERVER_MSG, 'SERVER');
+  return text;
+}
+
 // Lector de Server-Sent Events propio: tolera líneas partidas entre trozos
 // de red, líneas `event:` o vacías, y el marcador [DONE].
 async function readSSE(response, onEvent) {
@@ -238,8 +295,8 @@ function canStream(res) {
 // Respaldo sin streaming: usa el endpoint nativo de generación de una sola
 // vez, con el prompt en formato de texto simple (es el único formato que
 // acepta este endpoint). Entrega el texto completo a `emit` de un tirón.
-async function nonStreamingGenerate(base, card, messages, settings, chatScenario, loreBlock, topicBlock, varietyNote, prefill, signal, emit) {
-  const { prompt } = buildPlainPrompt(card, messages, settings, chatScenario, loreBlock, topicBlock, varietyNote, prefill);
+async function nonStreamingGenerate(base, card, messages, settings, chatScenario, loreBlock, topicBlock, varietyNote, prefill, extras, signal, emit) {
+  const { prompt } = buildPlainPrompt(card, messages, settings, chatScenario, loreBlock, topicBlock, varietyNote, prefill, extras);
   const res = await fetch(base + '/api/v1/generate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -310,6 +367,10 @@ export async function generateReply({ character, chat, messages, settings, signa
     settings.varietyAssist === true && varietyNeeded(messages, [card.name, settings.user]) ? VARIETY_NOTE : '';
   // FMT-002: con `formatAssist` activo la respuesta arranca ya dentro de una acción (el prompt termina en `*`).
   const prefill = settings.formatAssist === true;
+  // MEM-007: resumen de continuidad de ESTE chat (lo que ya no cabe en la ventana). Va al FINAL del prompt, junto al bloque
+  // "por tema"; sin resumen guardado no se pasa nada y el prompt queda idéntico al de siempre.
+  const continuity = (chat && chat.continuitySummary && chat.continuitySummary.text) || '';
+  const extras = continuity ? { continuity } : {};
   const genkey = makeGenKey();
   const mode = settings.mode === 'chat' ? 'chat' : 'plain';
   const maxLen = settings.maxLen || 220;
@@ -343,7 +404,7 @@ export async function generateReply({ character, chat, messages, settings, signa
   try {
     let res;
     if (mode === 'chat') {
-      const { messages: chatMessages, stop } = buildChatMessages(card, messages, settings, chatScenario, loreBlock, topicBlock, varietyNote, prefill);
+      const { messages: chatMessages, stop } = buildChatMessages(card, messages, settings, chatScenario, loreBlock, topicBlock, varietyNote, prefill, extras);
       res = await fetch(base + '/v1/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -358,7 +419,7 @@ export async function generateReply({ character, chat, messages, settings, signa
         })
       });
     } else {
-      const { prompt, stop } = buildPlainPrompt(card, messages, settings, chatScenario, loreBlock, topicBlock, varietyNote, prefill);
+      const { prompt, stop } = buildPlainPrompt(card, messages, settings, chatScenario, loreBlock, topicBlock, varietyNote, prefill, extras);
       res = await fetch(base + '/api/extra/generate/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -382,12 +443,12 @@ export async function generateReply({ character, chat, messages, settings, signa
 
     if (res.status === 404) {
       usedFallback = true;
-      await nonStreamingGenerate(base, card, messages, settings, chatScenario, loreBlock, topicBlock, varietyNote, prefill, signal, emit);
+      await nonStreamingGenerate(base, card, messages, settings, chatScenario, loreBlock, topicBlock, varietyNote, prefill, extras, signal, emit);
     } else if (!res.ok) {
       throw makeError(`El servidor respondió ${res.status}. ¿Es la URL de KoboldCpp?`, 'HTTP');
     } else if (!canStream(res)) {
       usedFallback = true;
-      await nonStreamingGenerate(base, card, messages, settings, chatScenario, loreBlock, topicBlock, varietyNote, prefill, signal, emit);
+      await nonStreamingGenerate(base, card, messages, settings, chatScenario, loreBlock, topicBlock, varietyNote, prefill, extras, signal, emit);
     } else if (mode === 'chat') {
       await readSSE(res, (obj) => {
         const chunk = obj && obj.choices && obj.choices[0] && obj.choices[0].delta && obj.choices[0].delta.content;

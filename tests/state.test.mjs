@@ -1,7 +1,7 @@
 // tests/state.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createState, sanitizeLoreUsed } from '../www/js/state.js';
+import { createState, sanitizeLoreUsed, sanitizeContinuity } from '../www/js/state.js';
 import { cleanStoredLorebook } from '../www/js/api/lorebook.js';
 
 // ---------- backend en memoria, implementa el mismo contrato que el backend de IndexedDB ----------
@@ -60,6 +60,7 @@ test('getSettings devuelve valores por defecto cuando no hay nada guardado', asy
     theme: 'nomi', themeMode: 'dark',
     glassEffect: 'full', // UI-007
     lorebookAuto: false,
+    continuityAuto: false, // MEM-007
     varietyAssist: false,
     formatAssist: true,
   });
@@ -907,4 +908,118 @@ test('UI-007: glassEffect es "full" por defecto y solo acepta full/bars/off (cop
   const old = await createState(backend).getSettings();
   assert.equal(old.glassEffect, 'full');
   assert.equal(old.theme, 'glass');
+});
+
+// ---------- MEM-007: resumen de continuidad por chat ----------
+
+test('MEM-007: un chat guardado antes de la función (sin continuitySummary) carga con el valor por defecto', async () => {
+  const backend = createMemoryBackend();
+  const state = createState(backend);
+  await state.saveCharacter(makeCharacter({ id: 'x' }));
+  backend._raw.chatMeta.set('viejo', { id: 'viejo', characterId: 'x', title: 'T', scenario: '', created: 1, updated: 2, last: 'hola', lastExportAt: 0, lorebookMessageCount: 5 });
+  const chat = await state.getChat('viejo');
+  assert.deepEqual(chat.continuitySummary, { text: '', coveredUntil: 0, updated: 0 });
+  assert.equal(chat.lorebookMessageCount, 5);                                   // el resto del registro intacto
+  assert.deepEqual((await state.listChats('x'))[0].continuitySummary, { text: '', coveredUntil: 0, updated: 0 });
+  const created = await state.createChat('x');
+  assert.deepEqual(created.continuitySummary, { text: '', coveredUntil: 0, updated: 0 });
+});
+
+test('MEM-007: sanitizeContinuity acepta la forma válida y descarta lo demás', () => {
+  const empty = { text: '', coveredUntil: 0, updated: 0 };
+  for (const bad of [undefined, null, 5, 'texto', [], {}, { text: 7 }, { text: '   ', coveredUntil: 9, updated: 9 }]) {
+    assert.deepEqual(sanitizeContinuity(bad), empty);
+  }
+  assert.deepEqual(sanitizeContinuity({ text: '  Sam  told\nMia. ', coveredUntil: 1234, updated: 5678 }), { text: 'Sam told Mia.', coveredUntil: 1234, updated: 5678 });
+  assert.deepEqual(sanitizeContinuity({ text: 'x', coveredUntil: 'no', updated: -3 }), { text: 'x', coveredUntil: 0, updated: 0 });
+  assert.equal(sanitizeContinuity({ text: 'a'.repeat(5000) }).text.length, 2000);   // tope duro: nunca cuela un texto enorme al prompt
+});
+
+test('MEM-007: saveChatContinuity guarda solo ese campo, sin tocar `updated` ni otros chats, y sobrevive a otros guardados', async () => {
+  const state = createState(createMemoryBackend());
+  await state.saveCharacter(makeCharacter({ id: 'x' }));
+  const a = await state.createChat('x', { title: 'A' });
+  const b = await state.createChat('x', { title: 'B' });
+  await state.saveChatMessages(a.id, [{ role: 'user', text: 'hola', ts: 1 }]);
+  const before = await state.getChat(a.id);
+  const saved = await state.saveChatContinuity(a.id, { text: 'Sam told Mia about his job.', coveredUntil: 10, updated: 20 });
+  assert.equal(saved.continuitySummary.text, 'Sam told Mia about his job.');
+  const after = await state.getChat(a.id);
+  assert.deepEqual(after.continuitySummary, { text: 'Sam told Mia about his job.', coveredUntil: 10, updated: 20 });
+  assert.equal(after.updated, before.updated);                  // la lista de chats no se reordena por una actualización en segundo plano
+  assert.equal(after.last, before.last);
+  assert.deepEqual((await state.getChat(b.id)).continuitySummary, { text: '', coveredUntil: 0, updated: 0 });
+  // Otras operaciones que reescriben el registro del chat conservan el resumen.
+  await state.saveChatMessages(a.id, [{ role: 'user', text: 'hola', ts: 1 }, { role: 'char', text: 'hola', ts: 2 }]);
+  await state.renameChat(a.id, 'Nuevo título');
+  await state.markChatLorebookProgress(a.id, 12);
+  await state.markChatExported(a.id);
+  assert.deepEqual((await state.getChat(a.id)).continuitySummary, { text: 'Sam told Mia about his job.', coveredUntil: 10, updated: 20 });
+  // Borrar el resumen = valor por defecto.
+  await state.saveChatContinuity(a.id, { text: '', coveredUntil: 99, updated: 99 });
+  assert.deepEqual((await state.getChat(a.id)).continuitySummary, { text: '', coveredUntil: 0, updated: 0 });
+  await assert.rejects(() => state.saveChatContinuity('no-existe', { text: 'x' }));
+});
+
+test('MEM-007: guardar mensajes y guardar el resumen a la vez no pierde ninguno de los dos', async () => {
+  const state = createState(createMemoryBackend());
+  await state.saveCharacter(makeCharacter({ id: 'x' }));
+  const chat = await state.createChat('x');
+  for (let i = 0; i < 20; i++) {
+    await Promise.all([
+      state.saveChatMessages(chat.id, [{ role: 'user', text: 'mensaje ' + i, ts: i + 1 }]),
+      state.saveChatContinuity(chat.id, { text: 'Resumen ' + i, coveredUntil: i + 1, updated: i + 1 }),
+    ]);
+    const got = await state.getChat(chat.id);
+    assert.equal(got.continuitySummary.text, 'Resumen ' + i, `vuelta ${i}`);
+    assert.equal(got.last, 'mensaje ' + i);
+  }
+});
+
+test('MEM-007: la copia de seguridad v2 lleva el resumen; una copia SIN el campo o con basura sigue importando', async () => {
+  const state = createState(createMemoryBackend());
+  await state.saveCharacter(makeCharacter({ id: 'x' }));
+  const chat = await state.createChat('x');
+  await state.saveChatMessages(chat.id, [{ role: 'user', text: 'hola', ts: 1 }]);
+  await state.saveChatContinuity(chat.id, { text: 'Lo que pasó antes.', coveredUntil: 1, updated: 2 });
+  const exported = JSON.parse(await (await state.exportBackup()).text());
+  assert.deepEqual(exported.chats[chat.id].continuitySummary, { text: 'Lo que pasó antes.', coveredUntil: 1, updated: 2 });
+
+  const fresh = createState(createMemoryBackend());
+  await fresh.importBackup({ text: async () => JSON.stringify(exported) });
+  assert.equal((await fresh.getChat(chat.id)).continuitySummary.text, 'Lo que pasó antes.');
+
+  // Copia anterior a MEM-007 (sin el campo) y copia con el campo dañado.
+  const old = JSON.parse(JSON.stringify(exported));
+  delete old.chats[chat.id].continuitySummary;
+  const garbage = JSON.parse(JSON.stringify(exported));
+  garbage.chats[chat.id].continuitySummary = { text: { no: 'string' }, coveredUntil: 'x' };
+  for (const backup of [old, garbage]) {
+    const target = createState(createMemoryBackend());
+    await target.importBackup({ text: async () => JSON.stringify(backup) });
+    const got = await target.getChat(chat.id);
+    assert.deepEqual(got.continuitySummary, { text: '', coveredUntil: 0, updated: 0 });
+    assert.equal((await target.getChatMessages(chat.id)).length, 1);      // los mensajes llegan intactos
+  }
+});
+
+test('MEM-007: Settings.continuityAuto se guarda como booleano y un valor raro vuelve al valor por defecto', async () => {
+  const state = createState(createMemoryBackend());
+  assert.equal((await state.getSettings()).continuityAuto, false);
+  assert.equal((await state.saveSettings({ continuityAuto: true })).continuityAuto, true);
+  assert.equal((await state.saveSettings({ continuityAuto: 'sí' })).continuityAuto, false);
+});
+
+test('MEM-007: una escritura fallida no bloquea las siguientes del mismo chat, y borrar un chat no lo deja "resucitado"', async () => {
+  const state = createState(createMemoryBackend());
+  await state.saveCharacter(makeCharacter({ id: 'x' }));
+  const chat = await state.createChat('x');
+  await assert.rejects(() => state.saveChatMessages('no-existe', []));
+  await state.saveChatMessages(chat.id, [{ role: 'user', text: 'hola', ts: 1 }]);            // sigue funcionando
+  await Promise.allSettled([state.saveChatContinuity(chat.id, { text: 'Resumen.', coveredUntil: 1, updated: 1 }), state.deleteChat(chat.id)]);
+  assert.equal(await state.getChat(chat.id), null);
+  assert.equal(await state.getChatMessages(chat.id), null);
+  const other = await state.createChat('x');
+  await Promise.allSettled([state.deleteChat(other.id), state.saveChatContinuity(other.id, { text: 'Resumen.', coveredUntil: 1, updated: 1 })]);
+  assert.equal(await state.getChat(other.id), null);                                          // nada quedó recreado
 });

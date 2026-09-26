@@ -64,6 +64,10 @@
  * @property {number} lastExportAt // reservado para exportación automática de log
  * @property {number} lorebookMessageCount  // mensajes de ESTE chat ya usados para actualizar
  *   el lorebook (compartido) del personaje — marcador de progreso, no guarda entradas
+ * @property {{ text: string, coveredUntil: number, updated: number }} continuitySummary  // MEM-007: resumen
+ *   breve de lo que pasó en ESTE chat y ya no cabe en el contexto. `coveredUntil` = `ts` del último mensaje ya
+ *   resumido (por `ts` y no por posición: borrar o editar mensajes no lo desalinea); `updated` = ms de la última
+ *   actualización. Por defecto `{ text: '', coveredUntil: 0, updated: 0 }` (chats anteriores cargan así).
  */
 
 /**
@@ -90,6 +94,7 @@
  * @property {'dark'|'light'} themeMode        // claro/oscuro, aplica a cualquier skin
  * @property {'full'|'bars'|'off'} glassEffect // UI-007: efecto de vidrio del skin Glass (blur completo / solo barra superior y compositor / ninguno); 'full' por defecto = como siempre. Otros skins lo ignoran
  * @property {boolean} lorebookAuto // MEM-002: extracción automática de memoria cada ~20 mensajes; false por defecto (cada extracción encarece la SIGUIENTE respuesta ~20 s)
+ * @property {boolean} continuityAuto // MEM-007: resumen de continuidad automático del chat (ver api/continuity.js)
  * @property {boolean} varietyAssist // FMT-004: nota de variedad al final del prompt cuando el personaje se repite
  * @property {boolean} formatAssist // FMT-002: la respuesta del personaje arranca ya dentro de una acción (`*`); true por defecto
  */
@@ -110,6 +115,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   themeMode: 'dark',
   glassEffect: 'full',
   lorebookAuto: false,
+  continuityAuto: false,
   varietyAssist: false,
   formatAssist: true,
 });
@@ -158,6 +164,7 @@ function sanitizeSettings(raw) {
     themeMode: merged.themeMode === 'light' ? 'light' : DEFAULT_SETTINGS.themeMode,
     glassEffect: ['full', 'bars', 'off'].includes(merged.glassEffect) ? merged.glassEffect : DEFAULT_SETTINGS.glassEffect,
     lorebookAuto: merged.lorebookAuto === true,
+    continuityAuto: typeof merged.continuityAuto === 'boolean' ? merged.continuityAuto : DEFAULT_SETTINGS.continuityAuto,
     varietyAssist: merged.varietyAssist === true,
     formatAssist: merged.formatAssist !== false,
   };
@@ -256,6 +263,28 @@ function sanitizeCharacterExtras(raw) {
   return { ...raw, lorebook, lorebookPrevious, lorebookPreviousAt, ...sanitizeCharacterBackground(raw) };
 }
 
+// MEM-007: tope duro de lo que se acepta guardar (el tope "de trabajo" del resumen vive en api/continuity.js
+// y es menor; esto solo evita que un dato corrupto o un backup ajeno cuele un texto enorme al prompt).
+const CONTINUITY_HARD_MAX_CHARS = 2000;
+
+/**
+ * Valida el resumen de continuidad de un chat. Sin forma válida o sin texto = el valor por defecto
+ * (`coveredUntil` y `updated` a 0: un resumen vacío no "cubre" nada). Pura.
+ * @param {unknown} raw
+ * @returns {{ text: string, coveredUntil: number, updated: number }}
+ */
+export function sanitizeContinuity(raw) {
+  const empty = { text: '', coveredUntil: 0, updated: 0 };
+  if (!raw || typeof raw !== 'object') return empty;
+  const text = typeof raw.text === 'string' ? raw.text.replace(/\s+/g, ' ').trim().slice(0, CONTINUITY_HARD_MAX_CHARS) : '';
+  if (!text) return empty;
+  return {
+    text,
+    coveredUntil: Number.isFinite(raw.coveredUntil) && raw.coveredUntil > 0 ? raw.coveredUntil : 0,
+    updated: Number.isFinite(raw.updated) && raw.updated > 0 ? raw.updated : 0,
+  };
+}
+
 function sanitizeChat(raw) {
   if (!raw || typeof raw !== 'object') return null;
   if (typeof raw.id !== 'string' || !raw.id) return null;
@@ -271,6 +300,7 @@ function sanitizeChat(raw) {
     last: typeof raw.last === 'string' ? raw.last : '',
     lastExportAt: Number.isFinite(raw.lastExportAt) ? raw.lastExportAt : 0,
     lorebookMessageCount: Number.isFinite(raw.lorebookMessageCount) ? raw.lorebookMessageCount : 0,
+    continuitySummary: sanitizeContinuity(raw.continuitySummary),
   };
 }
 
@@ -301,6 +331,22 @@ export function createState(backend) {
     const merged = sanitizeSettings({ ...current, ...(patch || {}) });
     await backend.put('settings', SETTINGS_KEY, merged);
     return merged;
+  }
+
+  // MEM-007: serializa las escrituras que leen y luego escriben el registro de UN chat (`chatMeta`). El resumen de
+  // continuidad se guarda en segundo plano justo después de guardar los mensajes, y sin esto las dos escrituras podían
+  // cruzarse (una pisaba el `last` o el resumen de la otra). Cola en memoria por chat: una escritura espera a la
+  // anterior y un fallo de una nunca bloquea a las siguientes.
+  const chatWriteQueue = new Map();
+  function withChatLock(chatId, fn) {
+    const previous = chatWriteQueue.get(chatId) || Promise.resolve();
+    const run = previous.then(fn);
+    const tail = run.catch(() => {});
+    chatWriteQueue.set(chatId, tail);
+    tail.then(() => {
+      if (chatWriteQueue.get(chatId) === tail) chatWriteQueue.delete(chatId);
+    });
+    return run;
   }
 
   function newId() {
@@ -398,13 +444,15 @@ export function createState(backend) {
   }
 
   async function saveChatMessages(chatId, messages) {
-    const chat = await getChat(chatId);
-    if (!chat) throw new Error('El chat no existe.');
-    const updatedChat = { ...chat, last: previewLast(messages), updated: Date.now() };
-    await backend.atomic([
-      { type: 'put', store: 'chatMsgs', key: chatId, value: messages },
-      { type: 'put', store: 'chatMeta', key: chatId, value: updatedChat },
-    ]);
+    return withChatLock(chatId, async () => {
+      const chat = await getChat(chatId);
+      if (!chat) throw new Error('El chat no existe.');
+      const updatedChat = { ...chat, last: previewLast(messages), updated: Date.now() };
+      await backend.atomic([
+        { type: 'put', store: 'chatMsgs', key: chatId, value: messages },
+        { type: 'put', store: 'chatMeta', key: chatId, value: updatedChat },
+      ]);
+    });
   }
 
   async function createChat(characterId, opts = {}) {
@@ -426,22 +474,26 @@ export function createState(backend) {
   }
 
   async function renameChat(chatId, title) {
-    const chat = await getChat(chatId);
-    if (!chat) throw new Error('El chat no existe.');
-    const updated = { ...chat, title: String(title || '') };
-    await backend.put('chatMeta', chatId, updated);
-    return updated;
+    return withChatLock(chatId, async () => {
+      const chat = await getChat(chatId);
+      if (!chat) throw new Error('El chat no existe.');
+      const updated = { ...chat, title: String(title || '') };
+      await backend.put('chatMeta', chatId, updated);
+      return updated;
+    });
   }
 
   // Marca cuándo se hizo el último respaldo automático de este chat (ver
   // `lastExportAt` en el typedef `Chat`). No es un "export" manual del
   // usuario; lo usa el respaldo silencioso periódico en segundo plano.
   async function markChatExported(chatId) {
-    const chat = await getChat(chatId);
-    if (!chat) throw new Error('El chat no existe.');
-    const updated = { ...chat, lastExportAt: Date.now() };
-    await backend.put('chatMeta', chatId, updated);
-    return updated;
+    return withChatLock(chatId, async () => {
+      const chat = await getChat(chatId);
+      if (!chat) throw new Error('El chat no existe.');
+      const updated = { ...chat, lastExportAt: Date.now() };
+      await backend.put('chatMeta', chatId, updated);
+      return updated;
+    });
   }
 
   // Marca cuántos mensajes de ESTE chat ya se usaron para actualizar el
@@ -449,18 +501,35 @@ export function createState(backend) {
   // el typedef `Chat` y `saveCharacterLorebook()` más arriba, que es donde
   // se guardan las entradas en sí.
   async function markChatLorebookProgress(chatId, lorebookMessageCount) {
-    const chat = await getChat(chatId);
-    if (!chat) throw new Error('El chat no existe.');
-    const updated = { ...chat, lorebookMessageCount: Number(lorebookMessageCount) || 0 };
-    await backend.put('chatMeta', chatId, updated);
-    return updated;
+    return withChatLock(chatId, async () => {
+      const chat = await getChat(chatId);
+      if (!chat) throw new Error('El chat no existe.');
+      const updated = { ...chat, lorebookMessageCount: Number(lorebookMessageCount) || 0 };
+      await backend.put('chatMeta', chatId, updated);
+      return updated;
+    });
+  }
+
+  // MEM-007: guarda el resumen de continuidad de UN chat. Solo cambia ese campo (no toca `updated`, así la lista
+  // de chats no se reordena por una actualización en segundo plano). Serializada con las demás escrituras del chat.
+  async function saveChatContinuity(chatId, summary) {
+    const clean = sanitizeContinuity(summary);
+    return withChatLock(chatId, async () => {
+      const chat = await getChat(chatId);
+      if (!chat) throw new Error('El chat no existe.');
+      const updated = { ...chat, continuitySummary: clean };
+      await backend.put('chatMeta', chatId, updated);
+      return updated;
+    });
   }
 
   async function deleteChat(chatId) {
-    await backend.atomic([
-      { type: 'remove', store: 'chatMeta', key: chatId },
-      { type: 'remove', store: 'chatMsgs', key: chatId },
-    ]);
+    return withChatLock(chatId, () =>
+      backend.atomic([
+        { type: 'remove', store: 'chatMeta', key: chatId },
+        { type: 'remove', store: 'chatMsgs', key: chatId },
+      ])
+    );
   }
 
   // Migra chats del formato viejo (uno por personaje, guardado bajo el id
@@ -592,6 +661,7 @@ export function createState(backend) {
     renameChat,
     markChatExported,
     markChatLorebookProgress,
+    saveChatContinuity,
     deleteChat,
     migrateLegacyChats,
     exportBackup,
@@ -715,6 +785,7 @@ export const createChat = (...args) => getDefaultInstance().createChat(...args);
 export const renameChat = (...args) => getDefaultInstance().renameChat(...args);
 export const markChatExported = (...args) => getDefaultInstance().markChatExported(...args);
 export const markChatLorebookProgress = (...args) => getDefaultInstance().markChatLorebookProgress(...args);
+export const saveChatContinuity = (...args) => getDefaultInstance().saveChatContinuity(...args);
 export const deleteChat = (...args) => getDefaultInstance().deleteChat(...args);
 export const migrateLegacyChats = (...args) => getDefaultInstance().migrateLegacyChats(...args);
 export const exportBackup = (...args) => getDefaultInstance().exportBackup(...args);

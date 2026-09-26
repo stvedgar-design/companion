@@ -9,7 +9,11 @@ import {
   estimateContextUsage,
   cleanReply,
   trimPartial,
-  FORMAT_PREFILL
+  FORMAT_PREFILL,
+  formatContinuityBlock,
+  continuityBlockChars,
+  historyStartIndex,
+  CONTINUITY_RESERVE_CHARS
 } from '../www/js/api/prompt.js';
 
 function makeCard(overrides = {}) {
@@ -445,4 +449,128 @@ test('FMT-002: el prefill no modifica los mensajes guardados', () => {
   buildChatMessages(makeCard(), msgs, makeSettings(), '', '', 'topic', '', true);
   buildPlainPrompt(makeCard(), msgs, makeSettings(), '', '', 'topic', '', true);
   assert.equal(JSON.stringify(msgs), before);
+});
+
+// ---------- MEM-007: resumen de continuidad al final del prompt; historyStartIndex ----------
+
+const CONT = 'Sam told Mia about the bakery job on Elm Street. Later they talked about his sister Laura.';
+
+test('MEM-007: sin resumen el prompt es IDÉNTICO al de antes (extras ausentes, vacíos o con texto en blanco)', () => {
+  const { card, settings, msgs } = fixture();
+  const plain = buildPlainPrompt(card, msgs, settings);
+  const chat = buildChatMessages(card, msgs, settings);
+  for (const extras of [undefined, {}, { continuity: '' }, { continuity: '   ' }, { continuity: null }]) {
+    assert.deepEqual(buildPlainPrompt(card, msgs, settings, '', '', '', '', false, extras), plain);
+    assert.deepEqual(buildChatMessages(card, msgs, settings, '', '', '', '', false, extras), chat);
+  }
+  assert.equal(formatContinuityBlock(''), '');
+  assert.equal(formatContinuityBlock('  \n '), '');
+  assert.equal(continuityBlockChars(''), 0);
+});
+
+test('MEM-007 (plantilla): el resumen va al principio del ÚLTIMO mensaje del usuario, antes del bloque por tema, y no en system', () => {
+  const { card, settings, msgs } = fixture();
+  const base = buildChatMessages(card, msgs, settings, '', '', TOPIC);
+  const { messages: out, stop } = buildChatMessages(card, msgs, settings, '', '', TOPIC, '', false, { continuity: CONT });
+  assert.equal(out.length, base.messages.length);
+  assert.deepEqual(out[0], base.messages[0]);               // la cabecera no cambia: no invalida la caché del servidor
+  assert.deepEqual(out.slice(1, -1), base.messages.slice(1, -1));
+  const last = out[out.length - 1].content;
+  assert.ok(last.startsWith(`[Earlier in this conversation: ${CONT}]`));
+  assert.ok(last.indexOf('Earlier in this conversation') < last.indexOf('Known facts'));
+  assert.ok(last.endsWith('Hola Luna, ¿cómo estás?'));
+  assert.deepEqual(stop, base.stop);
+});
+
+test('MEM-007 (texto simple): el resumen va justo antes de la última línea del usuario, antes del bloque por tema', () => {
+  const { card, settings, msgs } = fixture();
+  const { prompt } = buildPlainPrompt(card, msgs, settings, '', '', TOPIC, '', false, { continuity: CONT });
+  const head = prompt.slice(0, prompt.indexOf('[Start of chat]'));
+  assert.equal(head, buildPlainPrompt(card, msgs, settings).prompt.split('[Start of chat]')[0]);
+  assert.ok(prompt.indexOf('[Earlier in this conversation:') < prompt.indexOf('Known facts'));
+  assert.ok(prompt.indexOf('Known facts') < prompt.indexOf('Edgar: Hola Luna'));
+  assert.ok(prompt.endsWith('Edgar: Hola Luna, ¿cómo estás?\nLuna:'));
+});
+
+test('MEM-007: el resumen nunca modifica los mensajes guardados', () => {
+  const { card, settings, msgs } = fixture();
+  const before = JSON.parse(JSON.stringify(msgs));
+  buildPlainPrompt(card, msgs, settings, '', '', '', '', false, { continuity: CONT });
+  buildChatMessages(card, msgs, settings, '', '', '', '', false, { continuity: CONT });
+  assert.deepEqual(msgs, before);
+});
+
+test('MEM-007: el presupuesto del historial descuenta el resumen, y estimateContextUsage lo suma', () => {
+  const { card } = fixture();
+  const settings = makeSettings({ ctx: 1024, maxLen: 200, mode: 'chat' });
+  const msgs = Array.from({ length: 40 }, (_, i) => ({ role: i % 2 ? 'user' : 'char', text: `mensaje número ${i} `.repeat(6), ts: i }));
+  const without = buildChatMessages(card, msgs, settings).messages.length;
+  const withCont = buildChatMessages(card, msgs, settings, '', '', '', '', false, { continuity: CONT.repeat(5) }).messages.length;
+  assert.ok(withCont < without);
+  const base = estimateContextUsage(card, msgs, settings);
+  const est = estimateContextUsage(card, msgs, settings, '', '', 0, { continuity: CONT });
+  assert.ok(Math.abs(est.approxTokens - base.approxTokens - Math.ceil(continuityBlockChars(CONT) / 3.3)) <= 1);
+});
+
+test('MEM-007: historyStartIndex coincide con lo que recorta el armador real (ambos modos, con y sin bloques finales)', () => {
+  let seed = 7;
+  const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
+  let trimmedCases = 0;
+  for (let n = 0; n < 300; n++) {
+    const card = makeCard({ description: 'x '.repeat(Math.floor(rnd() * 80)), post_history_instructions: rnd() < 0.3 ? 'nota' : '' });
+    const mode = rnd() < 0.5 ? 'chat' : 'plain';
+    const settings = makeSettings({ ctx: [512, 1024, 2048, 4096][Math.floor(rnd() * 4)], maxLen: 200, mode });
+    // Cada mensaje lleva una marca única «#i#» para saber con certeza cuáles entraron en el prompt.
+    const msgs = Array.from({ length: 1 + Math.floor(rnd() * 70) }, (_, i) => ({ role: rnd() < 0.5 ? 'user' : 'char', text: `#${i}# ` + 'palabra '.repeat(1 + Math.floor(rnd() * 40)), ts: i }));
+    const continuity = rnd() < 0.5 ? CONT : '';
+    const topic = !continuity && rnd() < 0.5 ? TOPIC : '';
+    const endChars = continuity ? continuityBlockChars(continuity) : topic ? topic.length + 2 : 0;
+    const sent = mode === 'chat'
+      ? buildChatMessages(card, msgs, settings, '', '', topic, '', false, { continuity }).messages.map((m) => m.content).join('\n')
+      : buildPlainPrompt(card, msgs, settings, '', '', topic, '', false, { continuity }).prompt;
+    const idx = historyStartIndex(card, msgs, settings, '', '', endChars, 0);
+    assert.ok(idx >= 0 && idx <= msgs.length - 1, `caso ${n}: índice fuera de rango`);
+    assert.ok(sent.includes(`#${idx}# `), `caso ${n} (${mode}): el mensaje ${idx} debería estar en el prompt`);
+    if (idx > 0) {
+      assert.ok(!sent.includes(`#${idx - 1}# `), `caso ${n} (${mode}): el mensaje ${idx - 1} no debería estar en el prompt`);
+      trimmedCases++;
+    }
+  }
+  assert.ok(trimmedCases > 50, 'el test debe ejercitar el recorte en bastantes casos');
+});
+
+test('MEM-007: historyStartIndex — con reserva extra el primer mensaje visible nunca retrocede, y todo cabe si el chat es corto', () => {
+  const { card } = fixture();
+  const settings = makeSettings({ ctx: 1024, maxLen: 200, mode: 'chat' });
+  const msgs = Array.from({ length: 60 }, (_, i) => ({ role: i % 2 ? 'user' : 'char', text: `mensaje número ${i} `.repeat(4), ts: i }));
+  const a = historyStartIndex(card, msgs, settings);
+  const b = historyStartIndex(card, msgs, settings, '', '', 0, 400);
+  const c = historyStartIndex(card, msgs, settings, '', '', 0, 1600);
+  assert.ok(a > 0 && b >= a && c >= b);
+  assert.equal(historyStartIndex(card, msgs.slice(0, 3), makeSettings({ ctx: 4096, mode: 'chat' })), 0);
+  assert.equal(historyStartIndex(card, [], settings), 0);
+});
+
+test('MEM-007: la ventana del historial NO se mueve cuando el resumen cambia de largo (reserva fija), en ambos modos', () => {
+  const { card } = fixture();
+  const msgs = Array.from({ length: 80 }, (_, i) => ({ role: i % 2 ? 'user' : 'char', text: `#${i}# ` + 'palabra '.repeat(20), ts: i }));
+  for (const mode of ['chat', 'plain']) {
+    const settings = makeSettings({ ctx: 2048, maxLen: 200, mode });
+    const start = (continuity) => historyStartIndex(card, msgs, settings, '', '', continuityBlockChars(continuity));
+    const sizes = [60, 200, 400, 640, 800].map((n) => start('Sam told Mia. '.repeat(Math.ceil(n / 14)).slice(0, n)));
+    assert.equal(new Set(sizes).size, 1, `${mode}: el primer mensaje visible debe ser el mismo con cualquier largo (${sizes})`);
+    // Lo mismo con el armador real: los mensajes enviados son los mismos con un resumen corto o largo.
+    const sent = (text) => {
+      const out = mode === 'chat'
+        ? buildChatMessages(card, msgs, settings, '', '', '', '', false, { continuity: text }).messages.map((m) => m.content).join('\n')
+        : buildPlainPrompt(card, msgs, settings, '', '', '', '', false, { continuity: text }).prompt;
+      return msgs.filter((m) => out.includes(m.text.slice(0, 6))).length;
+    };
+    assert.equal(sent('Corto resumen de prueba para el chat.'), sent('Sam told Mia. '.repeat(50).slice(0, 790)));
+    // Sin resumen la ventana puede abarcar más (o igual) que con resumen: aparecer nunca "recupera" mensajes por el frente.
+    assert.ok(historyStartIndex(card, msgs, settings) <= start('Un resumen.'));
+  }
+  assert.equal(continuityBlockChars(''), 0);
+  assert.equal(continuityBlockChars('x'), CONTINUITY_RESERVE_CHARS);
+  assert.ok(continuityBlockChars('y'.repeat(2000)) > CONTINUITY_RESERVE_CHARS);   // un texto más largo que la reserva ocupa lo que ocupa
 });

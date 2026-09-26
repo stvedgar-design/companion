@@ -58,6 +58,15 @@ const MIN_HISTORY_BUDGET = 500;
 // (aproxima el costo de la etiqueta "Nombre: " y separadores).
 const LINE_OVERHEAD = 12;
 
+// Presupuesto de caracteres del historial: lo que cabe en `ctx` menos la salida reservada, menos lo que ya ocupan
+// las demás partes del prompt (`usedParts`, restadas una a una en este orden, como siempre). Lo comparten los
+// armadores de prompt y `historyStartIndex`, para que "qué se recorta" no dependa de dos cuentas distintas.
+function historyBudgetChars(settings, ...usedParts) {
+  const ctx = (settings && settings.ctx) || 4096;
+  const maxLen = (settings && settings.maxLen) || 220;
+  return Math.max(MIN_HISTORY_BUDGET, usedParts.reduce((left, n) => left - n, (ctx - maxLen - 64) * CHARS_PER_TOKEN));
+}
+
 /**
  * Reemplaza las macros {{char}}/<BOT> por el nombre del personaje y
  * {{user}}/<USER> por el nombre del usuario. Insensible a mayúsculas.
@@ -169,10 +178,52 @@ function formatTopicBlock(topicBlock) {
   return `[${String(topicBlock).trim()}]`;
 }
 
-// Todo lo que va al FINAL del prompt (MEM-004 "por tema" + FMT-004 nota de variedad), en este orden.
-// '' si no hay nada: sin ambos, el prompt es idéntico al de antes.
-function endBlock(topicBlock, varietyNote) {
-  return [topicBlock ? formatTopicBlock(topicBlock) : '', varietyNote ? formatTopicBlock(varietyNote) : '']
+// MEM-007: resumen de continuidad del chat (lo que ya no cabe en la ventana). Va al FINAL del prompt, junto al bloque
+// "por tema" y por la misma razón (medida en docs/HISTORIAL.md, "MEM-007"): en la cabecera, cada actualización del
+// resumen invalidaría la caché de prompt del servidor y una respuesta tardaría ~55 s.
+const CONTINUITY_LABEL = 'Earlier in this conversation:';
+
+/**
+ * Texto del bloque de continuidad (sin corchetes), o '' si no hay resumen.
+ * @param {string} text
+ * @returns {string}
+ */
+export function formatContinuityBlock(text) {
+  const t = String(text || '').replace(/\s+/g, ' ').trim();
+  return t ? `${CONTINUITY_LABEL} ${t}` : '';
+}
+
+// Espacio que el resumen reserva SIEMPRE en el presupuesto del historial, tenga el texto que tenga (tope de trabajo 800 +
+// etiqueta y corchetes). Medido en MEM-007: si el bloque final se acorta (p. ej. al condensar el resumen) el presupuesto
+// crece, la ventana recupera mensajes viejos por el FRENTE y el servidor ya no puede reutilizar su caché (~66 s de
+// reprocesado en un chat de ~5 500 tokens). Con una reserva fija, cambiar el texto del resumen no mueve la ventana.
+export const CONTINUITY_RESERVE_CHARS = 880;
+
+/**
+ * Caracteres que el resumen ocupa (reserva) en el presupuesto del historial: los reales con corchetes si el texto es
+ * más largo que la reserva; 0 si no hay resumen.
+ * @param {string} text
+ * @returns {number}
+ */
+export function continuityBlockChars(text) {
+  const block = formatContinuityBlock(text);
+  return block ? Math.max(CONTINUITY_RESERVE_CHARS, formatTopicBlock(block).length) : 0;
+}
+
+// Relleno que se suma al presupuesto para que el bloque de continuidad cuente como `continuityBlockChars` aunque el texto
+// real sea más corto (el bloque real ya está dentro de `topic.length`).
+function continuityPadding(continuity) {
+  return continuity ? Math.max(0, CONTINUITY_RESERVE_CHARS - formatTopicBlock(continuity).length) : 0;
+}
+
+// Todo lo que va al FINAL del prompt (MEM-007 continuidad + MEM-004 "por tema" + FMT-004 nota de variedad), en este
+// orden. '' si no hay nada: sin ninguno, el prompt es idéntico al de antes.
+function endBlock(topicBlock, varietyNote, continuity = '') {
+  return [
+    continuity ? formatTopicBlock(continuity) : '',
+    topicBlock ? formatTopicBlock(topicBlock) : '',
+    varietyNote ? formatTopicBlock(varietyNote) : '',
+  ]
     .filter(Boolean)
     .join('\n');
 }
@@ -210,13 +261,13 @@ function pickHistory(items, budget, lengthOf) {
  * @param {string} [varietyNote] FMT-004: nota breve para que el personaje varíe su vocabulario. Va junto al bloque
  *   "por tema", al FINAL y solo en el prompt construido.
  * @param {boolean} [prefill] FMT-002: si es true, el prompt termina con `FORMAT_PREFILL` (la respuesta arranca dentro de una acción).
+ * @param {{ continuity?: string }} [extras] MEM-007: `continuity` = texto del resumen de continuidad del chat; va al FINAL
+ *   (primer bloque, antes del "por tema"). Ausente o vacío: el prompt queda idéntico al de antes.
  * @returns {{ prompt: string, stop: string[] }}
  */
-export function buildPlainPrompt(card, messages, settings, chatScenario = '', loreBlock = '', topicBlock = '', varietyNote = '', prefill = false) {
+export function buildPlainPrompt(card, messages, settings, chatScenario = '', loreBlock = '', topicBlock = '', varietyNote = '', prefill = false, extras = {}) {
   const N = card.name;
   const U = (settings && settings.user) || 'User';
-  const ctx = (settings && settings.ctx) || 4096;
-  const maxLen = (settings && settings.maxLen) || 220;
 
   const head = headBlock(card, settings, chatScenario, loreBlock) + '\n\n[Start of chat]';
   const post = card.post_history_instructions
@@ -224,11 +275,9 @@ export function buildPlainPrompt(card, messages, settings, chatScenario = '', lo
     : '';
   const cue = `\n${N}:`;
 
-  const topic = endBlock(topicBlock, varietyNote);
-  const budget = Math.max(
-    MIN_HISTORY_BUDGET,
-    (ctx - maxLen - 64) * CHARS_PER_TOKEN - head.length - post.length - cue.length - topic.length
-  );
+  const continuity = formatContinuityBlock(extras && extras.continuity);
+  const topic = endBlock(topicBlock, varietyNote, continuity);
+  const budget = historyBudgetChars(settings, head.length, post.length, cue.length, topic.length + continuityPadding(continuity));
 
   const lines = messages.map((m) => `${m.role === 'user' ? U : N}: ${m.text}`);
   const kept = pickHistory(lines, budget, (line) => line.length);
@@ -264,21 +313,22 @@ export function buildPlainPrompt(card, messages, settings, chatScenario = '', lo
  * @param {string} [varietyNote] FMT-004: nota de variedad; va junto al bloque "por tema". Ver `buildPlainPrompt`.
  * @param {boolean} [prefill] FMT-002: si es true, se añade al final un mensaje `assistant` con `FORMAT_PREFILL`
  *   (la respuesta arranca dentro de una acción). Solo en la copia enviada; los mensajes guardados no se tocan.
+ * @param {{ continuity?: string }} [extras] MEM-007: ver `buildPlainPrompt`. Va junto al bloque "por tema", en el último
+ *   mensaje del usuario de la copia enviada.
  * @returns {{ messages: {role:'system'|'user'|'assistant', content:string}[], stop: string[] }}
  */
-export function buildChatMessages(card, messages, settings, chatScenario = '', loreBlock = '', topicBlock = '', varietyNote = '', prefill = false) {
+export function buildChatMessages(card, messages, settings, chatScenario = '', loreBlock = '', topicBlock = '', varietyNote = '', prefill = false, extras = {}) {
   const N = card.name;
   const U = (settings && settings.user) || 'User';
-  const ctx = (settings && settings.ctx) || 4096;
-  const maxLen = (settings && settings.maxLen) || 220;
 
   let head = headBlock(card, settings, chatScenario, loreBlock);
   if (card.post_history_instructions) {
     head += '\n\n' + subMacros(card.post_history_instructions, N, U);
   }
 
-  const topic = endBlock(topicBlock, varietyNote);
-  const budget = Math.max(MIN_HISTORY_BUDGET, (ctx - maxLen - 64) * CHARS_PER_TOKEN - head.length - topic.length);
+  const continuity = formatContinuityBlock(extras && extras.continuity);
+  const topic = endBlock(topicBlock, varietyNote, continuity);
+  const budget = historyBudgetChars(settings, head.length, topic.length + continuityPadding(continuity));
   const kept = pickHistory(messages, budget, (m) => m.text.length);
 
   const out = [{ role: 'system', content: head }];
@@ -320,18 +370,51 @@ export function buildChatMessages(card, messages, settings, chatScenario = '', l
  * @param {string} [chatScenario]
  * @param {string} [loreBlock] Bloque estable de la cabecera ("siempre presentes").
  * @param {number} [topicReserveChars] MEM-004: caracteres que se reservan para el bloque "por tema" (va al final del prompt).
+ * @param {{ continuity?: string }} [extras] MEM-007: el resumen de continuidad (va al final) también ocupa contexto.
  * @returns {{ approxTokens: number, budgetTokens: number, ratio: number }}
  *   `ratio` es approxTokens/budgetTokens, sin recortar a 1 (puede superar 1
  *   si ya no entra todo el historial y algunos mensajes se recortarían).
  */
-export function estimateContextUsage(card, messages, settings, chatScenario = '', loreBlock = '', topicReserveChars = 0) {
+export function estimateContextUsage(card, messages, settings, chatScenario = '', loreBlock = '', topicReserveChars = 0, extras = {}) {
   const ctx = (settings && settings.ctx) || 4096;
   const maxLen = (settings && settings.maxLen) || 220;
   const head = headBlock(card, settings, chatScenario, loreBlock);
   const historyChars = messages.reduce((sum, m) => sum + String(m.text || '').length + LINE_OVERHEAD, 0);
-  const approxTokens = Math.ceil((head.length + historyChars + Math.max(0, topicReserveChars || 0)) / CHARS_PER_TOKEN);
+  const approxTokens = Math.ceil((head.length + historyChars + Math.max(0, topicReserveChars || 0) + continuityBlockChars(extras && extras.continuity)) / CHARS_PER_TOKEN);
   const budgetTokens = Math.max(1, ctx - maxLen);
   return { approxTokens, budgetTokens, ratio: approxTokens / budgetTokens };
+}
+
+/**
+ * MEM-007: índice del PRIMER mensaje que entraría en el historial enviado (los anteriores quedan fuera de la
+ * ventana). Usa la misma cuenta que `buildPlainPrompt`/`buildChatMessages` (mismo presupuesto, mismo `pickHistory`),
+ * según `settings.mode`. `extraChars` reserva caracteres adicionales al final: con él se pregunta "¿qué mensajes
+ * caerán fuera si entran unos ~N caracteres más?" (el disparo perezoso del resumen de continuidad).
+ * @param {Card} card
+ * @param {Message[]} messages Historial completo.
+ * @param {Settings} settings
+ * @param {string} [chatScenario]
+ * @param {string} [loreBlock] Bloque "siempre presentes" de la cabecera.
+ * @param {number} [endChars] Caracteres del bloque final (por tema + continuidad) que se descuentan del presupuesto.
+ * @param {number} [extraChars] Reserva adicional hipotética.
+ * @returns {number} 0 si todo cabe; `messages.length - 1` como mucho (siempre queda al menos 1 mensaje).
+ */
+export function historyStartIndex(card, messages, settings, chatScenario = '', loreBlock = '', endChars = 0, extraChars = 0) {
+  const N = card.name;
+  const U = (settings && settings.user) || 'User';
+  const end = Math.max(0, endChars || 0) + Math.max(0, extraChars || 0);
+  if (settings && settings.mode === 'chat') {
+    let head = headBlock(card, settings, chatScenario, loreBlock);
+    if (card.post_history_instructions) head += '\n\n' + subMacros(card.post_history_instructions, N, U);
+    const kept = pickHistory(messages, historyBudgetChars(settings, head.length, end), (m) => m.text.length);
+    return messages.length - kept.length;
+  }
+  const head = headBlock(card, settings, chatScenario, loreBlock) + '\n\n[Start of chat]';
+  const post = card.post_history_instructions ? `\n[${subMacros(card.post_history_instructions, N, U)}]` : '';
+  const cue = `\n${N}:`;
+  const lines = messages.map((m) => `${m.role === 'user' ? U : N}: ${m.text}`);
+  const kept = pickHistory(lines, historyBudgetChars(settings, head.length, post.length, cue.length, end), (line) => line.length);
+  return messages.length - kept.length;
 }
 
 function escapeRegExp(s) {

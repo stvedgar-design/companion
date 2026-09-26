@@ -136,6 +136,9 @@ Los imports son ESM relativos y siempre con extensión `.js`. Los tests importan
  * @property {string} last          // vista previa del último mensaje del chat (máx. 90 caracteres, sin asteriscos)
  * @property {number} lastExportAt  // ms del último respaldo automático de este chat (0 = nunca)
  * @property {number} lorebookMessageCount  // nº de mensajes de ESTE chat ya usados para actualizar el lorebook del personaje (marcador; no guarda entradas)
+ * @property {{ text: string, coveredUntil: number, updated: number }} continuitySummary  // MEM-007: resumen breve de lo que pasó en ESTE chat y ya no cabe en la ventana del modelo.
+ *   `coveredUntil` = `ts` del último mensaje ya resumido (por `ts`, no por posición: borrar/editar mensajes no lo desalinea); `updated` = ms de la última actualización.
+ *   Por defecto `{ text:'', coveredUntil:0, updated:0 }`: chats y copias anteriores cargan así. Tope duro al guardar: 2000 caracteres; el de trabajo (CONTINUITY_TOTAL_CHARS) es 1000.
  */
 
 /**
@@ -192,6 +195,10 @@ createChat(characterId: string, opts?: { title?: string, scenario?: string }): P
 renameChat(chatId: string, title: string): Promise<Chat>
 markChatExported(chatId: string): Promise<Chat>     // fija lastExportAt = ahora (respaldo automático)
 markChatLorebookProgress(chatId: string, count: number): Promise<Chat>
+saveChatContinuity(chatId: string, summary: { text: string, coveredUntil: number, updated: number }): Promise<Chat>
+   // MEM-007: solo cambia `continuitySummary` (no toca `updated`, la lista de chats no se reordena). Todas las escrituras de `chatMeta`
+   // que leen y luego escriben (saveChatMessages, renameChat, markChatExported, markChatLorebookProgress, saveChatContinuity, deleteChat)
+   // se serializan por chat en una cola en memoria: ninguna pisa a otra.
 deleteChat(chatId: string): Promise<void>
 migrateLegacyChats(): Promise<void>                 // convierte el chat único viejo de cada personaje; idempotente; se llama al arrancar (main.js)
 exportBackup(): Promise<Blob>                       // JSON: { app:'companion', version:2, exported, settings, characters, chats:{[chatId]:Chat}, chatMessages:{[chatId]:Message[]} }; incluye pinSalt/pinHash dentro de settings
@@ -267,6 +274,9 @@ generateReplyNonEmpty(opts: <los de generateReply>, generate?: typeof generateRe
    // nada del intento vacío. Si el reintento también sale vacío devuelve ese resultado; chat.js avisa y
    // NUNCA guarda un mensaje del personaje vacío (queda el botón "Reintentar respuesta"). `generate` es
    // inyectable para tests. chat.js usa ESTA función, no generateReply directamente.
+completeChatOnce(messages: { role: string, content: string }[], settings: Settings, opts?: { temp?: number, maxLen?: number, stop?: string[], signal?: AbortSignal, genkey?: string }): Promise<string>
+   // MEM-007: completado sin streaming contra /v1/chat/completions (modo plantilla), como CONTINUACIÓN de los mensajes del chat: el servidor
+   // reutiliza su caché de prompt. Mismos códigos de error y misma cancelación (`genkey` va en el cuerpo) que completeOnce.
 completeOnce(prompt: string, settings: Settings, opts?: { temp?: number, maxLen?: number, signal?: AbortSignal, genkey?: string }): Promise<string>
    // Adenda lorebook (docs/HISTORIAL.md "Lorebook por personaje"): completado de una sola vez sin
    // streaming contra /api/v1/generate, para la extracción de lorebook. Mismos códigos de error

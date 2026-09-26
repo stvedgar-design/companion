@@ -1,8 +1,8 @@
 // www/js/ui/chat.js
 // Pantalla de chat: burbujas, streaming, avatar en 3 modos, composer, menú.
 
-import { getChat, getChatMessages, saveChatMessages, getCharacter, saveCharacter, getSettings, saveSettings, markChatExported, saveCharacterLorebook, markChatLorebookProgress } from '../state.js';
-import { generateReplyNonEmpty, completeOnce } from '../api/kobold.js';
+import { getChat, getChatMessages, saveChatMessages, getCharacter, saveCharacter, getSettings, saveSettings, markChatExported, saveCharacterLorebook, markChatLorebookProgress, saveChatContinuity, sanitizeContinuity } from '../state.js';
+import { generateReplyNonEmpty, completeOnce, completeChatOnce } from '../api/kobold.js';
 import { initialMessages, scenarioGreeting, estimateContextUsage } from '../api/prompt.js';
 import {
   createLoreUpdater,
@@ -18,6 +18,7 @@ import {
   LOREBOOK_ALWAYS_CHAR_BUDGET,
 } from '../api/lorebook.js';
 import { relationshipSummary, relationshipAgeText } from '../api/relationship.js';
+import { createContinuityUpdater, coveredCount, CONTINUITY_TOTAL_CHARS } from '../api/continuity.js';
 import { openSettings } from './settings.js';
 import { openAppearance } from './appearance.js';
 import { openChatBackground } from './chat-background.js';
@@ -589,6 +590,7 @@ async function onSendClick() {
   // cancela ya, y `sendInFlight` impide que arranque otra entre el guardado
   // del mensaje y el inicio de la respuesta (ver "lorebook automático").
   loreUpdater.abort();
+  continuityUpdater.abort();
   sendInFlight = true;
   try {
     messages.push({ role: 'user', text, ts: Date.now() });
@@ -600,6 +602,7 @@ async function onSendClick() {
     // Si el umbral de memoria se cruzó durante el envío o la respuesta, se
     // difirió hasta aquí: ahora el chat está libre.
     maybeUpdateLorebook();
+    maybeUpdateContinuity();
   }
 }
 
@@ -608,6 +611,7 @@ async function onSendClick() {
 async function generate() {
   if (busy || !character) return;
   loreUpdater.abort(); // también al regenerar: el chat tiene prioridad sobre la memoria
+  continuityUpdater.abort();
   busy = true;
   syncSendButton();
 
@@ -690,6 +694,7 @@ async function persistChat() {
   }
   maybeAutoBackup();
   maybeUpdateLorebook();
+  maybeUpdateContinuity();
 }
 
 /* ---------- lorebook automático (docs/NOTES.md, "Lorebook por personaje" y "MEM-001 v2") ---------- */
@@ -711,7 +716,7 @@ let sendInFlight = false;
 
 const loreUpdater = createLoreUpdater({
   getContext: () => (character && chat && settings ? { character, chat, messages, settings } : null),
-  isChatBusy: () => busy || sendInFlight,
+  isChatBusy: () => busy || sendInFlight || continuityUpdater.isRunning(),
   complete: (prompt, opts) => completeOnce(prompt, settings, opts),
   loadLorebook: async (characterId) => {
     const fresh = await getCharacter(characterId);
@@ -729,6 +734,26 @@ const loreUpdater = createLoreUpdater({
 
 function maybeUpdateLorebook() {
   loreUpdater.maybeRun().catch(() => {});
+}
+
+/* ---------- resumen de continuidad del chat (MEM-007, docs/HISTORIAL.md) ---------- */
+
+// Misma prioridad que el lorebook: nunca compite con una respuesta (`busy`/`sendInFlight`) ni con una extracción de
+// memoria en curso, y se cancela si el usuario envía un mensaje. La lógica vive en api/continuity.js.
+const continuityUpdater = createContinuityUpdater({
+  getContext: () => (character && chat && settings ? { character, chat, messages, settings } : null),
+  isChatBusy: () => busy || sendInFlight || loreUpdater.isRunning(),
+  complete: (request, opts) =>
+    request.mode === 'chat' ? completeChatOnce(request.messages, settings, opts) : completeOnce(request.prompt, settings, opts),
+  loadChat: (chatId) => getChat(chatId),
+  saveContinuity: async (chatId, summary) => {
+    const updated = await saveChatContinuity(chatId, summary);
+    if (chat && chat.id === chatId) chat = updated;
+  },
+});
+
+function maybeUpdateContinuity() {
+  continuityUpdater.maybeRun().catch(() => {});
 }
 
 /* ---------- hoja "Ver lorebook": ver, editar, borrar, deshacer, actualizar ---------- */
@@ -1196,6 +1221,219 @@ function openLoreUndoConfirm() {
   );
 }
 
+/* ---------- hoja "Resumen de este chat" (MEM-007): leer, editar, borrar, interruptor, resumir ahora ---------- */
+
+function continuityStatusText() {
+  const s = continuityUpdater.getStatus();
+  const when = s.at ? ` (${loreClock(s.at)})` : '';
+  switch (s.kind) {
+    case 'ok':
+      return `Último intento: correcto${s.condensed ? ' (se juntó con lo anterior para que quepa)' : ''}${when}.`;
+    case 'unparsed':
+      return `Último intento: el modelo respondió algo que no era un resumen; no se cambió nada${when}.`;
+    case 'unverified':
+      return `Último intento: el modelo mencionó cosas que no estaban en la conversación; se descartó y no se cambió nada${when}.`;
+    case 'unavailable':
+      return `Último intento: el servidor no estaba disponible; no se cambió nada${when}.`;
+    case 'aborted':
+      return `Último intento: se interrumpió (enviaste un mensaje o cambiaste el resumen); no se cambió nada${when}.`;
+    case 'error':
+      return `Último intento: no se pudo guardar; no se cambió nada${when}.`;
+    default:
+      return 'Todavía no se ha intentado resumir desde que abriste la app.';
+  }
+}
+
+function continuityResultMessage(result) {
+  switch (result.kind) {
+    case 'ok':
+      return 'Listo: resumen actualizado.';
+    case 'notyet':
+      return 'Todavía no hace falta: la conversación cabe completa en la memoria de la IA.';
+    case 'unparsed':
+      return 'El modelo respondió algo que no era un resumen. No se cambió nada; puedes intentarlo de nuevo.';
+    case 'unverified':
+      return 'El modelo mencionó cosas que no estaban en la conversación, así que se descartó. No se cambió nada.';
+    case 'unavailable':
+      return 'No se pudo conectar con el servidor (¿está encendido?). No se cambió nada.';
+    case 'aborted':
+      return 'Se interrumpió. No se cambió nada.';
+    case 'busy':
+      return 'Ya hay una respuesta o una actualización en curso. Prueba de nuevo en unos segundos.';
+    default:
+      return 'No se pudo actualizar el resumen. No se cambió nada.';
+  }
+}
+
+function openContinuitySheet(note = '') {
+  if (!character || !chat) return;
+  const summary = chat.continuitySummary || { text: '', coveredUntil: 0, updated: 0 };
+  const wrap = loreEl('div');
+  wrap.appendChild(loreEl('h3', 'sheet__title', 'Resumen de este chat'));
+  const intro = loreEl(
+    'div',
+    'field__hint',
+    'Cuando esta conversación es tan larga que los mensajes más viejos ya no caben en la memoria de la IA, aquí se guarda un ' +
+      'resumen breve de lo que pasó, para que el personaje no lo pierda del todo. Solo se crea cuando hace falta y es solo de ESTE chat.'
+  );
+  intro.style.marginBottom = 'var(--space-3, 12px)';
+  wrap.appendChild(intro);
+  if (note) wrap.appendChild(loreEl('div', 'field__label', note));
+  wrap.appendChild(loreEl('div', 'field__hint', continuityStatusText()));
+
+  const inFlight = continuityUpdater.isRunning() || busy || sendInFlight || loreUpdater.isRunning();
+
+  const text = loreEl('textarea', 'inp');
+  text.value = summary.text;
+  text.rows = 7;
+  text.maxLength = CONTINUITY_TOTAL_CHARS;
+  text.placeholder = 'Todavía no hay resumen. Puedes escribir uno tú (lo que quieras que el personaje recuerde de esta conversación) o esperar a que se cree solo.';
+  text.setAttribute('aria-label', 'Resumen de este chat');
+  text.style.marginTop = 'var(--space-2, 8px)';
+  const counter = loreEl('div', 'field__hint', '');
+  const refreshCounter = () => {
+    counter.textContent = `${text.value.length} / ${CONTINUITY_TOTAL_CHARS} caracteres`;
+  };
+  refreshCounter();
+  text.addEventListener('input', refreshCounter);
+  wrap.append(text, counter);
+
+  if (summary.text) {
+    const covered = coveredCount(messages, summary.coveredUntil);
+    const age = relationshipAgeText(summary.updated);
+    const parts = [];
+    if (covered) parts.push(`Resume los primeros ${covered} mensajes de esta conversación`);
+    if (age) parts.push(`última vez ${age}`);
+    if (parts.length) {
+      const meta = loreEl('div', 'field__hint', parts.join(' · ') + '.');
+      meta.setAttribute('data-role', 'continuity-meta');
+      wrap.appendChild(meta);
+    }
+  }
+
+  const error = loreEl('div', 'field__label', '');
+  const saveBtn = loreEl('button', 'btn', 'Guardar cambios');
+  saveBtn.type = 'button';
+  saveBtn.style.marginTop = 'var(--space-2, 8px)';
+  saveBtn.addEventListener('click', async () => {
+    saveBtn.disabled = true;
+    try {
+      const next = text.value.replace(/\s+/g, ' ').trim();
+      // Editar a mano no cambia hasta dónde llega el resumen; solo el texto (y la hora, para que una actualización en curso no lo pise).
+      chat = await saveChatContinuity(chat.id, { text: next, coveredUntil: next ? summary.coveredUntil : 0, updated: Date.now() });
+      openContinuitySheet(next ? 'Resumen guardado.' : 'Resumen borrado.');
+    } catch {
+      error.textContent = 'No se pudo guardar el cambio.';
+      saveBtn.disabled = false;
+    }
+  });
+  const saveHint = loreEl(
+    'div',
+    'field__hint',
+    'Mientras haya un resumen guardado, cada respuesta lo lleva y, en chats largos, puede tardar unos 2 segundos más (medido con ~500 caracteres). ' +
+      'Si prefieres la máxima velocidad, bórralo. Si lo escribes o editas tú, el resumen automático puede juntarlo o quitarle las frases más antiguas cuando ya no quepa.'
+  );
+  saveHint.style.marginTop = 'var(--space-1, 4px)';
+
+  const deleteBtn = loreEl('button', 'btn btn--ghost', 'Borrar resumen');
+  deleteBtn.type = 'button';
+  deleteBtn.style.marginTop = 'var(--space-2, 8px)';
+  deleteBtn.disabled = !summary.text;
+  deleteBtn.addEventListener('click', () => {
+    openContinuityConfirm(
+      '¿Borrar el resumen de este chat? Lo que ya no cabe en la conversación no se puede volver a resumir: si se borra, el personaje lo pierde.',
+      'Borrar',
+      async () => {
+        chat = await saveChatContinuity(chat.id, { text: '', coveredUntil: 0, updated: 0 });
+        return 'Resumen borrado.';
+      },
+      true
+    );
+  });
+
+  const autoRow = loreEl('label', 'field__label');
+  autoRow.style.display = 'flex';
+  autoRow.style.alignItems = 'center';
+  autoRow.style.gap = 'var(--space-2, 8px)';
+  autoRow.style.marginTop = 'var(--space-4, 16px)';
+  const autoBox = document.createElement('input');
+  autoBox.type = 'checkbox';
+  autoBox.checked = !!(settings && settings.continuityAuto);
+  autoBox.style.accentColor = 'var(--color-accent, #8b1fe0)';
+  autoRow.append(autoBox, loreEl('span', '', 'Resumir automáticamente cuando el chat se hace muy largo'));
+  const autoHint = loreEl(
+    'div',
+    'field__hint',
+    'Se hace en segundo plano, solo cuando algo está a punto de perderse, y se cancela si envías un mensaje. ' +
+      'Está apagado por defecto porque, con un resumen guardado, cada respuesta puede tardar unos 2 segundos más en chats largos.'
+  );
+  autoHint.style.marginBottom = 'var(--space-3, 12px)';
+  autoBox.addEventListener('change', async () => {
+    const enable = autoBox.checked;
+    autoBox.disabled = true;
+    try {
+      settings = await saveSettings({ continuityAuto: enable });
+      openContinuitySheet(enable ? 'Resumen automático activado.' : 'Resumen automático desactivado.');
+    } catch {
+      autoBox.checked = !enable;
+      autoBox.disabled = false;
+      openContinuitySheet('No se pudo guardar el ajuste.');
+    }
+  });
+
+  const progress = loreEl('div', 'field__hint', inFlight ? 'Hay una respuesta o una actualización en curso; espera a que termine.' : '');
+  const nowBtn = loreEl('button', 'btn btn--ghost', 'Resumir ahora');
+  nowBtn.type = 'button';
+  nowBtn.disabled = inFlight;
+  nowBtn.addEventListener('click', async () => {
+    nowBtn.disabled = true;
+    saveBtn.disabled = true;
+    deleteBtn.disabled = true;
+    progress.textContent = 'Resumiendo… puede tardar unos segundos (si tu servidor está apagado, hasta 2 minutos).';
+    const result = await continuityUpdater.runNow();
+    const message = continuityResultMessage(result);
+    if (wrap.isConnected) openContinuitySheet(message);
+    else app.toast(message);
+  });
+  const nowHint = loreEl(
+    'div',
+    'field__hint',
+    'Resume ahora los mensajes más viejos que todavía están visibles y pronto dejarán de caber. No hace nada si la conversación aún cabe entera.'
+  );
+  nowHint.style.marginTop = 'var(--space-1, 4px)';
+
+  wrap.append(error, saveBtn, saveHint, deleteBtn, autoRow, autoHint, progress, nowBtn, nowHint);
+  app.openSheet(wrap);
+}
+
+// Confirmación dentro de la propia hoja (mismo motivo que `openLoreConfirm`: `app.confirmDialog` cerraría la hoja).
+function openContinuityConfirm(message, confirmText, onConfirm, danger) {
+  const wrap = loreEl('div');
+  wrap.appendChild(loreEl('p', 'sheet__title', message));
+  const actions = loreEl('div');
+  actions.style.display = 'flex';
+  actions.style.gap = 'var(--space-3, 12px)';
+  actions.style.marginTop = 'var(--space-4, 16px)';
+  const cancelBtn = loreEl('button', 'btn btn--ghost', 'Cancelar');
+  cancelBtn.type = 'button';
+  cancelBtn.style.flex = '1';
+  cancelBtn.addEventListener('click', () => openContinuitySheet());
+  const okBtn = loreEl('button', danger ? 'btn btn--danger' : 'btn', confirmText);
+  okBtn.type = 'button';
+  okBtn.style.flex = '1';
+  okBtn.addEventListener('click', async () => {
+    okBtn.disabled = true;
+    try {
+      openContinuitySheet(await onConfirm());
+    } catch {
+      openContinuitySheet('No se pudo guardar el cambio.');
+    }
+  });
+  actions.append(cancelBtn, okBtn);
+  wrap.appendChild(actions);
+  app.openSheet(wrap);
+}
+
 /* ---------- barra superior ---------- */
 
 function onBack() {
@@ -1225,7 +1463,8 @@ function buildUsageInfo() {
     // MEM-004: refleja el bloque "siempre presentes" real y reserva el espacio del bloque "por tema".
     const lore = loreBudgetPreview(character.lorebook || []);
     const { approxTokens, budgetTokens, ratio } = estimateContextUsage(
-      character.card, messages, settings, chat ? chat.scenario : '', lore.alwaysBlock, lore.topicReserve
+      character.card, messages, settings, chat ? chat.scenario : '', lore.alwaysBlock, lore.topicReserve,
+      { continuity: chat && chat.continuitySummary ? chat.continuitySummary.text : '' }
     );
     const pct = Math.round(Math.min(ratio, 1) * 100);
     hint.textContent = ratio >= 1
@@ -1286,6 +1525,15 @@ function onMenu() {
     openLorebookSheet();
   });
   wrap.appendChild(lorebookBtn);
+
+  const continuityBtn = document.createElement('button');
+  continuityBtn.type = 'button';
+  continuityBtn.className = 'menu-item';
+  continuityBtn.textContent = 'Resumen de este chat';
+  continuityBtn.addEventListener('click', () => {
+    openContinuitySheet();
+  });
+  wrap.appendChild(continuityBtn);
 
   if (character && character.card.alternate_greetings && character.card.alternate_greetings.length && isOnlyGreeting()) {
     const greetBtn = document.createElement('button');
@@ -1364,7 +1612,7 @@ function chatExportBlob() {
     version: 2,
     exported: new Date().toISOString(),
     character: { id: character.id, name: character.name },
-    chat: { id: chat.id, title: chat.title, scenario: chat.scenario },
+    chat: { id: chat.id, title: chat.title, scenario: chat.scenario, continuitySummary: chat.continuitySummary },
     messages,
   };
   return new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
@@ -1442,6 +1690,14 @@ async function onImportChat() {
   if (!ok) return;
 
   if (busy) cancelGeneration();
+  continuityUpdater.abort();
+  // MEM-007: el resumen habla de los mensajes que se reemplazan, así que no sirve para el chat importado. Se restaura el
+  // que trae el archivo (si lo trae y es válido); si no, vuelve al valor por defecto y se regenera solo cuando haga falta.
+  try {
+    chat = await saveChatContinuity(chat.id, sanitizeContinuity(data.chat && data.chat.continuitySummary));
+  } catch {
+    // mejor esfuerzo: un fallo aquí no debe impedir importar los mensajes
+  }
   messages = cleaned;
   await persistChat();
   renderMessages();

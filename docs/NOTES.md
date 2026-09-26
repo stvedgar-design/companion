@@ -35,7 +35,7 @@ firma con una llave de depuración fija versionada en `signing/`; como la
 primera versión falló en el CI, ARQ-002 re-firma el APK explícitamente con
 `apksigner` y verifica la huella (ver "ARQ-001" y "ARQ-002" en `HISTORIAL.md`). Persistencia
 solo en `www/js/state.js` (IndexedDB `companion`, versión 2, stores
-`settings`, `characters`, `chats` [legado], `chatMeta`, `chatMsgs`). `fetch`
+`settings`, `characters`, `chats` [legado], `chatMeta`, `chatMsgs`; las escrituras de `chatMeta` que leen y luego escriben se serializan por chat, MEM-007). `fetch`
 solo en `www/js/api/kobold.js`. Skins = solo tokens en `www/css/themes.css`
 (5 skins × claro/oscuro; tipografía Literata incluida en `www/fonts/`, sin red). Vistas: `lock` (solo al arrancar, fuera de la
 navegación), `setup`, `home`, `chats`, `chat`. Versión: `APP_VERSION`
@@ -44,7 +44,7 @@ navegación), `setup`, `home`, `chats`, `chat`. Versión: `APP_VERSION`
 **Modelo de datos actual** (fuente de verdad: typedefs de `state.js`):
 - `Settings` (1 registro, clave `main`): `url`, `user`, `maxLen`, `temp`,
   `mode` (`'chat'` por defecto | `'plain'`), `ctx`, `pinSalt`, `pinHash`,
-  `theme` (`nomi|glass|imessage|penumbra|penumbra-claude`), `themeMode` (`dark|light`), `glassEffect` (`full|bars|off`, UI-007), `lorebookAuto`
+  `theme` (`nomi|glass|imessage|penumbra|penumbra-claude`), `themeMode` (`dark|light`), `glassEffect` (`full|bars|off`, UI-007), `continuityAuto` (boolean, `false` por defecto; MEM-007: resumen de continuidad automático), `lorebookAuto`
   (boolean, `false` por defecto; MEM-002: solo `true` activa la extracción
   automática de memoria), `varietyAssist` (boolean, `false` por defecto; FMT-004:
   nota de variedad al final del prompt si el personaje se repite), `formatAssist`
@@ -61,7 +61,8 @@ navegación), `setup`, `home`, `chats`, `chat`. Versión: `APP_VERSION`
   de importación, no por actividad reciente; la vista previa sale del chat).
 - `Chat` (store `chatMeta`): `id`, `characterId`, `title`, `scenario`,
   `created`, `updated`, `last`, `lastExportAt`, `lorebookMessageCount`
-  (marcador de disparo del lorebook; ya NO guarda entradas).
+  (marcador de disparo del lorebook; ya NO guarda entradas), `continuitySummary`
+  `{text, coveredUntil (ts del último mensaje resumido), updated}` (MEM-007; por defecto vacío).
 - `Message` (store `chatMsgs`, un array por `chatId`): `role` (`user|char`),
   `text`, `ts`, `loreUsed?` (UI-010, solo `char`: copia de los recuerdos usados; ausente = sin dato).
 - `LoreEntry`: `id`, `keys[]`, `content`, `updated`, `source` (`auto|manual`), `always?`
@@ -78,7 +79,7 @@ personaje (MEM-001 v2: extracción aditiva de una línea vía KoboldCpp, inyecci
 por keyword, hoja "Ver lorebook" con editar/borrar/deshacer y "Actualizar memoria
 ahora"; MEM-002: la actualización automática cada 20 mensajes está APAGADA por
 defecto y se activa con un interruptor en esa hoja); 5 skins × claro/oscuro; fondo
-de chat por personaje; CI con gate de tests; versión visible en Ajustes; 353
+de chat por personaje; CI con gate de tests; versión visible en Ajustes; resumen de continuidad por chat (MEM-007, **apagado por defecto**: cuesta ~+2-4 s por respuesta); 397
 tests (`node --test tests/*.test.mjs`).
 
 **Verificado en un teléfono real (Hecho, reportado por el tester, 2026-09-24):**
@@ -101,14 +102,15 @@ personajes guiado (solo propuesta, no autorizado). Añadido por DOC-002
   respuesta del chat tarde ~15–25 s más (invalida la caché de prompt del
   servidor). **Decisión (MEM-002, 2026-09-24):** la actualización automática
   queda apagada por defecto (`Settings.lorebookAuto`); la manual se conserva y
-  avisa el costo. Siguen pendientes de evaluar las opciones 2 (extraer sobre el
-  prefijo del chat, VER-004) y 4 (espaciar o disparar al salir del chat); ver
-  "MEM-001 v2 → Informe de latencia" (en `HISTORIAL.md`) y "MEM-002".
+  avisa el costo. La opción "extraer sobre el prefijo del chat" ya se MIDIÓ en
+  MEM-007 (0 s de penalización de caché; +14/+40/+56 s con una llamada aparte, según el
+  largo del chat); la extracción del lorebook aún no la usa. Ver "MEM-007" y "MEM-002".
 - **Calidad de la memoria — atendida por MEM-003, MEM-004 y MEM-005 (2026-09-24; implementados, sin probar en
   el teléfono):** hechos concretos con nombres, higiene de keys, fusión de casi-duplicados, palabra completa,
   "Limpiar recuerdos" y "siempre presentes". Detalle en `HISTORIAL.md`.
 - **Pendiente (FMT-004):** medir FMT-004 con conversaciones largas (40+ turnos) antes de
   decidir si activar `varietyAssist` por defecto (la medición de 18 turnos no fue concluyente).
+- **Pendiente (2026-09-26, cierre de la sesión M1):** MEM-008 (estado de la relación al prompt: autorizado, NO hecho; el usuario aprobó frases en inglés con la etiqueta "Relationship so far:": *pocos* "Sam and Mia are still getting to know each other.", *varios* "…have already shared quite a lot.", *muchos* "…have a long shared history.", nada sin recuerdos); **LAT-001** (propuesta, NO implementada: pausas de ~1 min en chats largos; ver "Hallazgo LAT-001" en `HISTORIAL.md`); probar `--smartcache`; MEM-007 sin verificar de punta a punta, en español, en texto simple ni en el teléfono.
 - **Formato del personaje (asteriscos sueltos, narración sin cursiva): atendido por FMT-002 y FMT-003
   (2026-09-25; implementados, sin probar en el teléfono).** Ver Resumen y `HISTORIAL.md`.
 - ~~El modo "plantilla del modelo" no corta en `\n`~~: **corregido por FMT-001** (`stop` con `"\n"`, reintento si vacía).
@@ -228,6 +230,9 @@ personajes: segunda iteración visual"; auditoría de recuperabilidad →
 | UI-007 | Efecto de vidrio ajustable (`Settings.glassEffect`) | Autorizado — **implementado el 2026-09-25** (sesión G3); Nomi/iMessage sin `backdrop-filter` y sin cambios de layout/color (medido); **pendiente de probar en el teléfono** | Tokens `--surface-backdrop`/`--bars-backdrop`; selector en Apariencia, solo con Glass. Sin medición de rendimiento (UI-005 no ejecutado). Ver "UI-007" (en `HISTORIAL.md`). |
 | UI-008 | Tipografía incluida, contraste, compositor de una línea y botón "volver abajo" | Autorizado — **implementado el 2026-09-25** (sesión G3); verificado en el navegador (sin peticiones de fuentes externas); **pendiente de probar en el teléfono** | Literata (OFL) en `www/fonts/` (~239 KB); `ui/contrast.js` + tabla de contraste con test; tokens `--color-em`/`--color-on-user`. Ver "UI-008" (en `HISTORIAL.md`). |
 | UI-009 | Dos skins nuevos: "Penumbra" y "Penumbra Claude" | Autorizado — **implementado el 2026-09-25** (sesión G4); verificados en el navegador (claro y oscuro, sin `backdrop-filter`); **pendiente de opinión del usuario en el teléfono** | Solo tokens en `themes.css` (+ `--bubble-edge`); contraste ≥4,5:1 en todos los roles, desde el diseño. Tokens en `DESIGN.md`. Ver "UI-009" (en `HISTORIAL.md`). |
+| MEM-007 | Resumen de continuidad por chat (memoria en capas) | Autorizado — **implementado el 2026-09-26** (sesión M1); Paso 0 y afinación medidos contra el servidor real; **APAGADO por defecto** (impuesto de latencia); no verificado de punta a punta, en español, en texto simple ni en el teléfono | Técnica: continuación del prefijo (sin penalización de caché); al FINAL del prompt (+2-4 s por respuesta; en la cabecera ~1 min por cambio); reserva fija en la ventana; tope 800/400 car. `Chat.continuitySummary`; `api/continuity.js`. Ver "MEM-007" (en `HISTORIAL.md`). |
+| MEM-008 | Estado de la relación también en la conversación | Autorizado — **NO implementado** (el usuario pidió cerrar la sesión M1); frases en inglés aprobadas (ver Pendiente) | El texto de MEM-006 está en español y el prompt va en inglés: se usa el nivel (`relationshipSummary().level`) con frases propias en `prompt.js`, sin tocar `relationship.js`. |
+| LAT-001 | (Propuesta) Pausas de ~1 min en chats largos: frente estable y espacio fijo para bloques finales | **Propuesta, sin autorizar** (el usuario decidió el 2026-09-26 solo documentarla) | 9 pausas de ~51 s en 22 pasos → 0 en 20 con el arreglo probado en un script. Ver "Hallazgo LAT-001" (en `HISTORIAL.md`). |
 | VER-005 | ¿Búsqueda de memoria por significado en el hardware del usuario? | Autorizado — **informe hecho el 2026-09-25** (sesión M1; solo `docs/`, sin código de producción). **Recomendación: no construir embeddings ni la tabla de sinónimos hoy.** Parte A (hardware real) **no se probó**; Parte B medida | KoboldCpp 1.121 sí trae `--embeddingsmodel` (Hecho, `--help` del binario). Tabla de sinónimos: 8/8 en lo que su autor previó, 2/16 en un juego "ciego"; difusa: tipeos 4/4 pero falsos positivos; casos de solo significado 0/7 con todo lo barato. Hallazgo: `--smartcache`. Ver "VER-005" (en `HISTORIAL.md`). |
 | BKP-001 | Importación de copias segura: confirmar, no pisar datos nuevos, todo o nada | **Autorizado; sin implementar** (sesión posterior a MEM-001 v2, solo cuando el usuario lo pida) | Punto de partida: hallazgos 2 y 10 de VER-001. |
 | MEM-001 (v1) | (Anulado) versión anterior de MEM-001 | **ANULADO**, reemplazado por MEM-001 v2 | Asumía que el servidor podía devolver una lista larga con saltos de línea. |
@@ -254,7 +259,7 @@ personajes: segunda iteración visual"; auditoría de recuperabilidad →
   `generateReplyNonEmpty` reintenta una vez. Medido: estrés 10/12 → 0/12; card de Mia
   1/80 → 0/80. (`maxLen`/`temp` sin efecto: sus deslizadores se quitaron en UI-011.)
 - **MEM-002 (2026-09-24), memoria automática apagada por defecto** (`Settings.lorebookAuto`):
-  cada extracción cuesta ~20 s en la SIGUIENTE respuesta. Opciones 2 y 4 (VER-004) pendientes.
+  cada extracción cuesta ~20 s en la SIGUIENTE respuesta. La opción 2 (extraer sobre el prefijo del chat) se midió en MEM-007.
 - **MEM-003 (2026-09-24), calidad de la memoria.** Prompt de hechos concretos con nombres y keys de una
   palabra; `normalizeLoreKeys` limpia (sin genéricas ni nombres, máx. 4); sin hechos con pronombre suelto; fusión de
   casi-repetidas (≥0,6 y ≥2 palabras); inyección por palabra completa; botón "Limpiar recuerdos" (deshacible).
@@ -276,6 +281,10 @@ personajes: segunda iteración visual"; auditoría de recuperabilidad →
   **Arrancar la respuesta en `*` (`formatAssist`) lo lleva a 0/135, sin cambiar latencia** y quita las comillas del habla. Un
   recordatorio al final del prompt empeora y añade ~0,5–0,9 s. En "texto simple" el fallo medido es 0/40. El corte a 160 tokens casi
   nunca es la causa. Contagio del historial: sugerido, no demostrado.
+- **MEM-007 (2026-09-26), resumen de continuidad por chat.** Un recuento breve (≤400 car.; total ≤800) de lo que ya no cabe en la ventana, pedido como CONTINUACIÓN del prefijo del chat (0 s de penalización de
+  caché frente a +14/+40/+56 s con llamada aparte), con verificación léxica y compresión con respaldo sin modelo. Va al FINAL del prompt (cabecera: ~1 min por cada cambio); cada respuesta
+  cuesta +2-4 s mientras haya resumen → **apagado por defecto**. Fidelidad (10 chats, mensajes de largo real): 0 datos inventados con la redacción final, 8/10 limpios. Hallazgos: reserva fija
+  para que la ventana no se mueva, y el origen de las pausas de ~1 min en chats largos (LAT-001, propuesta).
 - **FMT-003 (2026-09-25), asteriscos en pantalla.** `formatMessage(text, {role:'char'})` repara solo en pantalla los `*` mal emparejados
   (`**`=`*`, apertura dentro de cursiva abierta, `*` suelto oculto); usuario y datos guardados intactos.
 
@@ -328,3 +337,4 @@ implementan sin un contrato del arquitecto. Sin datos personales del usuario.
 - **MEM-004** — Paso 0 (latencia por colocación), decisión, ejemplo de prompt, pruebas de estilo.
 - **MEM-005** — causa del bug de fusión, prompt de keys final, tabla antes/después. **FMT-004** — detector, medición no concluyente, ronda detenida por memoria.
 - **FMT-002** — validador V1–V4, tablas A/B/C/D (2 rondas + texto simple), decisión, opciones descartadas. **FMT-003** — reglas de normalización visual y casos.
+- **VER-005** — informe de búsqueda por significado: viabilidad en KoboldCpp 1.121, tabla de sinónimos vs difusa (juego ciego), `--smartcache`. **MEM-007** — Paso 0 (3 técnicas × 3 regímenes), afinación de la instrucción, colocación cabecera/final, reserva fija. **Hallazgo LAT-001** — causas medidas de las pausas de ~1 min y propuesta de arreglo.
