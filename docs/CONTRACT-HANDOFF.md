@@ -40,6 +40,11 @@ ser la última con contexto completo:
   verificar en el navegador, actualizar la documentación (`docs/NOTES.md` y `docs/HISTORIAL.md`), commit y push
   (el usuario autorizó el push habitual en esta línea de trabajo, pero
   nunca `--force`).
+- **Carpeta `para-el-arquitecto/` (DOC-004): SOLO para lectura externa.** Es una copia plana
+  (sin subcarpetas, nombres con `__`) que genera `node tools/para-el-arquitecto.mjs` para que el
+  usuario la suba al Proyecto de Claude.ai, donde revisa el arquitecto. **NINGUNA instancia de
+  Claude Code debe leerla, editarla ni usarla como fuente de verdad**: los archivos originales
+  mandan. Está en `.gitignore` y nunca se commitea.
 - **Orden de lectura (DOC-003):** este archivo (secciones 0, 3 y 4) y luego
   `docs/NOTES.md` completo; `docs/HISTORIAL.md` solo bajo demanda.
 - **Dónde está cada cosa**: `docs/NOTES.md` = estado vigente, principios y
@@ -380,3 +385,7 @@ recordatorio de lo más importante):
    ambiguos y por qué, qué quedó pendiente). Esa continuidad de
    documentación es lo que permite que estas sesiones se puedan retomar
    sin perder contexto — no la rompas.
+6. **Cierre de CADA sesión (DOC-004):** después del commit final y los tests, ejecutá
+   `node tools/para-el-arquitecto.mjs` y, en tu mensaje final al usuario, incluí esta línea:
+   "Carpeta `para-el-arquitecto` actualizada: borra los archivos viejos del Proyecto de Claude.ai
+   y arrastra la carpeta completa". (No la commitees: está en `.gitignore`.)
