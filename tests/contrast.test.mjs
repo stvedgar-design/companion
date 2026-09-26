@@ -161,7 +161,7 @@ test('UI-015: cada bloque de Penumbra/Penumbra Claude define su PROPIO --color-e
     }
   }
   assert.equal(new Set(Object.values(em)).size, 4, 'los 4 modos tienen un --color-em distinto');
-  assert.equal(em['penumbra/dark'], '#e6ad82'); // DESIGN.md: el valor propio de Penumbra oscuro (no el terracota de Claude)
+  assert.equal(em['penumbra/dark'], '#ebc987'); // DESIGN.md: dorado champán propio de Penumbra oscuro (no el terracota de Claude)
   // ningún bloque fuera de un skin concreto redefine --color-em ni --font (una redefinición suelta pisaría a un hermano)
   const themes = css('themes.css').replace(/\[data-theme="[\w-]+"\]\[data-mode="\w+"\]\s*\{[^}]*\}/g, '');
   assert.ok(!/--color-em\s*:/.test(themes.replace(/\/\*[\s\S]*?\*\//g, '')), '--color-em solo en bloques completos de skin');
