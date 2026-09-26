@@ -100,7 +100,7 @@ son degradados sutiles (solo se usan en `background`). Nombres en el selector: "
 | `--color-text` | `#f1eaf6` | `#2a2233` | `#f3ece2` | `#2b2620` |
 | `--color-muted` | `#a99bbd` | `#61567a` | `#b3a695` | `#665c4e` |
 | `--color-accent` / `-2` | `#9146cf` / `#b47ae6` | `#7d3fc4` / `#9a63dc` | `#b3512f` / `#e08a66` | `#a94a29` / `#c8694a` |
-| `--color-em` (acciones del personaje) | `#ebc987` | `#8e4626` | `#e5a07c` | `#9a4424` |
+| `--color-em` (acciones del personaje) | `#ebc987` | `#755000` | `#e5a07c` | `#9a4424` |
 | `--grad-user` (135°) | `#6b2fa3 → #8747c0` | `#7a3cc0 → #8e52d0` | `#a3462a → #b3522f` | `#a3462a → #b3522f` |
 | `--color-on-user` / `--color-muted-on-accent` | `#fff` / `#e5d0ff` | `#fff` / `#efe3ff` | `#fff` / `#ffdfcc` | `#fff` / `#ffdfcc` |
 | `--bubble-edge` | `inset 0 0 0 1px rgba(255,238,255,.09)` | `inset 0 0 0 1px rgba(255,255,255,.7), 0 1px 2px rgba(60,40,90,.1)` | `inset 0 0 0 1px rgba(255,236,220,.09)` | `inset 0 0 0 1px rgba(255,255,255,.75), 0 1px 2px rgba(80,50,30,.1)` |
@@ -156,4 +156,6 @@ Cada skin tiene su propia voz tipográfica, definida solo con el token `--font` 
 
 Decisión: los dos Penumbra dejan de compartir fuente (el usuario pidió "una tipografía por skin"); Glass deja de compartir Literata con Nomi. Peso agregado: ~361 KB (12 archivos variables, latin + latin-ext). El diálogo con "Tipografía dividida" (UI-023) no cambia: sigue usando `--font-dialogue` (sistema) y la cursiva la fuente del skin.
 
-**Ajuste del color de las acciones en Penumbra oscuro (2026-09-26):** el durazno `#e6ad82` era casi igual al salmón `#e5a07c` de Penumbra Claude oscuro (tono 26° vs 21°); pasa a dorado champán `#ebc987` (tono 40°, contraste 9,7:1 sobre la burbuja; el mínimo exigido es 4,5). Se movió Penumbra y no Claude porque el terracota es la identidad de Claude. Ojo (no cambiado): en los modos CLAROS los dos siguen muy parecidos (`#8e4626` vs `#9a4424`).
+**Ajuste del color de las acciones en Penumbra oscuro (2026-09-26):** el durazno `#e6ad82` era casi igual al salmón `#e5a07c` de Penumbra Claude oscuro (tono 26° vs 21°); pasa a dorado champán `#ebc987` (tono 40°, contraste 9,7:1 sobre la burbuja; el mínimo exigido es 4,5). Se movió Penumbra y no Claude porque el terracota es la identidad de Claude.
+
+**Ajuste del color de las acciones en Penumbra claro (2026-09-26):** `#8e4626` (tono 18°) era casi igual al `#9a4424` de Penumbra Claude claro (tono 16°). Penumbra claro pasa a bronce/ocre `#755000` (tono 41°, contraste 5,3:1 sobre la burbuja lavanda; piso 4,5), en la misma familia dorada de su versión oscura. Penumbra Claude conserva su terracota. Un test exige una distancia mínima entre los `--color-em` de los dos hermanos en ambos modos.

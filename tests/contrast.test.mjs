@@ -162,6 +162,13 @@ test('UI-015: cada bloque de Penumbra/Penumbra Claude define su PROPIO --color-e
   }
   assert.equal(new Set(Object.values(em)).size, 4, 'los 4 modos tienen un --color-em distinto');
   assert.equal(em['penumbra/dark'], '#ebc987'); // DESIGN.md: dorado champán propio de Penumbra oscuro (no el terracota de Claude)
+  // los hermanos deben distinguirse a simple vista (el usuario los confundía): distancia RGB mínima entre ellos
+  for (const mode of ['dark', 'light']) {
+    const x = parseColor(em[`penumbra/${mode}`]);
+    const y = parseColor(em[`penumbra-claude/${mode}`]);
+    const dist = Math.abs(x.r - y.r) + Math.abs(x.g - y.g) + Math.abs(x.b - y.b);
+    assert.ok(dist >= 50, `${mode}: --color-em de Penumbra y Penumbra Claude demasiado parecidos (distancia ${dist})`);
+  }
   // ningún bloque fuera de un skin concreto redefine --color-em ni --font (una redefinición suelta pisaría a un hermano)
   const themes = css('themes.css').replace(/\[data-theme="[\w-]+"\]\[data-mode="\w+"\]\s*\{[^}]*\}/g, '');
   assert.ok(!/--color-em\s*:/.test(themes.replace(/\/\*[\s\S]*?\*\//g, '')), '--color-em solo en bloques completos de skin');
