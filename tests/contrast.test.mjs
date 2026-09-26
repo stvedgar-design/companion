@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { parseColor, composite, luminance, contrastRatio } from '../www/js/ui/contrast.js';
 
 const css = (name) => readFileSync(new URL(`../www/css/${name}`, import.meta.url), 'utf8');
@@ -136,17 +136,62 @@ test('UI-009: los skins nuevos usan solo tokens (sin backdrop-filter en ningún 
   assert.ok(!/^\s*(-webkit-)?backdrop-filter\s*:/m.test(css('themes.css')));
 });
 
-test('UI-009: Penumbra y Penumbra Claude son hermanos: misma tipografía y mismas propiedades; solo cambia la paleta', () => {
+test('UI-009: Penumbra y Penumbra Claude son hermanos: mismas propiedades y misma estructura; solo cambian la paleta y (UI-015) la tipografía', () => {
   const skins = loadSkins();
   for (const mode of ['dark', 'light']) {
     const a = skins[`penumbra/${mode}`];
     const b = skins[`penumbra-claude/${mode}`];
     assert.deepEqual(Object.keys(a).sort(), Object.keys(b).sort());
-    assert.equal(a['--font'], b['--font']);
     assert.equal(a['--surface-backdrop'], b['--surface-backdrop']);
-    assert.match(a['--font'], /Literata/); // la fuente incluida en la app (UI-008)
     assert.notEqual(a['--color-bg'], b['--color-bg']);
     assert.notEqual(a['--grad-user'], b['--grad-user']);
+  }
+});
+
+// ---- UI-015: cursiva y color independientes por skin; una tipografía propia por skin ----
+
+test('UI-015: cada bloque de Penumbra/Penumbra Claude define su PROPIO --color-em (sin fugas entre hermanos) y las reglas de cursiva no dependen del skin', () => {
+  const skins = loadSkins();
+  const em = {};
+  for (const skin of ['penumbra', 'penumbra-claude']) {
+    for (const mode of ['dark', 'light']) {
+      const v = skins[`${skin}/${mode}`]['--color-em'];
+      assert.match(v, /^#[0-9a-f]{6}$/i, `${skin}/${mode} debe definir --color-em`);
+      em[`${skin}/${mode}`] = v.toLowerCase();
+    }
+  }
+  assert.equal(new Set(Object.values(em)).size, 4, 'los 4 modos tienen un --color-em distinto');
+  assert.equal(em['penumbra/dark'], '#e6ad82'); // DESIGN.md: el valor propio de Penumbra oscuro (no el terracota de Claude)
+  // ningún bloque fuera de un skin concreto redefine --color-em ni --font (una redefinición suelta pisaría a un hermano)
+  const themes = css('themes.css').replace(/\[data-theme="[\w-]+"\]\[data-mode="\w+"\]\s*\{[^}]*\}/g, '');
+  assert.ok(!/--color-em\s*:/.test(themes.replace(/\/\*[\s\S]*?\*\//g, '')), '--color-em solo en bloques completos de skin');
+  // la cursiva es una regla de componente única e incondicional
+  assert.match(css('chat.css'), /\.chat-bubble em\s*\{\s*color:\s*var\(--em-color\);\s*font-style:\s*italic;/);
+});
+
+test('UI-015: cada skin tiene su tipografía; las incluidas en la app traen romana e itálica reales, archivos y licencia', () => {
+  const skins = loadSkins();
+  const expected = { nomi: 'Literata', glass: 'Figtree', penumbra: 'Lora', 'penumbra-claude': 'Source Serif 4' };
+  for (const [skin, family] of Object.entries(expected)) {
+    for (const mode of ['dark', 'light']) {
+      assert.ok(skins[`${skin}/${mode}`]['--font'].startsWith(`'${family}'`), `${skin}/${mode} usa ${family}`);
+    }
+  }
+  for (const mode of ['dark', 'light']) assert.ok(!/^'/.test(skins[`imessage/${mode}`]['--font']), 'iMessage usa la fuente del sistema');
+  // las cuatro familias incluidas son distintas entre sí
+  assert.equal(new Set(Object.values(expected)).size, 4);
+  const tokens = css('tokens.css');
+  for (const family of Object.values(expected)) {
+    for (const style of ['normal', 'italic']) {
+      const blocks = [...tokens.matchAll(new RegExp(`@font-face\\s*\\{[^}]*font-family:\\s*'${family}';[^}]*font-style:\\s*${style};[^}]*\\}`, 'g'))];
+      assert.ok(blocks.length >= 2, `${family} ${style}: faltan @font-face (latin y latin-ext)`);
+      for (const b of blocks) {
+        const file = b[0].match(/url\(\.\.\/fonts\/([^)]+)\)/)[1];
+        assert.ok(existsSync(new URL(`../www/fonts/${file}`, import.meta.url)), `existe ${file}`);
+        assert.ok(!/https?:/.test(b[0]), 'sin fuentes de internet');
+      }
+    }
+    assert.ok(existsSync(new URL(`../www/fonts/OFL-${family.replace(/ /g, '-')}.txt`, import.meta.url)), `licencia de ${family}`);
   }
 });
 

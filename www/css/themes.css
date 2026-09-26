@@ -103,7 +103,7 @@
   --color-muted-on-accent: #dbc4fc;
   --grad-user: linear-gradient(135deg, rgba(122, 18, 214, 0.8), rgba(155, 63, 240, 0.8));
   --grad-avatar: linear-gradient(135deg, #5b1fa8, #c04bd6);
-  --font: 'Literata', Georgia, 'Times New Roman', serif;
+  --font: 'Figtree', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --surface-backdrop: blur(var(--glass-blur));
   --bars-backdrop: blur(var(--glass-blur));
   --app-bg:
@@ -130,7 +130,7 @@
   --color-on-user: #ffffff; /* UI-008: texto sobre la burbuja del usuario (por defecto = --color-text) */
   --grad-user: linear-gradient(135deg, rgba(122, 18, 214, 0.85), rgba(155, 63, 240, 0.85));
   --grad-avatar: linear-gradient(135deg, #5b1fa8, #c04bd6);
-  --font: 'Literata', Georgia, 'Times New Roman', serif;
+  --font: 'Figtree', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --surface-backdrop: blur(var(--glass-blur));
   --bars-backdrop: blur(var(--glass-blur));
   --app-bg:
@@ -218,7 +218,7 @@
 }
 
 /* ---------- Penumbra y Penumbra Claude (UI-009) ---------- */
-/* Dos skins hermanos: MISMA estructura, formas y tipografía (Literata incluida en la app); solo cambia la paleta.
+/* Dos skins hermanos: MISMA estructura y formas; cambia la paleta y (UI-015) la tipografía: Lora en Penumbra, Source Serif 4 en Penumbra Claude, ambas incluidas en la app.
    Definidos únicamente con los tokens existentes (+ --bubble-edge, el borde fino de luz de las burbujas, que
    chat.css aplica como box-shadow y que el resto de skins deja en `none`). Sin backdrop-filter: burbujas OPACAS con un
    degradado sutil (--color-surface-2 y --grad-user aceptan degradados: solo se usan en `background`). "Penumbra":
@@ -244,7 +244,7 @@
   --color-em: #e6ad82;
   --grad-user: linear-gradient(135deg, #6b2fa3, #8747c0);
   --grad-avatar: linear-gradient(135deg, #4a2470, #a04fc0);
-  --font: 'Literata', Georgia, 'Times New Roman', serif;
+  --font: 'Lora', Georgia, 'Times New Roman', serif;
   --surface-backdrop: none;
   --bars-backdrop: none;
   --bubble-edge: inset 0 0 0 1px rgba(255, 238, 255, 0.09);
@@ -269,7 +269,7 @@
   --color-em: #8e4626;
   --grad-user: linear-gradient(135deg, #7a3cc0, #8e52d0);
   --grad-avatar: linear-gradient(135deg, #b490dc, #d9b7e6);
-  --font: 'Literata', Georgia, 'Times New Roman', serif;
+  --font: 'Lora', Georgia, 'Times New Roman', serif;
   --surface-backdrop: none;
   --bars-backdrop: none;
   --bubble-edge: inset 0 0 0 1px rgba(255, 255, 255, 0.7), 0 1px 2px rgba(60, 40, 90, 0.1);
@@ -294,7 +294,7 @@
   --color-em: #e5a07c;
   --grad-user: linear-gradient(135deg, #a3462a, #b3522f);
   --grad-avatar: linear-gradient(135deg, #7a3520, #c9714f);
-  --font: 'Literata', Georgia, 'Times New Roman', serif;
+  --font: 'Source Serif 4', Georgia, 'Times New Roman', serif;
   --surface-backdrop: none;
   --bars-backdrop: none;
   --bubble-edge: inset 0 0 0 1px rgba(255, 236, 220, 0.09);
@@ -319,7 +319,7 @@
   --color-em: #9a4424;
   --grad-user: linear-gradient(135deg, #a3462a, #b3522f);
   --grad-avatar: linear-gradient(135deg, #d9a58a, #e6c3ab);
-  --font: 'Literata', Georgia, 'Times New Roman', serif;
+  --font: 'Source Serif 4', Georgia, 'Times New Roman', serif;
   --surface-backdrop: none;
   --bars-backdrop: none;
   --bubble-edge: inset 0 0 0 1px rgba(255, 255, 255, 0.75), 0 1px 2px rgba(80, 50, 30, 0.1);

@@ -39,7 +39,7 @@ posibles (eso está en `themes.css` mismo, es la fuente de verdad).
 | `--color-muted-on-accent` | *cursiva* sobre la burbuja del usuario (la regla de chat.css ya la respeta). UI-021: color SÓLIDO teñido con la identidad de cada skin (lavanda en Nomi/Glass/Penumbra, durazno en Penumbra Claude, azul en iMessage oscuro, azul marino en iMessage claro) para distinguirse del texto normal (blanco/negro puro); valores en la tabla "Cursiva del usuario" de abajo | `rgba(255,255,255,.72)` |
 | `--grad-user` | fondo de la burbuja del usuario — degradado o color plano según el skin | `linear-gradient(135deg,#7a12d6,#9b3ff0)` |
 | `--grad-avatar` | fondo del avatar por defecto | `linear-gradient(135deg,#5b1fa8,#c04bd6)` |
-| `--font` | familia tipográfica — varía por skin (Literata en Nomi/Glass, fuente del sistema en iMessage) | `'Literata', Georgia, 'Times New Roman', serif` |
+| `--font` | familia tipográfica — una por skin (UI-015): Literata en Nomi, Figtree en Glass, Lora en Penumbra, Source Serif 4 en Penumbra Claude, fuente del sistema en iMessage; todas incluidas en `www/fonts/` (ver tabla "Tipografía por skin" abajo) | `'Literata', Georgia, 'Times New Roman', serif` |
 | `--color-em` | *cursiva* del PERSONAJE sobre su burbuja (UI-008); por defecto cae en `--color-muted`. Solo Nomi claro (`#6a677e`) e iMessage claro (`#69696d`) la redefinen, para llegar a 4,5:1 | *(sin definir)* |
 | `--color-on-user` | texto normal sobre la burbuja del USUARIO (UI-008); por defecto cae en `--color-text`. Blanco en Nomi (claro y oscuro) y Glass claro | *(sin definir)* |
 | `--surface-backdrop` | `backdrop-filter` de burbujas, botones, chips, tarjetas y hojas (UI-007) — `none` salvo en Glass (`blur(var(--glass-blur))`) | `none` |
@@ -87,7 +87,7 @@ Nomi e iMessage no tienen ningún `backdrop-filter` (antes `blur(0px)`, ahora `n
 
 ## Penumbra y Penumbra Claude (UI-009)
 
-Dos skins hermanos: misma estructura, formas, radios y tipografía (Literata incluida); solo cambia la paleta. Se definen únicamente con los tokens de `themes.css`, sin `backdrop-filter`
+Dos skins hermanos: misma estructura, formas y radios; cambian la paleta y (UI-015) la tipografía (Lora en Penumbra, Source Serif 4 en Penumbra Claude, ambas incluidas). Se definen únicamente con los tokens de `themes.css`, sin `backdrop-filter`
 (burbujas opacas) y con un token nuevo `--bubble-edge` (borde fino de luz de las burbujas, aplicado como `box-shadow` en `.chat-bubble`; `none` en los demás skins). `--color-surface-2` y `--grad-user`
 son degradados sutiles (solo se usan en `background`). Nombres en el selector: "Penumbra" y "Penumbra Claude" (`data-theme="penumbra"` / `"penumbra-claude"`).
 
@@ -141,3 +141,17 @@ En iMessage el ajuste no se nota (su `--font` ya es esa pila). Opinión del usua
 ## Métricas técnicas: "esconder, no eliminar" (UI-020)
 
 Principio del proyecto (decisión del usuario): los datos técnicos (conteo de mensajes, contexto usado, y toda medición futura como las de UI-001/UI-005) **se siguen calculando y siguen disponibles** para Claude Code y el arquitecto, pero **no se muestran de entrada** al usuario final, cuya experiencia es chatear. Su lugar es la sección plegable **"Diagnóstico"** del menú ⋮ del chat (`buildDiagnostics` en `www/js/ui/chat.js`; cerrada por defecto; texto de aviso "Información técnica. No hace falta entenderla para usar la app."). Contratos posteriores que midan algo deben añadirlo dentro de esa sección (o de una equivalente plegada), no en la pantalla principal. Los criterios generales de ingeniería están en `docs/PRINCIPIOS-DE-INGENIERIA.md` (DOC-005).
+
+## Tipografía por skin (UI-015)
+
+Cada skin tiene su propia voz tipográfica, definida solo con el token `--font` en `themes.css` (los componentes no la conocen) y con las fuentes incluidas en la app (`www/fonts/`, OFL 1.1, sin red; origen y huellas en `www/fonts/README.md`). Todas traen cursiva real, que es la que usa la *acción* del formato Nomi.
+
+| Skin | `--font` | Por qué |
+|---|---|---|
+| Nomi | Literata (serif de lectura) | El look original de la app; no se toca. |
+| Glass | Figtree (sans geométrica amable) | Glass es "moderno y ligero", distinto en espíritu de Nomi; una sans lo separa a simple vista sin parecerse a iMessage (Figtree es más redonda). |
+| Penumbra | Lora (serif de trazo caligráfico) | Ambiente nocturno y literario; su cursiva, muy marcada, luce en las *acciones*. |
+| Penumbra Claude | Source Serif 4 (serif editorial, ojo grande) | Serif cálida distinta a las otras dos. Se descartó Newsreader: a 17 px se leía ~11 % más pequeña (menor altura de letra); Source Serif 4 iguala a Lora/Literata en altura de letra y ancho medio. |
+| iMessage | Fuente del sistema | Fiel a Mensajes; sin archivos. |
+
+Decisión: los dos Penumbra dejan de compartir fuente (el usuario pidió "una tipografía por skin"); Glass deja de compartir Literata con Nomi. Peso agregado: ~361 KB (12 archivos variables, latin + latin-ext). El diálogo con "Tipografía dividida" (UI-023) no cambia: sigue usando `--font-dialogue` (sistema) y la cursiva la fuente del skin.
