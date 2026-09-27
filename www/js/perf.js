@@ -132,12 +132,13 @@ export function lastReplyText(meta) {
  * @param {string} text
  * @param {number} charsPerLine caracteres que caben en una línea de la burbuja (según el ancho de la pantalla)
  * @param {boolean} [hasMeta]
+ * @param {boolean} [hasStamp] MEM-011: solo la línea del timestamp (más baja que la de memoria/versiones, que ya suma 34 px)
  */
-export function estimateRowHeight(text, charsPerLine, hasMeta = false) {
+export function estimateRowHeight(text, charsPerLine, hasMeta = false, hasStamp = false) {
   const len = typeof text === 'string' ? text.replace(/\*/g, '').length : 0;
   const perLine = Number.isFinite(charsPerLine) && charsPerLine >= 8 ? charsPerLine : 30;
   const lines = Math.max(1, Math.ceil((len * 1.08) / perLine));
-  return Math.round(24 + lines * 25.5 + (hasMeta ? 34 : 0));
+  return Math.round(24 + lines * 25.5 + (hasMeta ? 34 : hasStamp ? 20 : 0));
 }
 
 /** Caracteres por línea de una burbuja para un ancho de lista dado (px): 88 % del ancho útil menos el relleno, a ~8,4 px por carácter. */

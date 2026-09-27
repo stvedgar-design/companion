@@ -19,6 +19,8 @@ import {
 } from '../api/lorebook.js';
 import { relationshipSummary, relationshipAgeText } from '../api/relationship.js';
 import { appearanceOf } from '../character-appearance.js';
+import { moodText } from '../api/mood.js';
+import { formatMessageTime, formatMessageFullTime } from '../msgtime.js';
 import { createContinuityUpdater, coveredCount, CONTINUITY_TOTAL_CHARS, CONTINUITY_ON_OPEN_DELAY_MS } from '../api/continuity.js';
 import { openChatBackground } from './chat-background.js';
 import { openCharacterAppearance } from './character-look.js';
@@ -405,7 +407,7 @@ function buildMessageRow(m, i) {
   row.className = 'chat-row ' + (m.role === 'user' ? 'chat-row--user' : 'chat-row--char');
   row.dataset.index = String(i);
   // Altura estimada mientras la fila esté fuera de pantalla (chat.css: contain-intrinsic-size). No afecta a lo que se ve.
-  row.style.setProperty('--row-h', estimateRowHeight(m.text, rowCharsPerLine, loreIndicatorState(m) !== 'none' || variantCount(m) > 1) + 'px');
+  row.style.setProperty('--row-h', estimateRowHeight(m.text, rowCharsPerLine, loreIndicatorState(m) !== 'none' || variantCount(m) > 1, true) + 'px');
 
   const bubble = document.createElement('div');
   bubble.className = 'chat-bubble';
@@ -416,11 +418,13 @@ function buildMessageRow(m, i) {
   }
   row.appendChild(bubble);
 
-  // Línea bajo la burbuja: marcapáginas de memoria (UI-010) y, si hay varias versiones de la respuesta, el selector (UI-017).
+  // Línea bajo la burbuja: marcapáginas de memoria (UI-010), el selector de versiones de una respuesta regenerada (UI-017) y (MEM-011) el
+  // timestamp de TODOS los mensajes, con "sintiendo …" solo en respuestas que activaron 3 o más recuerdos y de las que hay una emoción clara.
   const loreState = loreIndicatorState(m);
   const showLore = loreState !== 'none' && !!m.text;
   const showVariants = m.role === 'char' && variantCount(m) > 1 && !!m.text;
-  if (showLore || showVariants) {
+  const stampText = m.text ? formatMessageTime(m.ts) : '';
+  if (showLore || showVariants || stampText) {
     const meta = document.createElement('div');
     meta.className = 'chat-row__meta';
     if (showLore) {
@@ -436,10 +440,31 @@ function buildMessageRow(m, i) {
       meta.appendChild(btn); // el clic se atiende por delegación en onMessagesClick (sin un listener por fila)
     }
     if (showVariants) meta.appendChild(buildVariantNav(m, i)); // después del marcapáginas: este no cambia de sitio (UI-016)
+    if (stampText) meta.appendChild(buildStamp(m, stampText));
     row.appendChild(meta);
   }
 
   return row;
+}
+
+// MEM-011: `14:05` (o `24 sep` si es de un día anterior) y, a su lado, `sintiendo nostalgia` cuando el mensaje del personaje activó 3 o más
+// recuerdos por tema y la heurística (api/mood.js, sin modelo) reconoce una emoción clara; si no, solo la hora. Discreto y en letra chica.
+function buildStamp(m, text) {
+  const stamp = document.createElement('span');
+  stamp.className = 'chat-stamp';
+  const time = document.createElement('time');
+  time.dateTime = new Date(m.ts).toISOString();
+  time.title = formatMessageFullTime(m.ts);
+  time.textContent = text;
+  stamp.appendChild(time);
+  const mood = m.role === 'char' ? moodText(m.loreUsed) : '';
+  if (mood) {
+    const label = document.createElement('span');
+    label.className = 'chat-mood';
+    label.textContent = ' · ' + mood;
+    stamp.appendChild(label);
+  }
+  return stamp;
 }
 
 // UI-017: `‹ 2/3 ›` bajo una respuesta con varias versiones. Navegar es instantáneo: no llama al servidor.
