@@ -1,6 +1,7 @@
 // tests/continuity.test.mjs — MEM-007: resumen de continuidad por chat (funciones puras y actualizador).
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   CONTINUITY_RECAP_CHARS,
   CONTINUITY_TOTAL_CHARS,
@@ -8,6 +9,8 @@ import {
   CONTINUITY_CHUNK_MAX_CHARS,
   CONTINUITY_CHUNK_MIN_MESSAGES,
   CONTINUITY_KEEP_RECENT_MESSAGES,
+  CONTINUITY_ABSENCE_MS,
+  isLongAbsence,
   splitSentences,
   fitToChars,
   keepNewestSentences,
@@ -385,4 +388,109 @@ test('actualizador: un chat guardado antes de MEM-007 (sin continuitySummary) fu
   const before = JSON.stringify(h.state.messages);
   await h.updater.maybeRun();
   assert.equal(JSON.stringify(h.state.messages), before);          // los mensajes guardados no se tocan nunca
+});
+
+/* ---------- MEM-010: repaso al volver tras una ausencia ---------- */
+
+const HOUR = 60 * 60 * 1000;
+// Mensajes con fecha real relativa a `state.now` (el harness fija now = 1_000_000 ms); el último mensaje fue hace `agoMs`.
+function withLastMessageAgo(h, agoMs) {
+  const n = h.state.messages.length;
+  h.state.messages = h.state.messages.map((m, i) => ({ ...m, ts: h.state.now - agoMs - (n - 1 - i) * 1000 }));
+  return h;
+}
+const NOW_BIG = 100 * HOUR; // un "ahora" lo bastante grande para restar horas sin dar fechas negativas
+
+test('MEM-010: isLongAbsence mide desde el ÚLTIMO mensaje, con umbral en horas; sin fecha válida o sin mensajes no dispara nada', () => {
+  assert.equal(CONTINUITY_ABSENCE_MS, 8 * HOUR);
+  assert.ok(CONTINUITY_ABSENCE_MS >= 6 * HOUR && CONTINUITY_ABSENCE_MS <= 12 * HOUR, 'dentro del rango propuesto (6-12 h)');
+  const at = (ago) => [{ role: 'char', text: 'x', ts: NOW_BIG - ago }];
+  assert.equal(isLongAbsence(at(9 * HOUR), NOW_BIG), true);
+  assert.equal(isLongAbsence(at(8 * HOUR), NOW_BIG), false);      // justo en el umbral: no
+  assert.equal(isLongAbsence(at(5 * 60 * 1000), NOW_BIG), false);
+  assert.equal(isLongAbsence(at(9 * HOUR), NOW_BIG, 10 * HOUR), false);
+  for (const bad of [[], undefined, null, [{ text: 'sin ts' }], [{ ts: 'ayer' }], [{ ts: NaN }]]) assert.equal(isLongAbsence(bad, NOW_BIG), false);
+  assert.equal(isLongAbsence(at(9 * HOUR), NaN), false);
+});
+
+test('MEM-010: al abrir un chat con ausencia larga y resumen a punto de hacer falta, se actualiza en segundo plano (mismo disparo, mismos topes)', async () => {
+  const h = withLastMessageAgo(makeHarness({ now: NOW_BIG }), 9 * HOUR);
+  const result = await h.updater.maybeRun({ onOpen: true });
+  assert.equal(result.kind, 'ok');
+  assert.equal(h.calls.complete.length, 1);
+  assert.equal(h.calls.saved.length, 1);
+  // exactamente la misma actualización que habría hecho el disparo perezoso de siempre
+  const lazy = withLastMessageAgo(makeHarness({ now: NOW_BIG }), 9 * HOUR);
+  await lazy.updater.maybeRun();
+  assert.deepEqual(h.calls.saved[0], lazy.calls.saved[0]);
+  assert.deepEqual(h.calls.complete[0], lazy.calls.complete[0]);
+});
+
+test('MEM-010: sin ausencia larga, abrir el chat NO dispara nada extra (aunque el resumen esté a punto de hacer falta); el disparo perezoso de siempre sigue igual', async () => {
+  const h = withLastMessageAgo(makeHarness({ now: NOW_BIG }), 30 * 60 * 1000);
+  assert.deepEqual(await h.updater.maybeRun({ onOpen: true }), { kind: 'skipped' });
+  assert.equal(h.calls.complete.length, 0);
+  assert.equal((await h.updater.maybeRun()).kind, 'ok'); // sin onOpen, como siempre (MEM-007)
+});
+
+test('MEM-010: con la continuidad APAGADA (o el chat ocupado, o en enfriamiento) abrir el chat no hace nada, aunque haya pasado mucho tiempo', async () => {
+  const off = withLastMessageAgo(makeHarness({ now: NOW_BIG, settings: makeSettings({ ctx: 2048, mode: 'chat', continuityAuto: false }) }), 20 * HOUR);
+  assert.deepEqual(await off.updater.maybeRun({ onOpen: true }), { kind: 'skipped' });
+  assert.equal(off.calls.complete.length, 0);
+  assert.equal(off.calls.saved.length, 0);
+  const busy = withLastMessageAgo(makeHarness({ now: NOW_BIG }), 20 * HOUR);
+  busy.state.busy = true;
+  assert.deepEqual(await busy.updater.maybeRun({ onOpen: true }), { kind: 'skipped' });
+  assert.equal(busy.calls.complete.length, 0);
+  const down = withLastMessageAgo(makeHarness({ now: NOW_BIG, reply: () => { throw Object.assign(new Error('x'), { code: 'NETWORK' }); } }), 20 * HOUR);
+  assert.equal((await down.updater.maybeRun({ onOpen: true })).kind, 'unavailable');
+  assert.deepEqual(await down.updater.maybeRun({ onOpen: true }), { kind: 'skipped' }); // respeta el enfriamiento de 5 min
+  assert.equal(down.calls.complete.length, 1);
+});
+
+test('MEM-010: un chat que cabe entero no dispara al abrir, por larga que sea la ausencia', async () => {
+  const h = withLastMessageAgo(makeHarness({ now: NOW_BIG, messages: makeMessages(12, 100) }), 48 * HOUR);
+  assert.deepEqual(await h.updater.maybeRun({ onOpen: true }), { kind: 'none' });
+  assert.equal(h.calls.complete.length, 0);
+});
+
+test('MEM-010: si el usuario empieza a escribir mientras corre el repaso de apertura, cede (abortOnOpenRun) y no guarda nada', async () => {
+  const h = withLastMessageAgo(makeHarness({ now: NOW_BIG, reply: () => new Promise(() => {}) }), 9 * HOUR); // no responde nunca
+  const pending = h.updater.maybeRun({ onOpen: true });
+  await new Promise((r) => setTimeout(r, 5));
+  assert.equal(h.updater.isRunning(), true);
+  h.updater.abortOnOpenRun();
+  assert.equal((await pending).kind, 'aborted');
+  assert.equal(h.calls.aborted, 1);
+  assert.equal(h.calls.saved.length, 0);
+  assert.equal(h.updater.isRunning(), false);
+});
+
+test('MEM-010: al enviar un mensaje, abort() también cancela el repaso de apertura; y abortOnOpenRun NO toca una actualización que no nació al abrir', async () => {
+  const sent = withLastMessageAgo(makeHarness({ now: NOW_BIG, reply: () => new Promise(() => {}) }), 9 * HOUR);
+  const p1 = sent.updater.maybeRun({ onOpen: true });
+  await new Promise((r) => setTimeout(r, 5));
+  sent.updater.abort();
+  assert.equal((await p1).kind, 'aborted');
+  assert.equal(sent.calls.saved.length, 0);
+  // una actualización perezosa normal (no de apertura) no se cancela por abortOnOpenRun
+  let release;
+  const lazy = makeHarness({ now: NOW_BIG, reply: () => new Promise((r) => { release = () => r('Sam and Mia talked about palabra.'); }) });
+  const p2 = lazy.updater.maybeRun();
+  await new Promise((r) => setTimeout(r, 5));
+  lazy.updater.abortOnOpenRun();
+  assert.equal(lazy.updater.isRunning(), true);
+  release();
+  assert.equal((await p2).kind, 'ok');
+  assert.equal(lazy.calls.aborted, 0);
+});
+
+test('MEM-010: chat.js evalúa el disparo al abrir con retraso, lo invalida al salir y cede al escribir (sin esperar a nada al abrir)', () => {
+  const src = readFileSync(new URL('../www/js/ui/chat.js', import.meta.url), 'utf8');
+  assert.match(src, /maybeUpdateContinuityOnOpen\(\);\n\}/);                       // último paso de show()
+  assert.ok(!/await maybeUpdateContinuityOnOpen/.test(src), 'abrir el chat no espera al repaso');
+  assert.match(src, /setTimeout\(\(\) => \{\s*if \(token !== openToken \|\| !chat\) return;\s*continuityUpdater\.maybeRun\(\{ onOpen: true \}\)/);
+  assert.match(src, /export function hide\(\) \{\s*openToken\+\+;/);
+  assert.match(src, /function onInputChange\(\) \{\s*continuityUpdater\.abortOnOpenRun\(\);/);
+  assert.match(src, /CONTINUITY_ON_OPEN_DELAY_MS/);
 });

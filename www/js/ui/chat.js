@@ -19,7 +19,7 @@ import {
 } from '../api/lorebook.js';
 import { relationshipSummary, relationshipAgeText } from '../api/relationship.js';
 import { appearanceOf } from '../character-appearance.js';
-import { createContinuityUpdater, coveredCount, CONTINUITY_TOTAL_CHARS } from '../api/continuity.js';
+import { createContinuityUpdater, coveredCount, CONTINUITY_TOTAL_CHARS, CONTINUITY_ON_OPEN_DELAY_MS } from '../api/continuity.js';
 import { openChatBackground } from './chat-background.js';
 import { openCharacterAppearance } from './character-look.js';
 import { formatMessage } from './format.js';
@@ -213,9 +213,11 @@ export async function show({ chatId } = {}) {
 
   attachViewportListeners();
   checkKeyboardFromVh();
+  maybeUpdateContinuityOnOpen();
 }
 
 export function hide() {
+  openToken++; // MEM-010: invalida el disparo por ausencia pendiente de este chat
   if (busy) cancelGeneration();
   if (chat) {
     // El texto parcial recibido (si lo había) ya quedó en `messages`.
@@ -697,6 +699,7 @@ function onMessagesScroll() {
 /* ---------- composer ---------- */
 
 function onInputChange() {
+  continuityUpdater.abortOnOpenRun(); // MEM-010: el usuario empezó a escribir: el repaso al abrir el chat cede (prioridad absoluta al mensaje)
   autosizeInput();
   syncSendButton();
   if (chat) draftByChat.set(chat.id, els.input.value);
@@ -981,6 +984,19 @@ const continuityUpdater = createContinuityUpdater({
 
 function maybeUpdateContinuity() {
   continuityUpdater.maybeRun().catch(() => {});
+}
+
+// MEM-010: al ABRIR un chat tras una ausencia larga (ver `isLongAbsence`), si hacía falta actualizar el resumen se hace ya, en segundo plano,
+// mientras el usuario todavía lee (y no en mitad de su próxima respuesta). Es el mismo disparo de siempre, evaluado otro momento: solo actúa si el
+// usuario activó el resumen (`continuityAuto`) y respeta las mismas prioridades. Se difiere un momento para no competir con el dibujo del chat, y
+// se cancela si el usuario sale del chat antes de que arranque (`openToken`) o empieza a escribir/enviar mientras corre (`onInputChange`, `onSendClick`).
+let openToken = 0;
+function maybeUpdateContinuityOnOpen() {
+  const token = ++openToken;
+  setTimeout(() => {
+    if (token !== openToken || !chat) return;
+    continuityUpdater.maybeRun({ onOpen: true }).catch(() => {});
+  }, CONTINUITY_ON_OPEN_DELAY_MS);
 }
 
 /* ---------- hoja "Ver lorebook": ver, editar, borrar, deshacer, actualizar ---------- */

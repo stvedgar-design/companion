@@ -41,6 +41,31 @@ export const CONTINUITY_MAX_ATTEMPTS = 2;
 /** El "Actualizar ahora" manual mira más lejos que el disparo automático (multiplicador de la reserva). */
 export const CONTINUITY_MANUAL_LOOKAHEAD_FACTOR = 4;
 
+/**
+ * MEM-010: "ausencia larga". Si desde el ÚLTIMO MENSAJE del chat pasó más que esto, al ABRIR el chat se evalúa (una vez, en segundo plano)
+ * si hace falta actualizar el resumen, en vez de esperar a la respuesta siguiente. Basado en tiempo, no en cantidad de mensajes (eso lo
+ * cubre el disparo perezoso de siempre). Se mide con el último mensaje y no con `Chat.updated`, que se reescribe al abrir y cerrar el chat.
+ * Propuesta del contrato: 6-12 h; se eligió 8 h (una noche de sueño o una jornada de trabajo).
+ */
+export const CONTINUITY_ABSENCE_MS = 8 * 60 * 60 * 1000;
+/** MEM-010: espera (ms) tras mostrar el chat antes de evaluar el disparo por ausencia, para que abrir el chat no compita con nada. */
+export const CONTINUITY_ON_OPEN_DELAY_MS = 600;
+
+/**
+ * ¿Pasó una ausencia larga desde el último mensaje del chat? Sin fecha válida en el último mensaje (o sin mensajes) → false: ante la duda no
+ * se dispara nada extra.
+ * @param {{ ts?: number }[]} messages
+ * @param {number} nowTs
+ * @param {number} [thresholdMs]
+ * @returns {boolean}
+ */
+export function isLongAbsence(messages, nowTs, thresholdMs = CONTINUITY_ABSENCE_MS) {
+  const last = Array.isArray(messages) && messages.length ? messages[messages.length - 1] : null;
+  const ts = last && last.ts;
+  if (!Number.isFinite(ts) || !Number.isFinite(nowTs)) return false;
+  return nowTs - ts > thresholdMs;
+}
+
 function collapse(text) {
   return String(text == null ? '' : text).replace(/\s+/g, ' ').trim();
 }
@@ -395,9 +420,9 @@ export function createContinuityUpdater(deps) {
     });
   }
 
-  async function run(ctx, plan, { manual }) {
+  async function run(ctx, plan, { manual, onOpen = false }) {
     const controller = new AbortController();
-    running = { controller };
+    running = { controller, onOpen };
     const { character, chat } = ctx;
     const names = { charName: character.card.name, userName: (ctx.settings && ctx.settings.user) || 'User' };
     const startSummary = (chat && chat.continuitySummary) || EMPTY_SUMMARY;
@@ -460,19 +485,25 @@ export function createContinuityUpdater(deps) {
   }
 
   return {
-    /** Disparo perezoso: solo si hay mensajes visibles sin resumir a punto de caer y el chat está libre. */
-    async maybeRun() {
+    /**
+     * Disparo perezoso: solo si hay mensajes visibles sin resumir a punto de caer y el chat está libre.
+     * MEM-010: con `{ onOpen: true }` (al abrir el chat) además exige una ausencia larga desde el último mensaje; es el MISMO
+     * disparo (misma condición de "a punto de caer", mismos topes y enfriamiento), solo que evaluado en otro momento.
+     */
+    async maybeRun(opts = {}) {
       try {
+        const onOpen = !!(opts && opts.onOpen === true);
         if (running || deps.isChatBusy()) return { kind: 'skipped' };
         const ctx = deps.getContext();
         if (!ctx || !ctx.character || !ctx.chat || !ctx.settings) return { kind: 'skipped' };
         if (ctx.settings.continuityAuto !== true) return { kind: 'skipped' };
         if (now() < cooldownUntil) return { kind: 'skipped' };
+        if (onOpen && !isLongAbsence(ctx.messages, now())) return { kind: 'skipped' };
         const snapshot = { ...ctx, messages: ctx.messages.slice() };
         const plan = planForContext(snapshot);
         if (plan.kind !== 'update') return { kind: 'none' };
         if ((attempts.get(`${ctx.chat.id}:${plan.coveredUntil}`) || 0) >= CONTINUITY_MAX_ATTEMPTS) return { kind: 'skipped' };
-        return await run(snapshot, plan, { manual: false });
+        return await run(snapshot, plan, { manual: false, onOpen });
       } catch {
         return { kind: 'error' };
       }
@@ -495,6 +526,10 @@ export function createContinuityUpdater(deps) {
     /** Cancela una actualización en curso (el usuario envió un mensaje). */
     abort() {
       if (running) running.controller.abort();
+    },
+    /** MEM-010: cancela SOLO una actualización lanzada al abrir el chat (el usuario empezó a escribir); no toca las demás. */
+    abortOnOpenRun() {
+      if (running && running.onOpen) running.controller.abort();
     },
     isRunning() {
       return !!running;
