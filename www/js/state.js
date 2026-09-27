@@ -6,6 +6,7 @@
 import { normalizeVariants } from './variants.js';
 import { sanitizeMeta } from './perf.js';
 import { parseBackupText, normalizeBackup, analyzeBackup, planImport } from './backup.js';
+import { sanitizeAppearance } from './character-appearance.js';
 
 /**
  * @typedef {Object} Card  Card normalizada: todos los campos siempre presentes.
@@ -47,6 +48,8 @@ import { parseBackupText, normalizeBackup, analyzeBackup, planImport } from './b
  * @property {number} lorebookPreviousAt  // cuándo se guardó esa copia (ms); 0 = no hay nada que
  *   deshacer. Existe porque `lorebookPrevious: []` no distingue "no hay copia" de "el lorebook
  *   estaba vacío antes de la primera actualización".
+ * @property {{ fixed: string, current: string, updated: number }} appearance  // MEM-009: ficha de apariencia propia de la app (NO es parte de la card);
+ *   `fixed` (rasgos fijos, ≤200 car.) va a la cabecera del prompt, `current` (ropa/estado, ≤100) al final. Vacía por defecto; ver character-appearance.js
  * @property {string} chatBackground           // data URL JPEG del fondo de SUS chats, '' si no hay
  * @property {number} chatBackgroundBrightness // 20 a 180 (%), 100 = sin cambios
  * @property {boolean} chatBackgroundFade      // fundido a negro en la mitad inferior de la imagen
@@ -285,7 +288,7 @@ function sanitizeCharacterExtras(raw) {
     ? raw.lorebookPrevious.map(sanitizeLoreEntry).filter(Boolean)
     : [];
   const lorebookPreviousAt = Number.isFinite(raw.lorebookPreviousAt) ? raw.lorebookPreviousAt : 0;
-  return { ...raw, lorebook, lorebookPrevious, lorebookPreviousAt, ...sanitizeCharacterBackground(raw) };
+  return { ...raw, lorebook, lorebookPrevious, lorebookPreviousAt, appearance: sanitizeAppearance(raw.appearance), ...sanitizeCharacterBackground(raw) };
 }
 
 // MEM-007: tope duro de lo que se acepta guardar (el tope "de trabajo" del resumen vive en api/continuity.js
@@ -431,6 +434,20 @@ export function createState(backend) {
     if (!character) throw new Error('El personaje no existe.');
     const merged = sanitizeCharacterBackground({ ...character, ...(patch || {}) });
     const updated = sanitizeCharacterExtras({ ...character, ...merged });
+    await backend.put('characters', characterId, updated);
+    return updated;
+  }
+
+  // MEM-009: persiste la ficha de apariencia de un personaje. Relee el personaje y cambia SOLO `appearance` (no pisa lorebook, fondo ni
+  // avatar cambiados mientras tanto). `patch` = { fixed?, current? }; `updated` se pone al guardar si algo cambió.
+  async function saveCharacterAppearance(characterId, patch) {
+    const character = await getCharacter(characterId);
+    if (!character) throw new Error('El personaje no existe.');
+    const before = character.appearance;
+    const next = sanitizeAppearance({ ...before, ...(patch || {}), updated: 1 });
+    const changed = next.fixed !== before.fixed || next.current !== before.current;
+    const appearance = changed ? { ...next, updated: next.fixed || next.current ? Date.now() : 0 } : before;
+    const updated = { ...character, appearance };
     await backend.put('characters', characterId, updated);
     return updated;
   }
@@ -713,6 +730,7 @@ export function createState(backend) {
     saveCharacter,
     saveCharacterLorebook,
     saveCharacterBackground,
+    saveCharacterAppearance,
     deleteCharacter,
     listChats,
     getChat,
@@ -847,6 +865,7 @@ export const getCharacter = (...args) => getDefaultInstance().getCharacter(...ar
 export const saveCharacter = (...args) => getDefaultInstance().saveCharacter(...args);
 export const saveCharacterLorebook = (...args) => getDefaultInstance().saveCharacterLorebook(...args);
 export const saveCharacterBackground = (...args) => getDefaultInstance().saveCharacterBackground(...args);
+export const saveCharacterAppearance = (...args) => getDefaultInstance().saveCharacterAppearance(...args);
 export const deleteCharacter = (...args) => getDefaultInstance().deleteCharacter(...args);
 export const listChats = (...args) => getDefaultInstance().listChats(...args);
 export const getChat = (...args) => getDefaultInstance().getChat(...args);

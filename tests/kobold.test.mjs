@@ -992,3 +992,36 @@ test('completeChatOnce: errores claros (URL vacía, sin servidor, HTTP, respuest
     slow.server.close();
   }
 });
+
+// ---------- MEM-009: ficha de apariencia en el prompt real ----------
+
+test('MEM-009: generateReply envía la apariencia del personaje (fijos → cabecera, actual → último mensaje del usuario); sin ficha, la petición es idéntica', async () => {
+  const bodies = [];
+  const { server } = createFakeServer({
+    onChatStream: async (res, body) => {
+      bodies.push(body);
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+      res.write('data: {"choices":[{"delta":{"content":"ok"}}]}\n\n');
+      res.write('data: [DONE]\n\n');
+      res.end();
+    }
+  });
+  const base = await listen(server);
+  try {
+    const messages = [{ role: 'char', text: 'Hola', ts: 1 }, { role: 'user', text: 'Buenas', ts: 2 }];
+    const settings = makeSettings(base, { mode: 'chat' });
+    const withApp = makeCharacter({ appearance: { fixed: 'short and slim, pink hair', current: 'a white hoodie', updated: 5 } });
+    await generateReply({ character: withApp, chat: { scenario: '' }, messages, settings });
+    await generateReply({ character: makeCharacter(), chat: { scenario: '' }, messages, settings });
+    await generateReply({ character: makeCharacter({ appearance: { fixed: '', current: '', updated: 0 } }), chat: { scenario: '' }, messages, settings });
+    const lastUser = (b) => b.messages.filter((m) => m.role === 'user').pop().content;
+    assert.ok(bodies[0].messages[0].content.includes("Luna's appearance: short and slim, pink hair"));
+    assert.ok(!bodies[0].messages[0].content.includes('hoodie'));
+    assert.equal(lastUser(bodies[0]), "[Luna's look right now: a white hoodie]\n\nBuenas");
+    assert.deepEqual(bodies[1].messages, bodies[2].messages);
+    assert.ok(!JSON.stringify(bodies[1].messages).includes('appearance'));
+    assert.equal(lastUser(bodies[1]), 'Buenas');
+  } finally {
+    server.close();
+  }
+});

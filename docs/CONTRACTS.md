@@ -111,6 +111,7 @@ Los imports son ESM relativos y siempre con extensión `.js`. Los tests importan
  * @property {LoreEntry[]} lorebook // memoria de largo plazo, compartida entre todos los chats de este personaje (por personaje, no por chat: docs/HISTORIAL.md)
  * @property {LoreEntry[]} lorebookPrevious   // MEM-001 v2: copia del lorebook justo antes de la última actualización de memoria (un solo nivel de "Deshacer"); [] por defecto
  * @property {number} lorebookPreviousAt      // MEM-001 v2: cuándo se guardó esa copia (ms); 0 = no hay nada que deshacer (distingue "sin copia" de "el lorebook estaba vacío")
+ * @property {{fixed:string,current:string,updated:number}} appearance // MEM-009: ficha de apariencia propia de la app (NO de la card). `fixed` ≤200 car. (cabecera del prompt), `current` ≤100 car. (final); vacía por defecto; ver www/js/character-appearance.js
  * @property {string} chatBackground            // data URL JPEG del fondo de SUS chats, '' si no hay
  * @property {number} chatBackgroundBrightness  // 20 a 180 (%), 100 = sin cambios
  * @property {boolean} chatBackgroundFade       // fundido a negro en la mitad inferior
@@ -188,6 +189,7 @@ saveCharacter(character: Character): Promise<Character>   // put del objeto ENTE
 saveCharacterLorebook(characterId: string, lorebook: LoreEntry[], previous?: LoreEntry[]|null): Promise<Character>
    // Relee el personaje al guardar y modifica SOLO `lorebook`, `lorebookPrevious` y `lorebookPreviousAt` (no pisa avatar/fondo).
    // `previous`: arreglo = guarda esa copia para "Deshacer" (con la hora actual); null = la borra; undefined = la deja como estaba.
+saveCharacterAppearance(characterId: string, patch: Partial<{fixed:string,current:string}>): Promise<Character>  // MEM-009: relee al guardar y cambia SOLO `appearance` (topes 200/100, una sola línea)
 saveCharacterBackground(characterId: string, patch: Partial<Pick<Character,'chatBackground'|'chatBackgroundBrightness'|'chatBackgroundFade'|'chatBackgroundFit'>>): Promise<Character>  // merge parcial, relee al guardar
 deleteCharacter(id: string): Promise<void>          // transacción atómica: borra el personaje y TODOS sus chats (chatMeta + chatMsgs) y el chat legado
 listChats(characterId: string): Promise<Chat[]>     // por `updated` desc

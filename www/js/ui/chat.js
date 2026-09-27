@@ -18,8 +18,10 @@ import {
   LOREBOOK_ALWAYS_CHAR_BUDGET,
 } from '../api/lorebook.js';
 import { relationshipSummary, relationshipAgeText } from '../api/relationship.js';
+import { appearanceOf } from '../character-appearance.js';
 import { createContinuityUpdater, coveredCount, CONTINUITY_TOTAL_CHARS } from '../api/continuity.js';
 import { openChatBackground } from './chat-background.js';
+import { openCharacterAppearance } from './character-look.js';
 import { formatMessage } from './format.js';
 import { variantCount, activeVariantIndex, addVariant, selectVariant, editActiveText } from '../variants.js';
 import { MESSAGE_ACTIONS, availableMessageActions, revealDelta, shouldCloseOnScroll } from './msgmenu.js';
@@ -1689,7 +1691,7 @@ function buildUsageInfo() {
     const lore = loreBudgetPreview(character.lorebook || []);
     const { approxTokens, budgetTokens, ratio } = estimateContextUsage(
       character.card, messages, settings, chat ? chat.scenario : '', lore.alwaysBlock, lore.topicReserve,
-      { continuity: chat && chat.continuitySummary ? chat.continuitySummary.text : '', relationship: relationshipSummary(character.lorebook || []).level }
+      { continuity: chat && chat.continuitySummary ? chat.continuitySummary.text : '', relationship: relationshipSummary(character.lorebook || []).level, appearance: appearanceOf(character) }
     );
     const pct = Math.round(Math.min(ratio, 1) * 100);
     hint.textContent = ratio >= 1
@@ -1804,6 +1806,14 @@ function onMenu() {
     menuItem('Cambiar avatar', () => {
       app.closeSheet();
       onChangeAvatar();
+    }),
+    // MEM-009: cómo se ve el personaje (rasgos fijos + ropa de ahora). Es de ESTE personaje, no un ajuste global.
+    menuItem('Apariencia del personaje', () => {
+      if (!character) return;
+      // Sincroniza la copia en memoria: otras escrituras (p. ej. "Cambiar avatar") guardan el personaje entero y no deben pisar la ficha.
+      openCharacterAppearance(app, character, (updated) => {
+        character.appearance = updated.appearance;
+      });
     })
   );
   wrap.appendChild(menuSection('Personaje y memoria', characterItems));

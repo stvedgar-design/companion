@@ -6,6 +6,7 @@
 import { buildPlainPrompt, buildChatMessages, cleanReply, trimPartial, FORMAT_PREFILL } from './prompt.js';
 import { buildLoreBlocks } from './lorebook.js';
 import { relationshipSummary } from './relationship.js';
+import { appearanceOf } from '../character-appearance.js';
 import { VARIETY_NOTE, varietyNeeded } from './variety.js';
 
 const TOP_P = 0.92;
@@ -373,7 +374,9 @@ export async function generateReply({ character, chat, messages, settings, signa
   const continuity = (chat && chat.continuitySummary && chat.continuitySummary.text) || '';
   // MEM-008: nivel de la relación (según cuántos recuerdos tiene el personaje); va a la CABECERA. Sin recuerdos, no se envía nada.
   const relationship = relationshipSummary((character && character.lorebook) || []).level;
-  const extras = { ...(continuity ? { continuity } : {}), ...(relationship !== 'none' ? { relationship } : {}) };
+  // MEM-009: ficha de apariencia del personaje (rasgos fijos → cabecera; ropa/estado actual → final). Sin nada escrito, no se pasa nada.
+  const appearance = appearanceOf(character);
+  const extras = { ...(continuity ? { continuity } : {}), ...(relationship !== 'none' ? { relationship } : {}), ...(appearance ? { appearance } : {}) };
   const genkey = makeGenKey();
   const mode = settings.mode === 'chat' ? 'chat' : 'plain';
   const maxLen = settings.maxLen || 220;
