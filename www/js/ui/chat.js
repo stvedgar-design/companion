@@ -25,6 +25,7 @@ import { createContinuityUpdater, coveredCount, CONTINUITY_TOTAL_CHARS, CONTINUI
 import { openChatBackground } from './chat-background.js';
 import { openCharacterAppearance } from './character-look.js';
 import { openCharacterEditor } from './character-editor.js';
+import { logEvent, TEL_EVENTS } from '../telemetry.js';
 import { formatMessage } from './format.js';
 import { variantCount, activeVariantIndex, addVariant, selectVariant, editActiveText } from '../variants.js';
 import { MESSAGE_ACTIONS, availableMessageActions, revealDelta, shouldCloseOnScroll } from './msgmenu.js';
@@ -791,6 +792,7 @@ async function onSendClick() {
     messages.push({ role: 'user', text, ts: Date.now() });
     appendMessageRow(messages.length - 1);
     scrollToBottom(true);
+    logMessageEvent('user');
     await persistChat();
     await generate();
   } finally {
@@ -879,6 +881,7 @@ async function generate(opts = {}) {
     abortCtl = null;
     syncSendButton();
     finishStreamRow(idx);
+    if (reply.text) logMessageEvent('char');
     await persistChat();
   }
 }
@@ -973,6 +976,23 @@ async function persistChat() {
 // errores en el flujo normal del chat.
 let sendInFlight = false;
 
+// TEL-001: conteo de mensajes por personaje y por día (nunca el contenido). `day` en UTC (como el resto
+// de las fechas que arma la app para informes, p. ej. diagnostics/plan.js) para no depender de la zona
+// horaria del teléfono; alcanza para "cuánto se usó la app cada día", que es lo que pide el contrato.
+function logMessageEvent(role) {
+  if (!character) return;
+  logEvent(TEL_EVENTS.MESSAGE, { characterId: character.id, role, day: new Date().toISOString().slice(0, 10) });
+}
+
+// TEL-001: nivel de "estado de la relación" ANTES y DESPUÉS de un cambio en el lorebook (extracción,
+// limpieza, edición manual, borrado o deshacer). Solo registra el cambio de nivel ('none'/'few'/
+// 'several'/'many'), nunca el contenido de ningún recuerdo.
+function trackRelationshipLevel(beforeEntries, afterEntries, characterId) {
+  const from = relationshipSummary(beforeEntries || []).level;
+  const to = relationshipSummary(afterEntries || []).level;
+  if (from !== to) logEvent(TEL_EVENTS.RELATIONSHIP_LEVEL_CHANGED, { characterId, from, to });
+}
+
 const loreUpdater = createLoreUpdater({
   getContext: () => (character && chat && settings ? { character, chat, messages, settings } : null),
   isChatBusy: () => busy || sendInFlight || continuityUpdater.isRunning(),
@@ -982,12 +1002,21 @@ const loreUpdater = createLoreUpdater({
     return (fresh && fresh.lorebook) || [];
   },
   saveLorebook: async (characterId, entries, previous) => {
+    const before = character && character.id === characterId ? character.lorebook : [];
     const updated = await saveCharacterLorebook(characterId, entries, previous);
     if (character && character.id === characterId) character = updated;
+    trackRelationshipLevel(before, updated.lorebook, characterId);
   },
   markProgress: async (chatId, count) => {
     const updated = await markChatLorebookProgress(chatId, count);
     if (chat && chat.id === chatId) chat = updated;
+  },
+  // TEL-001: la extracción (automática o vía "Actualizar memoria ahora", ambas pasan por acá) ya sabe
+  // cuántos recuerdos creó y cuántos fusionó; solo falta anotarlo.
+  onStatus: (status) => {
+    if (status.kind !== 'ok' || !character) return;
+    if (status.added > 0) logEvent(TEL_EVENTS.MEMORY_CREATED, { characterId: character.id, source: 'auto', count: status.added });
+    if (status.updated > 0) logEvent(TEL_EVENTS.MEMORY_MERGED, { characterId: character.id, count: status.updated });
   },
 });
 
@@ -1008,6 +1037,13 @@ const continuityUpdater = createContinuityUpdater({
   saveContinuity: async (chatId, summary) => {
     const updated = await saveChatContinuity(chatId, summary);
     if (chat && chat.id === chatId) chat = updated;
+  },
+  // TEL-001: causa del resumen — manual ("Resumir ahora"), repaso al volver tras una ausencia (MEM-010,
+  // `onOpen`) o desborde normal del contexto (ninguno de los dos). Nunca guarda el texto del resumen.
+  onStatus: (status) => {
+    if (status.kind !== 'ok' || !character || !chat) return;
+    const cause = status.manual ? 'manual' : status.onOpen ? 'resume' : 'overflow';
+    logEvent(TEL_EVENTS.CONTINUITY_UPDATED, { characterId: character.id, chatId: chat.id, cause });
   },
 });
 
@@ -1257,9 +1293,11 @@ function openLorebookSheet(note = '') {
         load: freshLorebook,
         save: async (entries, previous) => {
           character = await saveCharacterLorebook(character.id, entries, previous);
+          trackRelationshipLevel(previous, character.lorebook, character.id);
         },
         names: [character.card.name || character.name, settings && settings.user],
       });
+      if (result.merged > 0) logEvent(TEL_EVENTS.MEMORY_MERGED, { characterId: character.id, count: result.merged });
       openLorebookSheet(loreCleanMessage(result));
     } catch {
       openLorebookSheet('No se pudo limpiar. No se cambió nada.');
@@ -1415,6 +1453,7 @@ function openLoreEdit(entryId) {
         return;
       }
       character = await saveCharacterLorebook(character.id, next);
+      logEvent(TEL_EVENTS.MEMORY_EDITED, { characterId: character.id });
       openLorebookSheet('Recuerdo guardado.');
     } catch {
       error.textContent = 'No se pudo guardar el cambio.';
@@ -1471,7 +1510,10 @@ function openLoreDeleteConfirm(entryId) {
     `¿Borrar este recuerdo? «${preview}»`,
     'Borrar',
     async () => {
-      character = await saveCharacterLorebook(character.id, removeLoreEntry(await freshLorebook(), entryId));
+      const before = await freshLorebook();
+      character = await saveCharacterLorebook(character.id, removeLoreEntry(before, entryId));
+      logEvent(TEL_EVENTS.MEMORY_DELETED, { characterId: character.id });
+      trackRelationshipLevel(before, character.lorebook, character.id);
       return 'Recuerdo borrado.';
     },
     true
@@ -1486,7 +1528,9 @@ function openLoreUndoConfirm() {
     async () => {
       const fresh = await getCharacter(character.id);
       if (!fresh || !fresh.lorebookPreviousAt) return 'No hay ninguna actualización reciente que deshacer.';
+      const before = fresh.lorebook;
       character = await saveCharacterLorebook(character.id, fresh.lorebookPrevious, null);
+      trackRelationshipLevel(before, character.lorebook, character.id);
       return 'Listo: se volvió al estado anterior de la memoria.';
     },
     false
@@ -1645,6 +1689,7 @@ function openContinuitySheet(note = '') {
     autoBox.disabled = true;
     try {
       settings = await saveSettings({ continuityAuto: enable });
+      logEvent(TEL_EVENTS.EXPERIMENTAL_SETTING_CHANGED, { setting: 'continuityAuto', enabled: enable });
       openContinuitySheet(enable ? 'Resumen automático activado.' : 'Resumen automático desactivado.');
     } catch {
       autoBox.checked = !enable;

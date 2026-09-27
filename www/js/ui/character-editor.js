@@ -19,6 +19,7 @@ import {
 } from '../cards/build.js';
 import { PERSONALITY_TAGS, MAX_PERSONALITY_TAGS, sanitizePersonalityTags } from '../personality-tags.js';
 import { sanitizeAppearance, APPEARANCE_FIXED_MAX, APPEARANCE_CURRENT_MAX } from '../character-appearance.js';
+import { logEvent, TEL_EVENTS } from '../telemetry.js';
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -281,6 +282,10 @@ export function openCharacterEditor(app, opts = {}) {
           personalityTags,
         };
         const saved = await saveCharacter(updated);
+        // TEL-001: solo si la apariencia (MEM-009) de verdad cambió — nunca el contenido, solo que se editó.
+        if (appearance.fixed !== savedAppearance.fixed || appearance.current !== savedAppearance.current) {
+          logEvent(TEL_EVENTS.APPEARANCE_EDITED, { characterId: saved.id });
+        }
         app.toast('Guardado.');
         if (opts.onSaved) opts.onSaved(saved);
         app.closeSheet();
@@ -303,6 +308,7 @@ export function openCharacterEditor(app, opts = {}) {
           personalityTags,
         };
         const saved = await saveCharacter(character);
+        logEvent(TEL_EVENTS.CHARACTER_CREATED, { characterId: saved.id, method: 'guided' });
         app.closeSheet();
         app.navigate('chats', { characterId: saved.id });
       }

@@ -4,6 +4,7 @@
 
 import { saveCharacterAppearance } from '../state.js';
 import { APPEARANCE_FIXED_MAX, APPEARANCE_CURRENT_MAX, sanitizeAppearance } from '../character-appearance.js';
+import { logEvent, TEL_EVENTS } from '../telemetry.js';
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -82,10 +83,15 @@ export function openCharacterAppearance(app, character, onSaved) {
     saveBtn.disabled = true;
     clearBtn.disabled = true;
     try {
+      const before = base;
       const updated = await saveCharacterAppearance(character.id, patch);
       const next = sanitizeAppearance(updated.appearance);
       const fixedChanged = next.fixed !== base.fixed;
       base = next;
+      // TEL-001: solo si de verdad cambió algo (nunca el contenido, solo que se editó).
+      if (next.fixed !== before.fixed || next.current !== before.current) {
+        logEvent(TEL_EVENTS.APPEARANCE_EDITED, { characterId: character.id });
+      }
       fixed.input.value = next.fixed;
       current.input.value = next.current;
       status.textContent = fixedChanged && next.fixed ? 'Guardado. La próxima respuesta puede tardar más, solo esa vez.' : 'Guardado.';
