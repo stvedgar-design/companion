@@ -771,6 +771,23 @@ test('FMT-002 (texto simple): con formatAssist el prompt termina en " *" y el te
   }
 });
 
+test('CCC-001: con formatStyle "plain" (personaje sin asteriscos, como Ani) no se antepone "*" aunque formatAssist esté activo', async () => {
+  const seen = {};
+  const { server } = createFakeServer({ onChatStream: chatStreamer(['Hey', ', how are you'], seen) });
+  const base = await listen(server);
+  try {
+    const result = await generateReply({
+      character: makeCharacter({ formatStyle: 'plain' }),
+      messages: [{ role: 'user', text: 'Hola', ts: 1 }],
+      settings: makeSettings(base, { mode: 'chat', formatAssist: true }),
+    });
+    assert.equal(seen.body.messages.at(-1).role, 'user', 'sin mensaje assistant de arranque');
+    assert.equal(result.text, 'Hey, how are you');
+  } finally {
+    server.close();
+  }
+});
+
 test('FMT-002: si el modelo ya abre su propia acción con "*" no se duplica; una respuesta vacía sigue vacía', async () => {
   const seen = {};
   const a = createFakeServer({ onChatStream: chatStreamer(['*I nod.* Sure'], seen) });

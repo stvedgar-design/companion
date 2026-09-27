@@ -247,6 +247,31 @@ input[type=range]:focus-visible{
   line-height: 1.4;
 }
 
+/* CCC-001: selector de etiquetas (pills) togglables, p. ej. rasgos de personalidad en el creador/editor
+   de personajes. Varias por fila, se envuelven; cada una es un botón de encendido/apagado independiente. */
+.tag-picker{
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.tag-pill{
+  padding: 8px 14px;
+  min-height: 40px;
+  border-radius: var(--radius-pill);
+  border: 1.5px solid var(--color-line);
+  background: transparent;
+  color: var(--color-muted);
+  font-size: var(--fs-sm);
+  transition: border-color var(--dur-fast) ease, color var(--dur-fast) ease, background-color var(--dur-fast) ease;
+}
+.tag-pill--active{
+  border-color: var(--color-accent-2);
+  color: var(--color-text);
+  background: var(--color-surface-2);
+}
+.tag-pill:focus-visible{ outline: 2px solid var(--color-accent-2); outline-offset: 2px; }
+.tag-pill:disabled{ opacity: .4; pointer-events: none; }
+
 .chip{
   display: inline-flex;
   align-items: center;

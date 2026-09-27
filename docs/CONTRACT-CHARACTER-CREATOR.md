@@ -1,5 +1,15 @@
 # CONTRATO (PROPUESTA) — Creador de personajes guiado
 
+> **ANULADO (2026-09-27).** Esta propuesta queda reemplazada y superada por
+> el contrato **CCC-001** (`docs/HISTORIAL.md`, sección "CCC-001: creador y
+> editor de personajes propios"; registro en `docs/NOTES.md`), ya
+> implementado. Se conserva este archivo solo como referencia histórica del
+> análisis de la card de Mia (§2) — el código real vive en
+> `www/js/personality-tags.js`, `www/js/cards/build.js` y
+> `www/js/ui/character-editor.js`. No uses el resto de este documento (§3 en
+> adelante) para implementar nada nuevo: donde discrepe con CCC-001, manda
+> CCC-001.
+
 > Este documento es una **propuesta de diseño para discutir con el
 > usuario**, no una autorización para implementar. Se escribió el
 > 2026-09-23 a pedido explícito del usuario ("escribe estas ideas en la

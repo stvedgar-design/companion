@@ -368,7 +368,9 @@ export async function generateReply({ character, chat, messages, settings, signa
   const varietyNote =
     settings.varietyAssist === true && varietyNeeded(messages, [card.name, settings.user]) ? VARIETY_NOTE : '';
   // FMT-002: con `formatAssist` activo la respuesta arranca ya dentro de una acción (el prompt termina en `*`).
-  const prefill = settings.formatAssist === true;
+  // CCC-001: solo si el ESTILO DE FORMATO de este personaje es 'nomi' (asteriscos, como Mia/Theo); un personaje
+  // 'plain' (sin asteriscos, como Ani) nunca recibe este arranque forzado, sin importar el ajuste global.
+  const prefill = settings.formatAssist === true && (character.formatStyle || 'nomi') !== 'plain';
   // MEM-007: resumen de continuidad de ESTE chat (lo que ya no cabe en la ventana). Va al FINAL del prompt, junto al bloque
   // "por tema"; sin resumen guardado no se pasa nada y el prompt queda idéntico al de siempre.
   const continuity = (chat && chat.continuitySummary && chat.continuitySummary.text) || '';

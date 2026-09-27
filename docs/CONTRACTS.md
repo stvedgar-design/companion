@@ -116,14 +116,18 @@ Los imports son ESM relativos y siempre con extensión `.js`. Los tests importan
  * @property {number} chatBackgroundBrightness  // 20 a 180 (%), 100 = sin cambios
  * @property {boolean} chatBackgroundFade       // fundido a negro en la mitad inferior
  * @property {'fill'|'stretch'} chatBackgroundFit // 'fill' cubre y recorta; 'stretch' deforma sin recortar
+ * @property {'nomi'|'plain'} formatStyle  // CCC-001: 'nomi' (asteriscos, Mia/Theo) aplica `formatAssist` y la reparación
+ *   de asteriscos de format.js normalmente; 'plain' (sin asteriscos, Ani) nunca los aplica. 'nomi' por defecto.
+ * @property {string[]} personalityTags    // CCC-001: ids de www/js/personality-tags.js elegidos con el creador/editor
+ *   guiado; `card.personality` se ensambla desde ellos. `[]` = personalidad en texto libre (importada o editada a mano).
  *
  * Campos NO declarados en el typedef de state.js pero presentes en la práctica:
  * `updated` (ms) y `last` (string) los escribe cards/import.js al importar una
  * card; NADIE los mantiene después (saveChatMessages ya no toca al personaje).
  * `listCharacters()` ordena por `updated` descendente, o sea, por fecha de
  * importación. La vista previa del hub sale de `Chat.last`, no de `Character.last`.
- * `sanitizeCharacterExtras()` solo valida `lorebook` y `chatBackground*`; el resto
- * del objeto se guarda tal cual.
+ * `sanitizeCharacterExtras()` valida `lorebook`, `chatBackground*`, `appearance`,
+ * `formatStyle` y `personalityTags`; el resto del objeto se guarda tal cual.
  */
 
 /**

@@ -85,7 +85,7 @@ personaje (MEM-001 v2: extracción aditiva de una línea vía KoboldCpp, inyecci
 por keyword, hoja "Ver lorebook" con editar/borrar/deshacer y "Actualizar memoria
 ahora"; MEM-002: la actualización automática cada 20 mensajes está APAGADA por
 defecto y se activa con un interruptor en esa hoja); un solo skin (Penumbra Claude) × claro/oscuro; fondo
-de chat por personaje; CI con gate de tests; versión visible en Ajustes; resumen de continuidad por chat (MEM-007, **apagado por defecto**: cuesta ~+2-4 s por respuesta); 536
+de chat por personaje; CI con gate de tests; versión visible en Ajustes; resumen de continuidad por chat (MEM-007, **apagado por defecto**: cuesta ~+2-4 s por respuesta); creador y editor de personajes propios (CCC-001: hub con "Crear personaje" + importar, pantalla única de creación/edición con pills de personalidad, campos guiados con contador, apariencia MEM-009 y estilo de formato Nomi/Libre por personaje); 549
 tests (`node --test tests/*.test.mjs`).
 
 **Verificado en un teléfono real (Hecho, reportado por el tester, 2026-09-24):**
@@ -94,8 +94,8 @@ conservaron (firma estable ARQ-001/ARQ-002 verificada); MEM-001 v2 "Actualizar
 memoria ahora" funcionó. Calidad de la memoria y formato: ver Pendientes.
 
 **Pendiente:** el resto de lo anterior **sigue sin probarse en un APK real**
-(FMT-001, MEM-002, respaldo automático, PIN, etc.); pantalla de respaldos; búsqueda dentro de un chat; ajustes de IA por personaje; creador de
-personajes guiado (solo propuesta, no autorizado). Añadido por DOC-002
+(FMT-001, MEM-002, respaldo automático, PIN, etc.); pantalla de respaldos; búsqueda dentro de un chat; ajustes de IA por personaje;
+CCC-001 (creador/editor de personajes) tampoco se probó en un APK real todavía. Añadido por DOC-002
 (2026-09-24), a raíz de VER-001 y de las decisiones del arquitecto:
 - Respaldo automático completo: un archivo por `chatId` (hoy NO es así, ver
   VER-001 hallazgo 3), con personaje y lorebook, restaurable.
@@ -262,7 +262,8 @@ personajes: segunda iteración visual"; auditoría de recuperabilidad →
 | MEM-010 | Repaso al volver tras una ausencia (extiende el disparo del resumen de continuidad) | Autorizado — **implementado el 2026-09-26** (sesión R1); 8 tests nuevos; verificado en el navegador (chat de 120 mensajes con última actividad "hace 10 h": la petición sale ~0,6 s después de mostrar el chat y cede al escribir); **el resumen sigue APAGADO por defecto** (sin cambios); no medido contra el servidor real; **pendiente de probar en el teléfono** | `isLongAbsence` (>8 h desde el ÚLTIMO mensaje) + `maybeRun({ onOpen: true })` + `abortOnOpenRun()` en `api/continuity.js`; `chat.js` lo pide al final de `show()` con 600 ms de retraso. Ver "MEM-010" (en `HISTORIAL.md`). |
 | MEM-011 | "Sintiéndose…" junto al timestamp en mensajes con memoria densa | Autorizado — **implementado el 2026-09-26** (sesión R1); Paso 0 heurístico hecho (24/24 casos propios; con otro vocabulario habla en 6 de 12 y acierta 6/6); **sin modelo, latencia cero**; verificado en el navegador; 12 tests nuevos; **pendiente de la opinión del usuario en el teléfono (es el dato más importante)** | `api/mood.js` (puro), `msgtime.js`; timestamp en TODOS los mensajes con texto y `sintiendo <emoción>` solo con ≥3 recuerdos activados POR TEMA (los "siempre presentes" no cuentan) y una categoría clara. Sustantivo (no adjetivo) para no suponer el género del personaje. Ver "MEM-011" (en `HISTORIAL.md`). |
 | MEM-001 (v1) | (Anulado) versión anterior de MEM-001 | **ANULADO**, reemplazado por MEM-001 v2 | Asumía que el servidor podía devolver una lista larga con saltos de línea. |
-| (previos) | `CONTRACT-LOREBOOK.md` (implementado, parcialmente superado), `CONTRACT-CHARACTER-CREATOR.md` (propuesta, no autorizada), `CONTRACT-HANDOFF.md` (briefing) | — | Ver los avisos al inicio de cada uno. |
+| CCC-001 | Creador y editor de personajes propios | Autorizado (pacto de 7 días) — **implementado el 2026-09-27**; 549 tests; verificado en el navegador (375×812): crear con pills+estilo "Libre", editar y reabrir (persistencia), hub con los dos botones nuevos, personaje pre-existente en la grilla; **pendiente de probar en el teléfono** | Reemplaza y anula `CONTRACT-CHARACTER-CREATOR.md` como propuesta. `www/js/personality-tags.js` (24 rasgos, tope 6), `www/js/cards/build.js` (ensambla la Card), `www/js/ui/character-editor.js` (pantalla única crear/editar). `Character.formatStyle`/`personalityTags` nuevos (por defecto `'nomi'`/`[]`: ningún personaje existente cambia de comportamiento). Cierra un bug latente documentado en FMT-002: `formatAssist` ya no fuerza el arranque en `*` a un personaje sin asteriscos (estilo 'plain', p. ej. Ani) aunque el ajuste esté encendido. Ver "CCC-001" (en `HISTORIAL.md`). |
+| (previos) | `CONTRACT-LOREBOOK.md` (implementado, parcialmente superado), `CONTRACT-CHARACTER-CREATOR.md` (**ANULADO, reemplazado por CCC-001**), `CONTRACT-HANDOFF.md` (briefing) | — | Ver los avisos al inicio de cada uno. |
 
 
 ## Resumen de contratos recientes (detalle en `HISTORIAL.md`)
@@ -321,6 +322,7 @@ personajes: segunda iteración visual"; auditoría de recuperabilidad →
 - **MEM-011 (2026-09-26), timestamp y "sintiendo…".** Bajo cada mensaje con texto: la hora (o la fecha si es de un día anterior). Si la respuesta del personaje activó ≥3 recuerdos por tema y una tabla de palabras clave (sin modelo, cero latencia) reconoce una categoría clara, se añade `· sintiendo nostalgia` (cariño, ilusión, gratitud, preocupación, tristeza, alegría, orgullo, calma, asombro). Sin categoría clara, solo la hora: nunca se adivina. Límite conocido: fuera del vocabulario de la tabla se calla (cobertura ~50 % con otro fraseo).
 - **FMT-003 (2026-09-25), asteriscos en pantalla.** `formatMessage(text, {role:'char'})` repara solo en pantalla los `*` mal emparejados
   (`**`=`*`, apertura dentro de cursiva abierta, `*` suelto oculto); usuario y datos guardados intactos.
+- **CCC-001 (2026-09-27), creador y editor de personajes propios (pacto de 7 días).** El hub separa "Cargar character card" en un botón grande "Crear personaje" y un ícono chico de importar (sin cambios). Una sola pantalla (`character-editor.js`) crea y edita: nombre, personalidad por pills (hasta 6, de una lista curada de 24 en inglés, `personality-tags.js`) o texto libre si la card no trae etiquetas (nunca se adivina; "Convertir a etiquetas" es una acción explícita y empieza vacía), descripción/escenario/primer mensaje/ejemplo con contador de caracteres, apariencia (MEM-009, reutilizada tal cual) y estilo de formato por personaje ("Nomi" con asteriscos, como Mia/Theo, o "Libre" sin ellos, como Ani). Todo se ensambla en una Card normal (`cards/build.js`) y se guarda con `saveCharacter()`, igual que una card importada. Campos nuevos `Character.formatStyle` (`'nomi'` por defecto) y `Character.personalityTags` (`[]` por defecto): ningún personaje ya guardado cambia de comportamiento. De paso corrige un bug latente que HISTORIAL ya documentaba en FMT-002: antes, `formatAssist` forzaba el arranque en `*` a CUALQUIER personaje si el ajuste estaba encendido, incluso a uno sin asteriscos como Ani; ahora eso depende del `formatStyle` de cada personaje. Reemplaza y anula la propuesta `CONTRACT-CHARACTER-CREATOR.md`.
 
 ## Hoja de ruta acordada (propuesta, NO autorizada)
 
@@ -339,8 +341,8 @@ implementan sin un contrato del arquitecto. Sin datos personales del usuario.
 6. **Modo en vivo** solo si (4) lo permite.
 7. Aparte: **leer del servidor los límites de contexto** para ajustar los topes de
    la memoria sin tocar el código.
-8. Creador de personajes dentro de la app con exportación a JSON y PNG (deseo del
-   usuario, no urgente; ver `CONTRACT-CHARACTER-CREATOR.md`).
+8. ~~Creador de personajes dentro de la app~~ (hecho el 2026-09-27, CCC-001: crear y editar, con exportación como
+   `chara_card_v2` de siempre; falta, si algún día hace falta, exportar directamente a PNG).
 
 ## Mapa de la historia (`docs/HISTORIAL.md`, una línea por sección)
 
@@ -371,3 +373,4 @@ implementan sin un contrato del arquitecto. Sin datos personales del usuario.
 - **MEM-005** — causa del bug de fusión, prompt de keys final, tabla antes/después. **FMT-004** — detector, medición no concluyente, ronda detenida por memoria.
 - **FMT-002** — validador V1–V4, tablas A/B/C/D (2 rondas + texto simple), decisión, opciones descartadas. **FMT-003** — reglas de normalización visual y casos.
 - **VER-005** — informe de búsqueda por significado: viabilidad en KoboldCpp 1.121, tabla de sinónimos vs difusa (juego ciego), `--smartcache`. **MEM-007** — Paso 0 (3 técnicas × 3 regímenes), afinación de la instrucción, colocación cabecera/final, reserva fija. **Hallazgo LAT-001** — causas medidas de las pausas de ~1 min y propuesta de arreglo. **LAT-001 (a)** — implementación del frente estable y su medición (1 pausa en frío en 24 pasos, antes 9). **MEM-008** — frases, colocación y costo de latencia medido por cambio de nivel. **UI-024** — archivo de skins y fuentes, migración de `Settings.theme`, cambios en pruebas y diagnóstico. **UI-025** — mapa de dónde vive cada ajuste, y el desvío del "Diagnóstico" por chat. **QOL-002** — módulo `persist.js` y dónde se ve el resultado. **MEM-009** — colocación de la ficha en el prompt, tope, hoja de edición y compatibilidad con copias. **MEM-010** — umbral de ausencia, qué se mide y por qué, y cómo cede al usuario. **MEM-011** — Paso 0 (casos, aciertos, cobertura), decisiones de diseño y límites.
+- **CCC-001** — decisiones de diseño (por qué pills con tope 6, por qué "Convertir a etiquetas" nunca adivina, por qué `formatStyle` por personaje y no un ajuste global), verificación en el navegador paso a paso y el bug de FMT-002 que queda cerrado de paso.

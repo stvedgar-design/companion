@@ -24,6 +24,7 @@ import { formatMessageTime, formatMessageFullTime } from '../msgtime.js';
 import { createContinuityUpdater, coveredCount, CONTINUITY_TOTAL_CHARS, CONTINUITY_ON_OPEN_DELAY_MS } from '../api/continuity.js';
 import { openChatBackground } from './chat-background.js';
 import { openCharacterAppearance } from './character-look.js';
+import { openCharacterEditor } from './character-editor.js';
 import { formatMessage } from './format.js';
 import { variantCount, activeVariantIndex, addVariant, selectVariant, editActiveText } from '../variants.js';
 import { MESSAGE_ACTIONS, availableMessageActions, revealDelta, shouldCloseOnScroll } from './msgmenu.js';
@@ -389,7 +390,10 @@ function refreshMessageRow(i) {
 }
 
 // UI-012: las comillas como señal de diálogo van con el interruptor "Corregir formato automáticamente".
+// CCC-001: un personaje de estilo 'plain' (sin asteriscos, como Ani) no pasa por la reparación de asteriscos de
+// format.js ni por la señal de comillas — su texto se muestra tal cual, sin que se le fuerce el formato Nomi.
 function formatOpts(role) {
+  if (role === 'char' && character && character.formatStyle === 'plain') return { role: undefined, quoteDialogue: false };
   return { role, quoteDialogue: !!settings && settings.formatAssist !== false };
 }
 
@@ -1854,6 +1858,19 @@ function onMenu() {
       // Sincroniza la copia en memoria: otras escrituras (p. ej. "Cambiar avatar") guardan el personaje entero y no deben pisar la ficha.
       openCharacterAppearance(app, character, (updated) => {
         character.appearance = updated.appearance;
+      });
+    }),
+    // CCC-001: leer y editar nombre, personalidad, descripción, escenario, saludo, ejemplo, apariencia y
+    // estilo de formato — de CUALQUIER personaje (creado con este flujo o importado, como Mia/Ani/Theo).
+    menuItem('Ver personaje', () => {
+      if (!character) return;
+      openCharacterEditor(app, {
+        character,
+        onSaved: (updated) => {
+          character = updated;
+          els.headName.textContent = character.name;
+          applyAvatarMode();
+        },
       });
     })
   );

@@ -135,6 +135,15 @@
 }
 .home-hint[hidden] { display: none; }
 
+/* CCC-001: dos elementos separados en vez de un único botón — "Crear personaje" es el protagonista
+   (más ancho), "Importar" queda como un ícono chico al lado. */
+.home-footbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.home-footbar__create { flex: 1; }
+
 .home-card__avatar {
   position: relative;
   width: 100%;

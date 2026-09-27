@@ -8,10 +8,13 @@ import { pickFiles } from '../platform.js';
 import { continueTarget } from '../nav.js';
 import { createLongPress } from '../longpress.js';
 import { openSettings } from './settings.js';
+import { openCharacterEditor } from './character-editor.js';
 import { dayPart, pickGreeting } from '../greeting.js';
 
 const ICON_SETTINGS = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>';
 const ICON_SEARCH = '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>';
+// UI-025-ish: flecha entrando a una caja (importar), a propósito distinto del ícono de exportar (flecha saliendo).
+const ICON_IMPORT = '<svg viewBox="0 0 24 24"><path d="M12 3v10m0 0l-4-4m4 4l4-4"/><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></svg>';
 
 let app = null;
 let els = {};
@@ -44,8 +47,9 @@ export function init(root, appApi) {
       <div class="home-grid" id="home-list"></div>
       <p class="home-hint" id="home-hint" hidden>Toca una tarjeta para continuar. Mantenla presionada para borrar el personaje.</p>
     </div>
-    <div class="footbar">
-      <button class="btn" id="home-add" type="button">Cargar character card</button>
+    <div class="footbar home-footbar">
+      <button class="btn home-footbar__create" id="home-create" type="button">Crear personaje</button>
+      <button class="ib" id="home-import" type="button" aria-label="Importar character card">${ICON_IMPORT}</button>
     </div>
   `;
 
@@ -58,12 +62,14 @@ export function init(root, appApi) {
     search: root.querySelector('#home-search'),
     list: root.querySelector('#home-list'),
     hint: root.querySelector('#home-hint'),
-    add: root.querySelector('#home-add'),
+    create: root.querySelector('#home-create'),
+    import: root.querySelector('#home-import'),
   };
 
   els.settingsBtn.addEventListener('click', () => openSettings(app));
   els.status.addEventListener('click', () => openSettings(app));
-  els.add.addEventListener('click', onAddClick);
+  els.create.addEventListener('click', onCreateClick);
+  els.import.addEventListener('click', onImportClick);
   els.searchToggle.addEventListener('click', toggleSearch);
   els.search.addEventListener('input', () => {
     searchQuery = els.search.value.trim().toLowerCase();
@@ -168,7 +174,7 @@ function renderList() {
   if (!characters.length) {
     const empty = document.createElement('div');
     empty.className = 'empty';
-    empty.innerHTML = 'Todavía no hay personajes.<br>Toca «Cargar character card» abajo para empezar.';
+    empty.innerHTML = 'Todavía no hay personajes.<br>Toca «Crear personaje» abajo para empezar el tuyo.';
     els.list.appendChild(empty);
     return;
   }
@@ -309,11 +315,11 @@ async function checkConnection(myToken) {
   }
 }
 
-async function onAddClick() {
+async function onImportClick() {
   const files = await pickFiles({ multiple: true });
   if (!files.length) return;
 
-  setAddBusy(true);
+  setImportBusy(true);
   try {
     let successCount = 0;
     let lastCharacter = null;
@@ -339,11 +345,16 @@ async function onAddClick() {
       app.toast(`${successCount} personajes cargados`);
     }
   } finally {
-    setAddBusy(false);
+    setImportBusy(false);
   }
 }
 
-function setAddBusy(busy) {
-  els.add.disabled = busy;
-  els.add.textContent = busy ? 'Cargando…' : 'Cargar character card';
+function setImportBusy(busy) {
+  els.import.disabled = busy;
+}
+
+// CCC-001: creador guiado, botón grande y protagonista del hub. Al guardar, character-editor.js
+// navega directo al chat del personaje nuevo; al volver, `show()` vuelve a listar desde la base.
+function onCreateClick() {
+  openCharacterEditor(app);
 }
