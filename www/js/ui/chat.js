@@ -19,8 +19,6 @@ import {
 } from '../api/lorebook.js';
 import { relationshipSummary, relationshipAgeText } from '../api/relationship.js';
 import { createContinuityUpdater, coveredCount, CONTINUITY_TOTAL_CHARS } from '../api/continuity.js';
-import { openSettings } from './settings.js';
-import { openAppearance } from './appearance.js';
 import { openChatBackground } from './chat-background.js';
 import { formatMessage } from './format.js';
 import { variantCount, activeVariantIndex, addVariant, selectVariant, editActiveText } from '../variants.js';
@@ -1784,8 +1782,9 @@ function buildDiagnostics() {
 function onMenu() {
   const wrap = document.createElement('div');
 
+  // UI-025: este menú solo trae lo que se usa a diario en ESTE chat/personaje. Los ajustes globales (servidor, formato, PIN,
+  // apariencia, copia de seguridad, diagnóstico y rendimiento) viven en Ajustes, desde el engranaje del hub (ui/settings.js).
   // Navegación (sin encabezado)
-  wrap.appendChild(menuItem('Ajustes', () => openSettings(app)));
   wrap.appendChild(
     menuItem('Volver a los chats de este personaje', () => {
       if (busy) cancelGeneration();
@@ -1793,14 +1792,8 @@ function onMenu() {
     })
   );
 
-  wrap.appendChild(
-    menuSection('Apariencia', [
-      menuItem('Apariencia', () => openAppearance(app)),
-      menuItem('Fondo del chat', () => openChatBackground(app, character)),
-    ])
-  );
-
   const characterItems = [
+    menuItem('Fondo del chat', () => openChatBackground(app, character)),
     menuItem('Ver lorebook', () => openLorebookSheet()),
     menuItem('Resumen de este chat', () => openContinuitySheet()),
   ];
@@ -1828,6 +1821,7 @@ function onMenu() {
     ])
   );
 
+  // Datos de ESTE chat (mensajes, contexto usado, última respuesta): por su naturaleza no pueden vivir en el hub (ver UI-025 en HISTORIAL.md).
   wrap.appendChild(buildDiagnostics());
 
   app.openSheet(wrap);

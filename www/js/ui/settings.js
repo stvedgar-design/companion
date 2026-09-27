@@ -1,5 +1,7 @@
 // www/js/ui/settings.js
-// Hoja de ajustes: servidor, nombre, formato del prompt y copia de seguridad.
+// Hoja de ajustes de la app (se abre desde el engranaje del hub; UI-025: ya NO se abre desde el menú ⋮ de un chat).
+// Recibe todo lo global: servidor, nombre, formato, PIN, apariencia, copia de seguridad y diagnóstico. Agrupada con los
+// encabezados `.menu-group` de UI-019.
 // UI-011: los deslizadores de longitud (Settings.maxLen) y creatividad (Settings.temp) se quitaron
 // de la pantalla; los campos siguen en state.js y api/kobold.js los sigue enviando igual.
 
@@ -19,6 +21,7 @@ export function openSettings(app) {
   node.innerHTML = `
     <h3 class="sheet__title">Ajustes</h3>
 
+    <div class="menu-group" aria-hidden="true">Conexión</div>
     <div class="field">
       <label class="field__label" for="settings-url">Servidor</label>
       <div class="settings-row">
@@ -34,6 +37,7 @@ export function openSettings(app) {
       <input class="inp" id="settings-user" type="text" autocomplete="off">
     </div>
 
+    <div class="menu-group" aria-hidden="true">Conversación</div>
     <div class="field">
       <label class="field__label" for="settings-mode">Formato del prompt</label>
       <select class="inp" id="settings-mode">
@@ -59,18 +63,22 @@ export function openSettings(app) {
       <div class="field__hint">Cada respuesta empieza ya dentro de una acción en cursiva, y si llega con asteriscos mal puestos pero con el diálogo entre comillas, se muestra bien (diálogo normal, el resto en cursiva). Los mensajes sin asteriscos ni comillas no se tocan. No hace el chat más lento.</div>
     </div>
 
+    <div class="menu-group" aria-hidden="true">Seguridad</div>
     <div class="field">
       <label class="field__label">Bloqueo con PIN</label>
       <div id="settings-pin-body"></div>
     </div>
 
+    <div class="menu-group" aria-hidden="true">Apariencia</div>
     <div class="field">
-      <label class="field__label">Apariencia</label>
+      <label class="field__label">Aspecto de la app</label>
       <div class="settings-row">
-        <button class="btn btn--ghost btn--sm" id="settings-appearance" type="button">Skin y fondo del chat</button>
+        <button class="btn btn--ghost btn--sm" id="settings-appearance" type="button">Modo claro/oscuro y tipografía</button>
       </div>
+      <div class="field__hint">El fondo del chat es por personaje: se cambia desde el menú ⋮ dentro de cada chat.</div>
     </div>
 
+    <div class="menu-group" aria-hidden="true">Datos</div>
     <div class="field">
       <label class="field__label">Copia de seguridad</label>
       <div class="settings-row">
@@ -79,6 +87,7 @@ export function openSettings(app) {
       </div>
     </div>
 
+    <div class="menu-group" aria-hidden="true">Diagnóstico</div>
     <div class="field">
       <label class="field__label">Prueba de fluidez</label>
       <div class="settings-row">
