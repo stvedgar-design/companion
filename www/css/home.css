@@ -238,13 +238,6 @@
   display: flex;
   gap: var(--space-3);
 }
-/* UI-009: la lista de skins ya no cabe en una fila (5 skins): rejilla de 3 columnas que se ajusta a cualquier cantidad. */
-.appearance-skins--grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-}
-.appearance-skins--grid .appearance-skin { text-align: center; }
-
 .appearance-skin {
   flex: 1;
   display: flex;
@@ -264,60 +257,6 @@
 .appearance-skin:focus-visible {
   outline: 2px solid var(--color-accent-2);
   outline-offset: 2px;
-}
-
-.appearance-skin__swatch {
-  display: block;
-  width: 100%;
-  aspect-ratio: 16 / 10;
-  border-radius: var(--radius-sm);
-}
-/* Colores fijos, no var(--color-*): cada muestra tiene que verse igual sin
-   importar qué skin/modo esté activo ahora mismo en el resto de la app —
-   por eso son un snapshot aparte (superficie + burbuja de cada combinación),
-   no una lectura en vivo de los tokens reales (ver themes.css). El modo
-   (--light) es un modificador aparte que ui/appearance.js agrega/saca según
-   el toggle de claro/oscuro. */
-.appearance-skin__swatch--nomi {
-  background: linear-gradient(135deg, #2d2f40 55%, #7a12d6 55%);
-  border: 1px solid #383b52;
-}
-.appearance-skin__swatch--nomi.appearance-skin__swatch--light {
-  background: linear-gradient(135deg, #ede7f7 55%, #7a12d6 55%);
-  border: 1px solid #ddd3ef;
-}
-.appearance-skin__swatch--glass {
-  background: linear-gradient(135deg, rgba(45, 47, 64, .65) 55%, rgba(122, 18, 214, .85) 55%), #181924;
-  border: 1px solid rgba(255, 255, 255, .25);
-}
-.appearance-skin__swatch--glass.appearance-skin__swatch--light {
-  background: linear-gradient(135deg, rgba(255, 255, 255, .5) 55%, rgba(122, 18, 214, .85) 55%), #f5f2fa;
-  border: 1px solid rgba(20, 10, 40, .18);
-}
-.appearance-skin__swatch--imessage {
-  background: linear-gradient(135deg, #1c1c1e 55%, #0a84ff 55%);
-  border: 1px solid #38383a;
-}
-.appearance-skin__swatch--imessage.appearance-skin__swatch--light {
-  background: linear-gradient(135deg, #ffffff 55%, #007aff 55%);
-  border: 1px solid #d1d1d6;
-}
-
-.appearance-skin__swatch--penumbra {
-  background: linear-gradient(135deg, #2c1e3d 55%, #8747c0 55%), #140d1c;
-  border: 1px solid #3a2a4d;
-}
-.appearance-skin__swatch--penumbra.appearance-skin__swatch--light {
-  background: linear-gradient(135deg, #e9e1f4 55%, #8e52d0 55%), #f4efe8;
-  border: 1px solid #d9cfe6;
-}
-.appearance-skin__swatch--penumbra-claude {
-  background: linear-gradient(135deg, #38322c 55%, #b3522f 55%), #1f1c19;
-  border: 1px solid #4a423a;
-}
-.appearance-skin__swatch--penumbra-claude.appearance-skin__swatch--light {
-  background: linear-gradient(135deg, #ece3d3 55%, #b3522f 55%), #f5f0e8;
-  border: 1px solid #d9ccb8;
 }
 
 .appearance-preview {

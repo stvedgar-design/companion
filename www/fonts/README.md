@@ -48,3 +48,7 @@ Tres familias más, una por skin, para que cada uno tenga su propia voz. Todas *
 | `source-serif-4-latin-ext-wght-normal.woff2` | 42040 | `41529a5b38008d9e…` |
 | `source-serif-4-latin-wght-italic.woff2` | 51516 | `663e7ef3037a56dc…` |
 | `source-serif-4-latin-wght-normal.woff2` | 50824 | `c1df4596be502923…` |
+
+## Archivado (UI-024, 2026-09-26)
+
+La app solo usa **Source Serif 4** (skin único: Penumbra Claude). Los archivos de **Literata, Lora y Figtree** se CONSERVAN aquí, pero sus `@font-face` se movieron a `css/themes-archived.css` (que la app no carga): ya no se descargan ni se usan. Siguen ocupando espacio en el APK (~600 KB); si algún día se decide que los skins archivados no vuelven, se pueden borrar junto con ese archivo y sus licencias. Para reactivar un skin, ver la cabecera de `themes-archived.css`.

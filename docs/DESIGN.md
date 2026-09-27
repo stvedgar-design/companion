@@ -5,7 +5,9 @@ discreto. Superficies sobrias, bordes muy redondeados, mucho aire. Cuerpo del
 chat a 17px; campos de formulario a 16px mínimo (evita el zoom de Android).
 Todo cabe en 360px sin scroll horizontal.
 
-**Skins**: desde 2026-09-25 la app tiene cinco skins (Nomi, Glass, iMessage, Penumbra y
+**Skins — ARCHIVADOS (UI-024, 2026-09-26):** por decisión del usuario, la app ofrece **un solo skin, Penumbra Claude** (claro y oscuro). Nomi, Glass, iMessage y Penumbra siguen, completos y sin cambios, en `www/css/themes-archived.css` (NO se enlaza en `index.html`; su cabecera explica cómo reactivarlos), junto con las `@font-face` de Literata, Lora y Figtree (los archivos de `www/fonts/` no se borraron). Es una decisión de **simplicidad de mantenimiento** (una tipografía y un esquema de color que cuidar), **no de rendimiento**: tras UI-001 Glass ya casi no tiene cuadros lentos (1 de 100 en oscuro, 0 de 100 en claro, según el benchmark del usuario del 2026-09-27). Lo que sigue, salvo las notas "archivado", describe el sistema tal como es y sigue valiendo para cualquier skin.
+
+Historia: desde 2026-09-25 la app tuvo cinco skins (Nomi, Glass, iMessage, Penumbra y
 Penumbra Claude), cada uno en versión clara y oscura — ver "Rearquitectura del sistema de
 skins" en `docs/HISTORIAL.md` para el detalle completo. Lo que sigue describe
 los tokens tal cual están definidos para **Nomi Dark** (el skin y modo por
@@ -83,7 +85,7 @@ posibles (eso está en `themes.css` mismo, es la fuente de verdad).
 
 `Settings.glassEffect` (`full` por defecto | `bars` | `off`) se aplica como `data-glass` en `<html>` (`shell.applyGlassEffect`). Solo actúa con el skin Glass (`[data-theme="glass"][data-glass=…]` en `themes.css`);
 Nomi e iMessage no tienen ningún `backdrop-filter` (antes `blur(0px)`, ahora `none`). `bars`: blur solo en `.topbar` y `.chat-composer`. `off`: ninguno. Con `bars`/`off` la opacidad de las superficies de Glass sube
-(oscuro: superficie .46→.62, superficie-2 .6→.78, hoja .94; claro: .5→.66, .68→.84, hoja .95) para que el texto se lea sin el desenfoque. El selector vive en Ajustes → Apariencia y solo se muestra con Glass activo.
+(oscuro: superficie .46→.62, superficie-2 .6→.78, hoja .94; claro: .5→.66, .68→.84, hoja .95) para que el texto se lea sin el desenfoque. **UI-024: archivado** — `Settings.glassEffect` sigue en el esquema (copias viejas) pero ya no hay selector ni se aplica `data-glass`; las reglas viven en `themes-archived.css`.
 
 ## Penumbra y Penumbra Claude (UI-009)
 
@@ -142,7 +144,7 @@ En iMessage el ajuste no se nota (su `--font` ya es esa pila). Opinión del usua
 
 Principio del proyecto (decisión del usuario): los datos técnicos (conteo de mensajes, contexto usado, y toda medición futura como las de UI-001/UI-005) **se siguen calculando y siguen disponibles** para Claude Code y el arquitecto, pero **no se muestran de entrada** al usuario final, cuya experiencia es chatear. Su lugar es la sección plegable **"Diagnóstico"** del menú ⋮ del chat (`buildDiagnostics` en `www/js/ui/chat.js`; cerrada por defecto; texto de aviso "Información técnica. No hace falta entenderla para usar la app."). Contratos posteriores que midan algo deben añadirlo dentro de esa sección (o de una equivalente plegada), no en la pantalla principal. Los criterios generales de ingeniería están en `docs/PRINCIPIOS-DE-INGENIERIA.md` (DOC-005).
 
-## Tipografía por skin (UI-015)
+## Tipografía por skin (UI-015) — hoy solo Source Serif 4 (UI-024); el resto, archivado
 
 Cada skin tiene su propia voz tipográfica, definida solo con el token `--font` en `themes.css` (los componentes no la conocen) y con las fuentes incluidas en la app (`www/fonts/`, OFL 1.1, sin red; origen y huellas en `www/fonts/README.md`). Todas traen cursiva real, que es la que usa la *acción* del formato Nomi.
 

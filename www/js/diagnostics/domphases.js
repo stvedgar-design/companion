@@ -11,7 +11,7 @@ import { dataChats, dataBurst, dataHub, dataBackup } from './dataphases.js';
 import { summarizeTimes, mean, themeLabel } from './plan.js';
 
 // Los mismos skins y modos que `ui/shell.js` (THEMES) y `themes.css`.
-export const THEMES = ['nomi', 'glass', 'imessage', 'penumbra', 'penumbra-claude'];
+export const THEMES = ['penumbra-claude']; // UI-024: un solo skin (antes 5); los archivados no se cargan, así que no se pueden medir
 export const MODES = ['dark', 'light'];
 
 /** Se lanza cuando el usuario cancela; el runner la reconoce y limpia. */
@@ -202,7 +202,7 @@ export async function phaseBurst(env) {
   return { count: r.count, saveMeanMs: save.meanMs, saveP95Ms: save.p95Ms, saveMaxMs: save.maxMs, renderMeanMs: render.meanMs, renderP95Ms: render.p95Ms, renderMaxMs: render.maxMs, stored: r.stored };
 }
 
-// ---------- fase 5: los 10 aspectos ----------
+// ---------- fase 5: los aspectos (UI-024: un skin × claro/oscuro = 2; antes 10) ----------
 
 export async function phaseSkins(env) {
   const stage = env.stage;

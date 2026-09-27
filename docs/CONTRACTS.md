@@ -162,7 +162,7 @@ Los imports son ESM relativos y siempre con extensión `.js`. Los tests importan
  * @property {number} ctx           // contexto máximo del modelo; lo rellena connect(); 512 a 200000, por defecto 4096
  * @property {string} pinSalt       // '' si el bloqueo con PIN está desactivado
  * @property {string} pinHash       // '' si está desactivado; SHA-256 salteado (ver www/js/lock.js)
- * @property {'nomi'|'glass'|'imessage'} theme  // skin visual (www/css/themes.css), por defecto 'nomi'
+ * @property {'penumbra-claude'} theme        // skin visual (UI-024: único activo, www/css/themes.css; otros valores guardados migran a este; archivados en themes-archived.css)
  * @property {'dark'|'light'} themeMode         // claro/oscuro, aplica a cualquier skin, por defecto 'dark'
  * @property {boolean} lorebookAuto              // MEM-002: extracción automática de memoria (cada ~20 mensajes); false por defecto; solo `=== true` la activa
  * @property {boolean} formatAssist              // FMT-002: la respuesta del personaje arranca dentro de una acción (`*`); TRUE por defecto; solo un `false` estricto la apaga (copias antiguas sin el campo cargan en true)
@@ -427,7 +427,7 @@ de elegir la vista inicial (`setup` si no hay `settings.url`, si no `home`).
 ```
 
 Clases de estado: `.view.is-active`, `.sheet.is-open`, `.toast.is-visible`.
-Orden de hojas de estilo: `tokens.css`, `base.css`, `chat.css`, `home.css`, `themes.css`.
+Orden de hojas de estilo: `tokens.css`, `base.css`, `chat.css`, `home.css`, `themes.css` (`themes-archived.css` NO se carga; UI-024).
 `<html>` lleva `data-theme` y `data-mode` (los pone `ui/shell.js`); `themes.css` define
 un bloque completo por cada combinación skin+modo. Los componentes no conocen los skins:
 solo leen tokens (ver `docs/HISTORIAL.md`, "Rearquitectura del sistema de skins").

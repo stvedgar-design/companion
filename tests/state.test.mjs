@@ -57,8 +57,8 @@ test('getSettings devuelve valores por defecto cuando no hay nada guardado', asy
   assert.deepEqual(settings, {
     url: '', user: '', maxLen: 220, temp: 0.85, mode: 'chat', ctx: 4096,
     pinSalt: '', pinHash: '',
-    theme: 'nomi', themeMode: 'dark',
-    glassEffect: 'full', // UI-007
+    theme: 'penumbra-claude', themeMode: 'dark', // UI-024: único skin
+    glassEffect: 'full', // UI-007 (archivado por UI-024: sin efecto)
     lorebookAuto: false,
     continuityAuto: false, // MEM-007
     varietyAssist: false,
@@ -69,26 +69,34 @@ test('getSettings devuelve valores por defecto cuando no hay nada guardado', asy
 
 test('saveSettings valida apariencia: skin y modo', async () => {
   const state = createState(createMemoryBackend());
-  const saved = await state.saveSettings({ theme: 'imessage', themeMode: 'light' });
-  assert.equal(saved.theme, 'imessage');
+  const saved = await state.saveSettings({ themeMode: 'light' });
+  assert.equal(saved.theme, 'penumbra-claude');
   assert.equal(saved.themeMode, 'light');
 
   const reloaded = await state.getSettings();
   assert.deepEqual(reloaded, saved);
 });
 
-test('saveSettings acepta los cinco skins válidos (UI-009 añadió penumbra y penumbra-claude)', async () => {
+test('UI-024: un skin guardado de una instalación anterior migra en silencio a penumbra-claude (al guardar y al leer)', async () => {
   const state = createState(createMemoryBackend());
   for (const theme of ['nomi', 'glass', 'imessage', 'penumbra', 'penumbra-claude']) {
     const saved = await state.saveSettings({ theme });
-    assert.equal(saved.theme, theme);
+    assert.equal(saved.theme, 'penumbra-claude');
   }
+  // un registro viejo ya guardado en disco con otro skin (y con glassEffect): se lee migrado, sin perder el resto de ajustes
+  const backend = createMemoryBackend();
+  await backend.put('settings', 'main', { url: 'http://mio:5001', user: 'Yo', theme: 'glass', themeMode: 'light', glassEffect: 'bars' });
+  const old = await createState(backend).getSettings();
+  assert.equal(old.theme, 'penumbra-claude');
+  assert.equal(old.themeMode, 'light'); // claro/oscuro sigue siendo independiente
+  assert.equal(old.url, 'http://mio:5001');
+  assert.equal(old.glassEffect, 'bars'); // sigue en el esquema (compatibilidad con copias viejas), sin efecto
 });
 
 test('saveSettings descarta un theme o themeMode inválido y vuelve al valor por defecto', async () => {
   const state = createState(createMemoryBackend());
   const saved = await state.saveSettings({ theme: 'inventado', themeMode: 'inventado' });
-  assert.equal(saved.theme, 'nomi');
+  assert.equal(saved.theme, 'penumbra-claude');
   assert.equal(saved.themeMode, 'dark');
 });
 
@@ -365,7 +373,7 @@ test('un personaje guardado cuando el fondo todavía era global (settings) sigue
   });
 
   const settings = await state.getSettings();
-  assert.equal(settings.theme, 'glass'); // los campos que siguen en Settings no se pierden
+  assert.equal(settings.theme, 'penumbra-claude'); // (UI-024: 'glass' migra) los campos que siguen en Settings no se pierden
   assert.equal(settings.chatBackground, undefined); // el campo viejo simplemente no está en la Settings normalizada
 });
 
@@ -952,7 +960,7 @@ test('UI-001: importBackup v1 y v2 con y sin meta siguen importando; meta sobrev
 
 // ---------- UI-007: Settings.glassEffect ----------
 
-test('UI-007: glassEffect es "full" por defecto y solo acepta full/bars/off (copias previas sin el campo cargan en "full")', async () => {
+test('UI-007 (archivado por UI-024: solo esquema): glassEffect es "full" por defecto y solo acepta full/bars/off (copias previas sin el campo cargan en "full")', async () => {
   const state = createState(createMemoryBackend());
   assert.equal((await state.getSettings()).glassEffect, 'full');
   for (const v of ['full', 'bars', 'off']) {
@@ -966,7 +974,7 @@ test('UI-007: glassEffect es "full" por defecto y solo acepta full/bars/off (cop
   await backend.put('settings', 'main', { url: 'http://x:5001', user: 'Sam', theme: 'glass', themeMode: 'dark' });
   const old = await createState(backend).getSettings();
   assert.equal(old.glassEffect, 'full');
-  assert.equal(old.theme, 'glass');
+  assert.equal(old.theme, 'penumbra-claude'); // UI-024: 'glass' migra en silencio
 });
 
 // ---------- UI-023: Settings.splitTypography ----------
@@ -982,7 +990,7 @@ test('UI-023: splitTypography es false por defecto, solo acepta true y las copia
   await backend.put('settings', 'main', { url: 'http://x:5001', user: 'Sam', theme: 'penumbra', themeMode: 'light' });
   const old = await createState(backend).getSettings();
   assert.equal(old.splitTypography, false);
-  assert.equal(old.theme, 'penumbra');
+  assert.equal(old.theme, 'penumbra-claude'); // UI-024: 'penumbra' migra en silencio
 });
 
 // ---------- MEM-007: resumen de continuidad por chat ----------

@@ -257,7 +257,7 @@ test('BKP-001 ajustes: por defecto NO se restauran; con includeSettings sí (URL
   const s = await st.getSettings();
   assert.equal(s.url, 'http://otro:5001');
   assert.equal(s.user, 'Otro');
-  assert.equal(s.theme, 'glass');
+  assert.equal(s.theme, 'penumbra-claude'); // UI-024: la copia trae 'glass' (skin archivado): migra en silencio
   assert.equal(s.pinHash, 'h');
   const fresh = createState(memoryBackend());
   const clean = await fresh.importBackup(backupFile(), { includeSettings: true });

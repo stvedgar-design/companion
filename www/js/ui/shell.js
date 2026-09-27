@@ -55,24 +55,19 @@ export function showView(name) {
   }
 }
 
-const THEMES = ['nomi', 'glass', 'imessage', 'penumbra', 'penumbra-claude'];
+// UI-024: un único skin, "Penumbra Claude". Los demás (Nomi, Glass, iMessage, Penumbra) están archivados en css/themes-archived.css
+// (que no se carga); para reactivar alguno, ver la cabecera de ese archivo. `Settings.glassEffect` (UI-007) ya no tiene efecto.
+export const THEMES = ['penumbra-claude'];
 
 // Skin visual activo (ver www/css/themes.css). Puro atributo en <html>:
-// todo lo demás es CSS, así que cambiar de skin se refleja al instante en
-// cualquier pantalla ya renderizada, sin que cada vista tenga que saber que
-// existe. `themes.css` define cada combinación skin+modo con
+// todo lo demás es CSS, así que se refleja al instante en cualquier pantalla
+// ya renderizada, sin que cada vista tenga que saber que existe.
+// `themes.css` define cada combinación skin+modo con
 // [data-theme="x"][data-mode="y"], así que los dos atributos son
-// independientes — cambiar uno no toca el otro.
+// independientes — cambiar uno no toca el otro. Cualquier valor que no sea un skin activo cae en Penumbra Claude.
 export function applyTheme(theme) {
-  document.documentElement.dataset.theme = THEMES.includes(theme) ? theme : 'nomi';
+  document.documentElement.dataset.theme = THEMES.includes(theme) ? theme : THEMES[0];
   syncThemeColorMeta();
-}
-
-// UI-007: efecto de vidrio de Glass ('full' | 'bars' | 'off'). Solo un atributo en <html>: themes.css lo
-// aplica únicamente al skin Glass, así que en los demás skins no cambia nada.
-export const GLASS_EFFECTS = ['full', 'bars', 'off'];
-export function applyGlassEffect(value) {
-  document.documentElement.dataset.glass = GLASS_EFFECTS.includes(value) ? value : 'full';
 }
 
 // UI-023: "Tipografía dividida" (experimental, apagada por defecto). Solo un atributo en <html>: chat.css cambia la fuente del

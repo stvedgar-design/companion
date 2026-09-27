@@ -32,7 +32,7 @@ export const PHASES = Object.freeze([
   { id: 'scroll', title: 'Desplazamiento', plain: 'Recorre el chat de 1.000 mensajes de arriba abajo y de vuelta a tres velocidades, contando los cuadros que se sienten lentos.' },
   { id: 'streaming', title: 'Respuesta llegando', plain: 'Simula una respuesta larga que llega palabra por palabra y mide lo que cuesta actualizar la burbuja.' },
   { id: 'burst', title: 'Ráfaga de mensajes', plain: 'Envía 50 mensajes seguidos (sin servidor) y mide el tiempo de guardado y de dibujo de cada uno.' },
-  { id: 'skins', title: 'Los 10 aspectos', plain: 'Repite un desplazamiento corto en cada skin, claro y oscuro, y compara.' },
+  { id: 'skins', title: 'Claro y oscuro', plain: 'Repite un desplazamiento corto en el modo oscuro y en el claro, y compara.' },
   { id: 'hub', title: 'Lista de personajes', plain: 'Crea 10 y 30 personajes de prueba con imagen y mide la carga y el desplazamiento de la pantalla principal.' },
   { id: 'backup', title: 'Copia de seguridad', plain: 'Exporta e importa una copia grande de datos de prueba y verifica que vuelva completa.' },
   { id: 'endurance', title: 'Resistencia', plain: 'Repite varias veces seguidas el desplazamiento, la respuesta y la ráfaga para ver si la app se va poniendo más lenta.', extendedOnly: true },
@@ -49,7 +49,7 @@ export function estimateSeconds(profileId) {
   const p = PROFILES[profileId] || PROFILES.quick;
   const perRep =
     8 + p.scrollSpeeds.length * p.scrollSeconds * 2 + p.streamTokensPerSec.length * (p.streamWords / 4) * 2 * 0.6 +
-    10 + 10 * p.skinSeconds + p.hubCounts.length * (3 + p.hubScrollSeconds) + 6;
+    10 + 2 * p.skinSeconds + p.hubCounts.length * (3 + p.hubScrollSeconds) + 6;
   return Math.round(perRep * p.reps + Math.max(0, p.reps - 1) * p.cooldownMs / 1000 * phasesFor(profileId).length + p.enduranceRounds * 25);
 }
 

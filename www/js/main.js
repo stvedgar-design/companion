@@ -256,7 +256,6 @@ async function boot() {
 
   shell.applyTheme(settings.theme);
   shell.applyThemeMode(settings.themeMode);
-  shell.applyGlassEffect(settings.glassEffect);
   shell.applySplitTypography(settings.splitTypography);
   // El tinte del skin "glass" (ver themes.css) ya no se calcula acá: el
   // fondo de chat es por personaje (ver docs/NOTES.md, "Fondo de chat por

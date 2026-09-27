@@ -101,15 +101,18 @@ import { parseBackupText, normalizeBackup, analyzeBackup, planImport } from './b
  * @property {number} ctx
  * @property {string} pinSalt   // '' si el bloqueo con PIN está desactivado
  * @property {string} pinHash   // '' si el bloqueo con PIN está desactivado (SHA-256 salteado, ver lock.js)
- * @property {'nomi'|'glass'|'imessage'|'penumbra'|'penumbra-claude'} theme // skin visual, ver www/css/themes.css
+ * @property {'penumbra-claude'} theme        // skin visual (UI-024: único activo; cualquier otro valor guardado migra a este; los archivados están en www/css/themes-archived.css)
  * @property {'dark'|'light'} themeMode        // claro/oscuro, aplica a cualquier skin
- * @property {'full'|'bars'|'off'} glassEffect // UI-007: efecto de vidrio del skin Glass (blur completo / solo barra superior y compositor / ninguno); 'full' por defecto = como siempre. Otros skins lo ignoran
+ * @property {'full'|'bars'|'off'} glassEffect // UI-007, ARCHIVADO por UI-024: sin efecto ni interfaz (era del skin Glass); se conserva en el esquema por compatibilidad con copias viejas
  * @property {boolean} lorebookAuto // MEM-002: extracción automática de memoria cada ~20 mensajes; false por defecto (cada extracción encarece la SIGUIENTE respuesta ~20 s)
  * @property {boolean} continuityAuto // MEM-007: resumen de continuidad automático del chat (ver api/continuity.js)
  * @property {boolean} varietyAssist // FMT-004: nota de variedad al final del prompt cuando el personaje se repite
  * @property {boolean} formatAssist // FMT-002: la respuesta del personaje arranca ya dentro de una acción (`*`); true por defecto
  * @property {boolean} splitTypography // UI-023 (experimental): en los mensajes del personaje con acciones en cursiva, el diálogo usa una tipografía sans y la acción la del skin; false por defecto
  */
+
+// UI-024: el único skin visible; ui/shell.js (THEMES) lo repite porque no importa state.js.
+const ACTIVE_THEME = 'penumbra-claude';
 
 const DEFAULT_SETTINGS = Object.freeze({
   url: '',
@@ -123,7 +126,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   ctx: 4096,
   pinSalt: '',
   pinHash: '',
-  theme: 'nomi',
+  theme: ACTIVE_THEME,
   themeMode: 'dark',
   glassEffect: 'full',
   lorebookAuto: false,
@@ -173,7 +176,7 @@ function sanitizeSettings(raw) {
     ctx: Math.round(clampNumber(merged.ctx, 512, 200000, DEFAULT_SETTINGS.ctx)),
     pinSalt: typeof merged.pinSalt === 'string' ? merged.pinSalt : DEFAULT_SETTINGS.pinSalt,
     pinHash: typeof merged.pinHash === 'string' ? merged.pinHash : DEFAULT_SETTINGS.pinHash,
-    theme: ['nomi', 'glass', 'imessage', 'penumbra', 'penumbra-claude'].includes(merged.theme) ? merged.theme : DEFAULT_SETTINGS.theme,
+    theme: ACTIVE_THEME, // UI-024: un único skin; un valor guardado de otro skin (o de una copia vieja) migra en silencio
     themeMode: merged.themeMode === 'light' ? 'light' : DEFAULT_SETTINGS.themeMode,
     glassEffect: ['full', 'bars', 'off'].includes(merged.glassEffect) ? merged.glassEffect : DEFAULT_SETTINGS.glassEffect,
     lorebookAuto: merged.lorebookAuto === true,

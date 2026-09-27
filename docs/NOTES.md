@@ -40,14 +40,14 @@ primera versión falló en el CI, ARQ-002 re-firma el APK explícitamente con
 solo en `www/js/state.js` (IndexedDB `companion`, versión 2, stores
 `settings`, `characters`, `chats` [legado], `chatMeta`, `chatMsgs`; las escrituras de `chatMeta` que leen y luego escriben se serializan por chat, MEM-007). `fetch`
 solo en `www/js/api/kobold.js`. Skins = solo tokens en `www/css/themes.css`
-(5 skins × claro/oscuro; una tipografía propia por skin —Literata, Figtree, Lora, Source Serif 4, sistema— incluidas en `www/fonts/`, sin red; UI-015). Vistas: `lock` (solo al arrancar, fuera de la
+(**UI-024: un solo skin, Penumbra Claude, claro/oscuro**, con Source Serif 4; Nomi, Glass, iMessage y Penumbra —y Literata, Figtree, Lora— están ARCHIVADOS en `www/css/themes-archived.css`, que la app no carga; fuentes en `www/fonts/`, sin red). Vistas: `lock` (solo al arrancar, fuera de la
 navegación), `setup`, `home`, `chats`, `chat`. Versión: `APP_VERSION`
 (`www/js/version.js`) y `package.json` coinciden (`1.1.0`).
 
 **Modelo de datos actual** (fuente de verdad: typedefs de `state.js`):
 - `Settings` (1 registro, clave `main`): `url`, `user`, `maxLen`, `temp`,
   `mode` (`'chat'` por defecto | `'plain'`), `ctx`, `pinSalt`, `pinHash`,
-  `theme` (`nomi|glass|imessage|penumbra|penumbra-claude`), `themeMode` (`dark|light`), `glassEffect` (`full|bars|off`, UI-007), `continuityAuto` (boolean, `false` por defecto; MEM-007: resumen de continuidad automático), `lorebookAuto`
+  `theme` (UI-024: siempre `penumbra-claude`; cualquier valor guardado o de una copia vieja migra en silencio), `themeMode` (`dark|light`, independiente), `glassEffect` (`full|bars|off`, UI-007; **archivado por UI-024**: sigue en el esquema, sin interfaz ni efecto), `continuityAuto` (boolean, `false` por defecto; MEM-007: resumen de continuidad automático), `lorebookAuto`
   (boolean, `false` por defecto; MEM-002: solo `true` activa la extracción
   automática de memoria), `varietyAssist` (boolean, `false` por defecto; FMT-004:
   nota de variedad al final del prompt si el personaje se repite), `formatAssist`
@@ -84,8 +84,8 @@ contexto; hub de 2 columnas con lupa de búsqueda; lorebook automático por
 personaje (MEM-001 v2: extracción aditiva de una línea vía KoboldCpp, inyección
 por keyword, hoja "Ver lorebook" con editar/borrar/deshacer y "Actualizar memoria
 ahora"; MEM-002: la actualización automática cada 20 mensajes está APAGADA por
-defecto y se activa con un interruptor en esa hoja); 5 skins × claro/oscuro; fondo
-de chat por personaje; CI con gate de tests; versión visible en Ajustes; resumen de continuidad por chat (MEM-007, **apagado por defecto**: cuesta ~+2-4 s por respuesta); 485
+defecto y se activa con un interruptor en esa hoja); un solo skin (Penumbra Claude) × claro/oscuro; fondo
+de chat por personaje; CI con gate de tests; versión visible en Ajustes; resumen de continuidad por chat (MEM-007, **apagado por defecto**: cuesta ~+2-4 s por respuesta); 488
 tests (`node --test tests/*.test.mjs`).
 
 **Verificado en un teléfono real (Hecho, reportado por el tester, 2026-09-24):**
@@ -255,6 +255,7 @@ personajes: segunda iteración visual"; auditoría de recuperabilidad →
 | DOC-005 | Principios de ingeniería del proyecto | Autorizado — **implementado el 2026-09-26** (sesión 0; solo `docs/`) | `docs/PRINCIPIOS-DE-INGENIERIA.md`: 14 criterios de decisión (medir antes de optimizar, una fuente de verdad, guardado incremental, esquema versionado, privacidad, etc.). Enlazado desde este encabezado y `CONTRACT-HANDOFF.md` §0. |
 | VER-005 | ¿Búsqueda de memoria por significado en el hardware del usuario? | Autorizado — **informe hecho el 2026-09-25** (sesión M1; solo `docs/`, sin código de producción). **Recomendación: no construir embeddings ni la tabla de sinónimos hoy.** Parte A (hardware real) **no se probó**; Parte B medida | KoboldCpp 1.121 sí trae `--embeddingsmodel` (Hecho, `--help` del binario). Tabla de sinónimos: 8/8 en lo que su autor previó, 2/16 en un juego "ciego"; difusa: tipeos 4/4 pero falsos positivos; casos de solo significado 0/7 con todo lo barato. Hallazgo: `--smartcache`. Ver "VER-005" (en `HISTORIAL.md`). |
 | BKP-001 | Importación de copias segura: confirmar, no pisar datos nuevos, todo o nada | Autorizado — **implementado el 2026-09-26** (sesión D); verificado en el navegador (resumen, «Solo agregar», «Restaurar todo» con copia previa, Volver, archivos inválidos y chat-log); 485 tests; **pendiente de probar en el teléfono** | `www/js/backup.js` (puro) + `state.js` (`analyzeBackupFile`, `importBackupData`, una transacción); `ui/backup-import.js`. Por defecto SOLO AGREGA; Ajustes solo con teléfono vacío o si se marca. **Cierra los hallazgos 2 (parcial: el chat-log se rechaza con explicación) y 10 de VER-001;** el 3 («un archivo por chat» del respaldo automático es falso) sigue pendiente. Ver "BKP-001" (en `HISTORIAL.md`). |
+| UI-024 | Archivar todos los skins salvo Penumbra Claude | Autorizado — **implementado el 2026-09-26** (sesión R1); verificado en el navegador (un ajuste viejo con `glass` + `bars` abre en Penumbra Claude, claro/oscuro sigue funcionando, sin selector de skin); 488 tests; **pendiente de probar en el teléfono** | Decisión de simplicidad, no de rendimiento. Skins y fuentes viejas en `themes-archived.css` (no se carga; los tests lo siguen vigilando); `Settings.theme` = siempre `penumbra-claude`; `glassEffect` archivado. Ver "UI-024" (en `HISTORIAL.md`) y `DESIGN.md`. |
 | MEM-001 (v1) | (Anulado) versión anterior de MEM-001 | **ANULADO**, reemplazado por MEM-001 v2 | Asumía que el servidor podía devolver una lista larga con saltos de línea. |
 | (previos) | `CONTRACT-LOREBOOK.md` (implementado, parcialmente superado), `CONTRACT-CHARACTER-CREATOR.md` (propuesta, no autorizada), `CONTRACT-HANDOFF.md` (briefing) | — | Ver los avisos al inicio de cada uno. |
 
@@ -307,6 +308,7 @@ personajes: segunda iteración visual"; auditoría de recuperabilidad →
   para que la ventana no se mueva, y el origen de las pausas de ~1 min en chats largos (LAT-001, propuesta).
 - **LAT-001 (a) (2026-09-26), frente estable.** Tras recortar el historial, el primer mensaje enviado en modo plantilla es siempre del usuario (nunca el relleno `[Start of roleplay]` que aparecía y desaparecía). Medido con `--smartcache`: 8 de 8 pausas de ~44 s por aparición del relleno → 0 en 47 pasos (solo queda la espera en frío). La parte (b) se descartó: `--smartcache` cubre la mayoría.
 - **MEM-008 (2026-09-26), relación en el prompt.** Una línea fija en inglés (`Relationship so far: …`, 3 niveles por cantidad de recuerdos) en la cabecera, junto a los "siempre presentes"; nada sin recuerdos. Cada cambio de nivel cuesta una respuesta lenta (~14 s con 2 000 tokens; 3 veces en la vida de un personaje).
+- **UI-024 (2026-09-26), skin único.** La app solo ofrece Penumbra Claude (claro/oscuro, Source Serif 4). Los otros cuatro skins y sus tipografías viven, completos y con su contraste vigilado por tests, en `www/css/themes-archived.css` (no se enlaza en `index.html`; su cabecera explica cómo reactivarlos). `Settings.theme` siempre vale `penumbra-claude` (migración silenciosa al leer/guardar); `glassEffect` sigue en el esquema sin efecto. La "Prueba de estrés" mide ahora 2 aspectos (claro/oscuro), no 10.
 - **FMT-003 (2026-09-25), asteriscos en pantalla.** `formatMessage(text, {role:'char'})` repara solo en pantalla los `*` mal emparejados
   (`**`=`*`, apertura dentro de cursiva abierta, `*` suelto oculto); usuario y datos guardados intactos.
 
@@ -358,4 +360,4 @@ implementan sin un contrato del arquitecto. Sin datos personales del usuario.
 - **MEM-004** — Paso 0 (latencia por colocación), decisión, ejemplo de prompt, pruebas de estilo.
 - **MEM-005** — causa del bug de fusión, prompt de keys final, tabla antes/después. **FMT-004** — detector, medición no concluyente, ronda detenida por memoria.
 - **FMT-002** — validador V1–V4, tablas A/B/C/D (2 rondas + texto simple), decisión, opciones descartadas. **FMT-003** — reglas de normalización visual y casos.
-- **VER-005** — informe de búsqueda por significado: viabilidad en KoboldCpp 1.121, tabla de sinónimos vs difusa (juego ciego), `--smartcache`. **MEM-007** — Paso 0 (3 técnicas × 3 regímenes), afinación de la instrucción, colocación cabecera/final, reserva fija. **Hallazgo LAT-001** — causas medidas de las pausas de ~1 min y propuesta de arreglo. **LAT-001 (a)** — implementación del frente estable y su medición (1 pausa en frío en 24 pasos, antes 9). **MEM-008** — frases, colocación y costo de latencia medido por cambio de nivel.
+- **VER-005** — informe de búsqueda por significado: viabilidad en KoboldCpp 1.121, tabla de sinónimos vs difusa (juego ciego), `--smartcache`. **MEM-007** — Paso 0 (3 técnicas × 3 regímenes), afinación de la instrucción, colocación cabecera/final, reserva fija. **Hallazgo LAT-001** — causas medidas de las pausas de ~1 min y propuesta de arreglo. **LAT-001 (a)** — implementación del frente estable y su medición (1 pausa en frío en 24 pasos, antes 9). **MEM-008** — frases, colocación y costo de latencia medido por cambio de nivel. **UI-024** — archivo de skins y fuentes, migración de `Settings.theme`, cambios en pruebas y diagnóstico.

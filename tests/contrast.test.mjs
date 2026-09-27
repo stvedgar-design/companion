@@ -36,9 +36,13 @@ test('UI-008: un texto translúcido se compone sobre el fondo antes de medir', (
 
 // ---- tabla de contraste por skin/modo y rol, calculada desde el CSS real ----
 
+// UI-024: `themes.css` solo trae el skin activo (Penumbra Claude); los demás viven en `themes-archived.css` (no se carga). Los
+// tests leen los DOS archivos, para que los skins archivados sigan vigilados (archivados, no rotos).
+const ARCHIVED = ['nomi', 'glass', 'imessage', 'penumbra'];
+const ACTIVE = ['penumbra-claude'];
 function loadSkins() {
   const skins = {};
-  for (const m of css('themes.css').matchAll(/\[data-theme="([\w-]+)"\]\[data-mode="(\w+)"\]\s*\{([^}]*)\}/g)) {
+  for (const m of (css('themes.css') + '\n' + css('themes-archived.css')).matchAll(/\[data-theme="([\w-]+)"\]\[data-mode="(\w+)"\]\s*\{([^}]*)\}/g)) {
     const tokens = {};
     for (const d of m[3].matchAll(/(--[\w-]+):\s*([^;]+?);/g)) tokens[d[1]] = d[2].trim().replace(/\s+/g, ' ');
     if (tokens['--color-bg']) skins[`${m[1]}/${m[2]}`] = tokens; // solo los bloques completos (no los ajustes de efecto de vidrio)
@@ -187,7 +191,7 @@ test('UI-015: cada skin tiene su tipografía; las incluidas en la app traen roma
   for (const mode of ['dark', 'light']) assert.ok(!/^'/.test(skins[`imessage/${mode}`]['--font']), 'iMessage usa la fuente del sistema');
   // las cuatro familias incluidas son distintas entre sí
   assert.equal(new Set(Object.values(expected)).size, 4);
-  const tokens = css('tokens.css');
+  const tokens = css('tokens.css') + css('themes-archived.css'); // UI-024: Literata, Lora y Figtree quedaron en el archivo
   for (const family of Object.values(expected)) {
     for (const style of ['normal', 'italic']) {
       const blocks = [...tokens.matchAll(new RegExp(`@font-face\\s*\\{[^}]*font-family:\\s*'${family}';[^}]*font-style:\\s*${style};[^}]*\\}`, 'g'))];
@@ -241,4 +245,34 @@ test('UI-023: el token --font-dialogue existe y la regla solo actúa con html[da
   assert.match(chat, /\[data-split-font="on"\] \.chat-row--char \.chat-bubble--split em\s*\{\s*font-family:\s*var\(--font\);/);
   // ningún skin redefine --font-dialogue (es uno solo, global)
   assert.ok(!/--font-dialogue/.test(css('themes.css')));
+});
+
+// ---- UI-024: un solo skin activo; los demás archivados (no borrados, no cargados) ----
+
+test('UI-024: themes.css solo trae Penumbra Claude (claro y oscuro); los otros skins están completos en themes-archived.css, que la app NO carga', () => {
+  const inActive = new Set([...css('themes.css').replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/\[data-theme="([\w-]+)"\]/g)].map((m) => m[1]));
+  assert.deepEqual([...inActive], ACTIVE);
+  const skins = loadSkins();
+  for (const name of [...ACTIVE, ...ARCHIVED]) {
+    for (const mode of ['dark', 'light']) assert.ok(skins[`${name}/${mode}`], `${name}/${mode} sigue existiendo (activo o archivado)`);
+  }
+  const archivedCss = css('themes-archived.css');
+  for (const name of ARCHIVED) assert.match(archivedCss, new RegExp(`\\[data-theme="${name}"\\]\\[data-mode="dark"\\]`), `${name} archivado`);
+  assert.ok(!/penumbra-claude/.test(archivedCss.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\[data-theme="penumbra"\]/g, '')), 'el skin activo no se duplica en el archivo');
+  const index = readFileSync(new URL('../www/index.html', import.meta.url), 'utf8');
+  assert.match(index, /css\/themes\.css/);
+  assert.ok(!/themes-archived/.test(index), 'index.html no carga el archivo archivado');
+});
+
+test('UI-024: el skin activo y los archivados conservan su contraste (los pisos de la tabla siguen aplicando a los 10)', () => {
+  const skins = loadSkins();
+  for (const key of Object.keys(skins)) assert.ok(roles(skins[key]).charText >= 7, `${key} texto del personaje`);
+});
+
+test('UI-024: shell.js y state.js solo admiten Penumbra Claude; la interfaz ya no ofrece elegir skin ni efecto de vidrio', () => {
+  const src = (f) => readFileSync(new URL(`../www/js/${f}`, import.meta.url), 'utf8');
+  assert.match(src('ui/shell.js'), /export const THEMES = \['penumbra-claude'\]/);
+  assert.match(src('state.js'), /const ACTIVE_THEME = 'penumbra-claude'/);
+  assert.ok(!/data-value=|const SKINS|glass/i.test(src('ui/appearance.js').replace(/\/\/.*$/gm, '')), 'appearance.js sin selector de skin ni de vidrio');
+  assert.ok(!/applyGlassEffect/.test(src('main.js')));
 });
