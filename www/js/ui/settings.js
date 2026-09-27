@@ -14,6 +14,7 @@ import { APP_VERSION } from '../version.js';
 import { runFluencyTest, FLUENCY_SECONDS } from './fluency.js';
 import { openDiagnostics } from './diagnostics.js';
 import { startImport } from './backup-import.js';
+import { getPersistenceResult, describePersistence } from '../persist.js';
 
 export function openSettings(app) {
   const node = document.createElement('div');
@@ -88,6 +89,7 @@ export function openSettings(app) {
     </div>
 
     <div class="menu-group" aria-hidden="true">Diagnóstico</div>
+    <div class="field__hint" id="settings-persist">${describePersistence(getPersistenceResult())}</div>
     <div class="field">
       <label class="field__label">Prueba de fluidez</label>
       <div class="settings-row">

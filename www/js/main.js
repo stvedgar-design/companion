@@ -8,6 +8,7 @@
 import * as shell from './ui/shell.js';
 import * as state from './state.js';
 import { decideBack } from './nav.js';
+import { requestPersistence } from './persist.js';
 import * as lockView from './ui/lock.js';
 import * as setupView from './ui/setup.js';
 import * as homeView from './ui/home.js';
@@ -236,6 +237,8 @@ window.addEventListener('unhandledrejection', (event) => {
 
 async function boot() {
   shell.initShell();
+  // QOL-002: sin esperar (no retrasa el arranque) ni mostrar nada; el resultado queda en persist.js y en Ajustes → Diagnóstico.
+  requestPersistence(typeof navigator !== 'undefined' ? navigator.storage : null);
   registerAndroidBack();
 
   lockView.init(document.getElementById('view-lock'));
