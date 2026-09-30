@@ -5,11 +5,12 @@
 // UI-011: los deslizadores de longitud (Settings.maxLen) y creatividad (Settings.temp) se quitaron
 // de la pantalla; los campos siguen en state.js y api/kobold.js los sigue enviando igual.
 
-import { getSettings, saveSettings, exportBackup } from '../state.js';
+import { getSettings, saveSettings, exportBackup, MESSAGE_FONT_SIZES } from '../state.js';
 import { connect } from '../api/kobold.js';
 import { pickFiles, saveBlob } from '../platform.js';
 import { createPinHash, verifyPin } from '../lock.js';
 import { openAppearance } from './appearance.js';
+import { applyMessageFontSize } from './shell.js';
 import { APP_VERSION } from '../version.js';
 import { runFluencyTest, FLUENCY_SECONDS } from './fluency.js';
 import { openDiagnostics } from './diagnostics.js';
@@ -72,6 +73,13 @@ export function openSettings(app) {
 
     <div class="menu-group" aria-hidden="true">Apariencia</div>
     <div class="field">
+      <div class="field__label">Tamaño del texto de los mensajes</div>
+      <div class="appearance-skins" id="settings-fontsize">
+        ${MESSAGE_FONT_SIZES.map((px) => `<button class="appearance-skin" type="button" data-size-value="${px}">${px}</button>`).join('')}
+      </div>
+      <div class="field__hint">Solo cambia el tamaño de la letra; el ancho de las burbujas no cambia.</div>
+    </div>
+    <div class="field">
       <label class="field__label">Aspecto de la app</label>
       <div class="settings-row">
         <button class="btn btn--ghost btn--sm" id="settings-appearance" type="button">Modo claro/oscuro y tipografía</button>
@@ -123,6 +131,7 @@ export function openSettings(app) {
     variety: q('#settings-variety'),
     format: q('#settings-format'),
     pinBody: q('#settings-pin-body'),
+    fontSizeBtns: Array.from(node.querySelectorAll('#settings-fontsize [data-size-value]')),
     appearanceBtn: q('#settings-appearance'),
     exportBtn: q('#settings-export'),
     importBtn: q('#settings-import'),
@@ -140,6 +149,22 @@ export function openSettings(app) {
     els.variety.checked = settings.varietyAssist === true;
     els.format.checked = settings.formatAssist !== false;
     renderPinBody(settings);
+    renderFontSize(settings.messageFontSize);
+  });
+
+  function renderFontSize(px) {
+    els.fontSizeBtns.forEach((btn) => {
+      btn.classList.toggle('appearance-skin--active', Number(btn.dataset.sizeValue) === px);
+    });
+  }
+
+  els.fontSizeBtns.forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const messageFontSize = Number(btn.dataset.sizeValue);
+      renderFontSize(messageFontSize); // vista previa inmediata, antes de que termine de guardar
+      applyMessageFontSize(messageFontSize);
+      await saveSettings({ messageFontSize });
+    });
   });
 
   function renderPinBody(settings) {
