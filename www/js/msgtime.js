@@ -28,3 +28,11 @@ export function formatMessageFullTime(ts) {
   if (Number.isNaN(d.getTime())) return '';
   return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}, ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
+
+/** UI-027: solo la fecha ("24 sep 2026"), sin hora — para "Creada" en la ficha del personaje. '' si `ts` no es válido. */
+export function formatDateOnly(ts) {
+  if (!Number.isFinite(ts) || ts <= 0) return '';
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+}

@@ -40,6 +40,11 @@ import { sanitizePersonalityTags } from './personality-tags.js';
  * @property {string} id
  * @property {string} name
  * @property {string} avatar
+ * @property {string} [avatarLarge]  // UI-027: versión grande (lado largo 1024px) de la misma foto, para la ficha del
+ *   personaje a todo el ancho; '' o ausente en personajes creados antes de UI-027 — la ficha entonces cae a `avatar`
+ *   (se ve borrosa a ese ancho, no se "mejora" retroactivamente; documentado en HISTORIAL.md, "UI-027"). Se genera
+ *   junto con `avatar` (`cards/avatar.js`, `makeAvatarSet`) cada vez que se elige una foto nueva. Sin campo propio en
+ *   `sanitizeCharacterExtras`: sobrevive el guardado igual que `avatar`, vía el resto del objeto sin tocar.
  * @property {Card} card
  * @property {'none'|'mini'|'large'} avatarMode
  * @property {number} created

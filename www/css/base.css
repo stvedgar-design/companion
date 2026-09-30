@@ -99,6 +99,22 @@ img{ max-width: 100%; display: block; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* UI-027: nombre tocable en la cabecera de la lista de chats (abre la ficha); mismo "indicio discreto" que chat.css. */
+.chats-head__namebtn{
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 44px;
+  text-align: left;
+  border-radius: var(--radius-md);
+}
+.chats-head__namebtn::after{
+  content: '›';
+  color: var(--color-muted);
+  font-weight: 400;
+}
+.chats-head__namebtn:active{ background: var(--color-surface-2); }
+.chats-head__namebtn:focus-visible{ outline: 2px solid var(--color-accent-2); outline-offset: 2px; }
 
 .scroll{
   flex: 1;
@@ -294,6 +310,89 @@ input[type=range]:focus-visible{
   color: var(--color-danger);
   border-color: transparent;
   background: rgba(240, 86, 106, 0.14);
+}
+
+/* ---------- UI-027: ficha del personaje (hoja con foto a todo el ancho arriba) ----------
+   La foto escapa del padding de `.sheet__card` con márgenes negativos (mismo valor que ese padding,
+   --space-5) para llegar a los bordes; el degradado inferior funde con `--sheet-surface`/`--color-surface`
+   (el fondo real de la hoja, no un color fijo) para que se vea bien en cualquier skin/modo. El botón
+   "atrás" superpuesto necesita contraste sobre CUALQUIER foto del usuario (no solo los tonos del skin
+   activo), así que es la única excepción a "solo tokens": un velo neutro y un ícono blanco, documentado
+   en docs/HISTORIAL.md ("UI-027"). */
+.char-sheet{
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.char-sheet__hero{
+  position: relative;
+  margin: calc(-1 * var(--space-5)) calc(-1 * var(--space-5)) 0;
+  width: calc(100% + var(--space-5) * 2);
+  height: 56vw;
+  max-height: 320px;
+  min-height: 200px;
+  overflow: hidden;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  background: var(--grad-avatar);
+}
+.char-sheet__hero img{
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.char-sheet__hero-fallback{
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+}
+.char-sheet__hero-fade{
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 45%;
+  background: linear-gradient(to bottom, transparent, var(--sheet-surface, var(--color-surface)) 92%);
+  pointer-events: none;
+}
+.char-sheet__back{
+  position: absolute;
+  top: var(--space-3);
+  left: var(--space-3);
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, .35);
+  color: #fff;
+}
+.char-sheet__back svg{
+  width: 22px;
+  height: 22px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.char-sheet__back:active{ background: rgba(0, 0, 0, .5); }
+.char-sheet__back:focus-visible{ outline: 2px solid #fff; outline-offset: 2px; }
+
+.char-sheet__namerow{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.char-sheet__name{
+  margin: 0;
+  font-size: var(--fs-xl);
+  font-weight: 600;
+}
+.char-sheet__chips{
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
 }
 
 .spinner{

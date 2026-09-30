@@ -7,7 +7,7 @@
 
 import { saveCharacter, newId } from '../state.js';
 import { pickFiles } from '../platform.js';
-import { makeAvatar } from '../cards/avatar.js';
+import { makeAvatarSet } from '../cards/avatar.js';
 import {
   buildCharacterCard,
   NAME_MAX,
@@ -66,7 +66,10 @@ export function openCharacterEditor(app, opts = {}) {
   }
 
   // ---------- avatar ----------
+  // UI-027: se generan las dos versiones a la vez (pequeña para círculos, grande para la foto de la
+  // ficha) desde la misma imagen de origen — ver cards/avatar.js.
   let avatarDataUrl = source ? source.avatar : '';
+  let avatarLargeDataUrl = source ? source.avatarLarge || '' : '';
   const avatarRow = el('div', 'settings-row');
   const avatarPreview = el('div', 'av av--md');
   const renderAvatarPreview = () => {
@@ -86,13 +89,14 @@ export function openCharacterEditor(app, opts = {}) {
     const files = await pickFiles();
     if (!files.length) return;
     avatarBtn.disabled = true;
-    const dataUrl = await makeAvatar(files[0]);
+    const { avatar, avatarLarge } = await makeAvatarSet(files[0]);
     avatarBtn.disabled = false;
-    if (!dataUrl) {
+    if (!avatar) {
       app.toast('No se pudo usar esa imagen como avatar.');
       return;
     }
-    avatarDataUrl = dataUrl;
+    avatarDataUrl = avatar;
+    avatarLargeDataUrl = avatarLarge;
     renderAvatarPreview();
   });
   avatarRow.append(avatarPreview, avatarBtn);
@@ -253,6 +257,7 @@ export function openCharacterEditor(app, opts = {}) {
           ...source,
           name: builtCard.name,
           avatar: avatarDataUrl,
+          avatarLarge: avatarLargeDataUrl,
           card: builtCard,
           appearance,
           formatStyle,
@@ -268,6 +273,7 @@ export function openCharacterEditor(app, opts = {}) {
           id: newId(),
           name: builtCard.name,
           avatar: avatarDataUrl,
+          avatarLarge: avatarLargeDataUrl,
           card: builtCard,
           avatarMode: 'mini',
           created: now,

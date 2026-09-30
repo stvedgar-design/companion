@@ -59,6 +59,21 @@ function canvasToDataUrl(canvas) {
  * @param {number} [size]
  * @returns {Promise<string>} data URL JPEG cuadrado, o '' si la imagen no se puede decodificar.
  */
+/** UI-027: lado largo de la foto grande de la ficha (la pequeña de siempre, 384, sigue igual para círculos). */
+export const AVATAR_LARGE_SIZE = 1024;
+
+/**
+ * UI-027: genera las DOS versiones a la vez a partir de la misma imagen de origen — la pequeña de
+ * siempre (para círculos: hub, cabecera, burbujas) y una grande (para la foto de la ficha, que se ve
+ * borrosa con solo 384px a todo el ancho). Mismo recorte cuadrado con sesgo hacia arriba en ambas.
+ * @param {Blob} blob
+ * @returns {Promise<{avatar: string, avatarLarge: string}>}
+ */
+export async function makeAvatarSet(blob) {
+  const [avatar, avatarLarge] = await Promise.all([makeAvatar(blob), makeAvatar(blob, AVATAR_LARGE_SIZE)]);
+  return { avatar, avatarLarge };
+}
+
 export async function makeAvatar(blob, size = 384) {
   if (!blob) return '';
 

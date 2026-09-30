@@ -2,32 +2,54 @@
    Usa variables de tokens.css y clases de base.css; no redefine base.css,
    no usa la unidad vh (solo la variable --vh) y no usa position: fixed. */
 
-/* --- barra superior: botón de avatar/nombre --- */
+/* --- barra superior: avatar (cicla de vista) + nombre (abre la ficha, UI-027) --- */
 .chat-head {
   flex: 1;
   min-width: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: var(--space-2);
+  gap: var(--space-1);
+}
+.chat-head__avbtn {
+  flex: none;
+  display: grid;
+  place-items: center;
+  min-width: 44px;
   min-height: 44px;
-  padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-md);
 }
-.chat-head:active { background: var(--color-surface-2); }
-.chat-head:focus-visible { outline: 2px solid var(--color-accent-2); outline-offset: 2px; }
+.chat-head__avbtn:active { background: var(--color-surface-2); }
+.chat-head__avbtn:focus-visible { outline: 2px solid var(--color-accent-2); outline-offset: 2px; }
 .chat-head__av[hidden] { display: none; }
 .chat-head__av {
   border-radius: var(--radius-md);
   border: 1px solid var(--color-accent-soft);
 }
+/* UI-027: el nombre abre la ficha del personaje; la flechita es el "indicio discreto" de que se puede tocar. */
 .chat-head__name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 44px;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-md);
   font-weight: 500;
   font-size: var(--fs-lg);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.chat-head__name::after {
+  content: '›';
+  color: var(--color-muted);
+  font-weight: 400;
+}
+.chat-head__name:active { background: var(--color-surface-2); }
+.chat-head__name:focus-visible { outline: 2px solid var(--color-accent-2); outline-offset: 2px; }
 
 /* --- panel de avatar grande (modo "large") --- */
 .chat-avatarpanel {

@@ -3,6 +3,8 @@
 // Mismo patrón init/show/hide que las demás vistas.
 
 import { getCharacter, listChats, createChat, deleteChat, renameChat } from '../state.js';
+import { openCharacterSheet } from './character-sheet.js';
+import { openLorebookFromOutside } from './chat.js';
 
 const ICON_BACK = '<svg viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>';
 const ICON_TRASH = '<svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>';
@@ -22,7 +24,7 @@ export function init(root, appApi) {
     <div class="topbar">
       <button class="ib" type="button" id="chats-back" aria-label="Volver">${ICON_BACK}</button>
       <div class="av av--sm" id="chats-head-av"></div>
-      <b class="topbar__title" id="chats-head-name"></b>
+      <button class="topbar__title chats-head__namebtn" type="button" id="chats-head-name" aria-label="Ver ficha del personaje"></button>
     </div>
     <div class="scroll">
       <div id="chats-list"></div>
@@ -41,7 +43,29 @@ export function init(root, appApi) {
   };
 
   els.back.addEventListener('click', () => app.back());
+  els.headName.addEventListener('click', onOpenCharacterSheet);
   els.add.addEventListener('click', onAddClick);
+}
+
+// UI-027: tocar el nombre abre la ficha. "Ver recuerdos" desde acá (sin chat activo todavía) entra al
+// chat más reciente y abre ahí la pantalla de memoria existente (misma que desde el menú ⋮ del chat).
+function onOpenCharacterSheet() {
+  if (!character) return;
+  openCharacterSheet(app, character, {
+    onUpdated: (updated) => {
+      character = updated;
+      els.headName.textContent = character.name;
+      setAvatar(els.headAv, character);
+      renderList();
+    },
+    openMemories: async () => {
+      if (!chats.length) return;
+      // Espera a que la navegación termine (historial ya al día) antes de abrir la hoja encima —
+      // ver el comentario de `openLorebookFromOutside` en chat.js.
+      await app.navigate('chat', { chatId: chats[0].id });
+      openLorebookFromOutside();
+    },
+  });
 }
 
 export async function show({ characterId } = {}) {

@@ -2,7 +2,7 @@
 // Orquesta el import completo de una character card: parseo + avatar + guardado.
 
 import { parseCardFile } from './parse.js';
-import { makeAvatar } from './avatar.js';
+import { makeAvatarSet } from './avatar.js';
 import { saveCharacter, newId } from '../state.js';
 
 /**
@@ -15,8 +15,9 @@ export async function importCardFile(file) {
   const { card, avatarBlob } = await parseCardFile(file);
 
   let avatar = '';
+  let avatarLarge = '';
   if (avatarBlob) {
-    avatar = await makeAvatar(avatarBlob);
+    ({ avatar, avatarLarge } = await makeAvatarSet(avatarBlob));
   }
 
   const now = Date.now();
@@ -24,6 +25,7 @@ export async function importCardFile(file) {
     id: newId(),
     name: card.name,
     avatar,
+    avatarLarge,
     card,
     avatarMode: 'mini',
     created: now,

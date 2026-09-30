@@ -33,10 +33,11 @@ import { createContinuityUpdater, coveredCount, CONTINUITY_TOTAL_CHARS, CONTINUI
 import { openChatBackground } from './chat-background.js';
 import { openCharacterAppearance } from './character-look.js';
 import { openCharacterEditor } from './character-editor.js';
+import { openCharacterSheet } from './character-sheet.js';
 import { formatMessage } from './format.js';
 import { variantCount, activeVariantIndex, addVariant, selectVariant, editActiveText } from '../variants.js';
 import { MESSAGE_ACTIONS, availableMessageActions, revealDelta, shouldCloseOnScroll } from './msgmenu.js';
-import { makeAvatar } from '../cards/avatar.js';
+import { makeAvatarSet } from '../cards/avatar.js';
 import { pickFiles, saveBlob, autoBackupBlob } from '../platform.js';
 import { averageColorFromDataUrl } from '../images.js';
 import { setGlassTint } from './shell.js';
@@ -81,10 +82,12 @@ export function init(rootEl, appApi) {
   root.innerHTML = `
     <div class="topbar">
       <button class="ib" type="button" id="chat-back" aria-label="Volver">${ICON_BACK}</button>
-      <button class="chat-head" type="button" id="chat-head">
-        <div class="av av--sm chat-head__av" id="chat-head-av" hidden></div>
-        <b class="topbar__title chat-head__name" id="chat-head-name"></b>
-      </button>
+      <div class="chat-head" id="chat-head">
+        <button class="chat-head__avbtn" type="button" id="chat-head-avbtn" aria-label="Cambiar vista de foto">
+          <div class="av av--sm chat-head__av" id="chat-head-av" hidden></div>
+        </button>
+        <button class="chat-head__namebtn" type="button" id="chat-head-name" aria-label="Ver ficha del personaje"></button>
+      </div>
       <button class="ib" type="button" id="chat-menu" aria-label="Más">${ICON_MENU}</button>
     </div>
     <div class="chat-avatarpanel" id="chat-avatarpanel" hidden>
@@ -105,7 +108,7 @@ export function init(rootEl, appApi) {
 
   els = {
     back: root.querySelector('#chat-back'),
-    head: root.querySelector('#chat-head'),
+    headAvBtn: root.querySelector('#chat-head-avbtn'),
     headAv: root.querySelector('#chat-head-av'),
     headName: root.querySelector('#chat-head-name'),
     menu: root.querySelector('#chat-menu'),
@@ -121,7 +124,8 @@ export function init(rootEl, appApi) {
   };
 
   els.back.addEventListener('click', onBack);
-  els.head.addEventListener('click', onCycleAvatarMode);
+  els.headAvBtn.addEventListener('click', onCycleAvatarMode);
+  els.headName.addEventListener('click', onOpenCharacterSheet);
   els.menu.addEventListener('click', onMenu);
   els.input.addEventListener('input', onInputChange);
   els.input.addEventListener('keydown', onInputKeydown);
@@ -227,6 +231,16 @@ export async function show({ chatId } = {}) {
   maybeUpdateContinuityOnOpen();
 }
 
+// UI-027: entrada "Ver recuerdos" desde la ficha abierta en chats.js (sin chat activo todavía ahí):
+// primero se espera a que `app.navigate('chat', …)` termine (así `currentView`/el historial ya están
+// al día) y RECIÉN AHÍ se abre esta hoja — abrirla desde dentro de `show()` empujaba su entrada de
+// historial con el `currentView` viejo todavía sin actualizar, y el "atrás" siguiente volvía dos
+// pantallas en vez de una. Sin este desvío no hace falta: chat.js ya la abre directo (menú, avisos).
+export function openLorebookFromOutside() {
+  if (!character) return;
+  openLorebookSheet();
+}
+
 export function hide() {
   openToken++; // MEM-010: invalida el disparo por ausencia pendiente de este chat
   if (busy) cancelGeneration();
@@ -269,6 +283,20 @@ async function onCycleAvatarMode() {
   } catch (err) {
     app.toast('No se pudo guardar la preferencia de avatar.');
   }
+}
+
+// UI-027: tocar el nombre en la cabecera abre la ficha de lectura (foto grande, relación, rasgos,
+// recuerdos…), con un botón "Editar" que lleva al editor de CCC-001/CCC-003.
+function onOpenCharacterSheet() {
+  if (!character) return;
+  openCharacterSheet(app, character, {
+    onUpdated: (updated) => {
+      character = updated;
+      els.headName.textContent = character.name;
+      applyAvatarMode();
+    },
+    openMemories: () => openLorebookSheet(),
+  });
 }
 
 function setAvatarEl(el, ch) {
@@ -2076,13 +2104,14 @@ async function onChangeAvatar() {
   if (!files.length) return;
 
   app.toast('Generando avatar…');
-  const dataUrl = await makeAvatar(files[0]);
-  if (!dataUrl) {
+  const { avatar, avatarLarge } = await makeAvatarSet(files[0]);
+  if (!avatar) {
     app.toast('No se pudo usar esa imagen como avatar.');
     return;
   }
 
-  character.avatar = dataUrl;
+  character.avatar = avatar;
+  character.avatarLarge = avatarLarge;
   try {
     character = await saveCharacter(character);
     applyAvatarMode();
