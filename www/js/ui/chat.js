@@ -1,7 +1,7 @@
 // www/js/ui/chat.js
 // Pantalla de chat: burbujas, streaming, avatar en 3 modos, composer, menú.
 
-import { getChat, getChatMessages, saveChatMessages, getCharacter, saveCharacter, getSettings, saveSettings, markChatExported, saveCharacterLorebook, markChatLorebookProgress, saveChatContinuity, sanitizeContinuity, sanitizeMessage } from '../state.js';
+import { getChat, getChatMessages, saveChatMessages, getCharacter, saveCharacter, getSettings, saveSettings, markChatExported, saveCharacterLorebook, markChatLorebookProgress, saveChatContinuity, sanitizeContinuity, sanitizeMessage, saveCharacterRelationship } from '../state.js';
 import { generateReplyNonEmpty, completeOnce, completeChatOnce } from '../api/kobold.js';
 import { initialMessages, scenarioGreeting, estimateContextUsage } from '../api/prompt.js';
 import {
@@ -18,11 +18,18 @@ import {
   LOREBOOK_MAX_ENTRY_CHARS,
   LOREBOOK_ALWAYS_CHAR_BUDGET,
 } from '../api/lorebook.js';
-import { relationshipSummary, relationshipAgeText } from '../api/relationship.js';
+import {
+  relationshipSummary,
+  relationshipAgeText,
+  relationshipDisplayText,
+  relationshipForPrompt,
+  createRelationshipUpdater,
+  RELATIONSHIP_TEXT_MAX_CHARS,
+} from '../api/relationship.js';
 import { appearanceOf } from '../character-appearance.js';
 import { moodText } from '../api/mood.js';
 import { formatMessageTime, formatMessageFullTime } from '../msgtime.js';
-import { createContinuityUpdater, coveredCount, CONTINUITY_TOTAL_CHARS, CONTINUITY_ON_OPEN_DELAY_MS } from '../api/continuity.js';
+import { createContinuityUpdater, coveredCount, CONTINUITY_TOTAL_CHARS, CONTINUITY_ON_OPEN_DELAY_MS, cleanRecap, verifyRecap } from '../api/continuity.js';
 import { openChatBackground } from './chat-background.js';
 import { openCharacterAppearance } from './character-look.js';
 import { formatMessage } from './format.js';
@@ -783,6 +790,7 @@ async function onSendClick() {
   // del mensaje y el inicio de la respuesta (ver "lorebook automático").
   loreUpdater.abort();
   continuityUpdater.abort();
+  relationshipUpdater.abort();
   sendInFlight = true;
   try {
     messages.push({ role: 'user', text, ts: Date.now() });
@@ -807,6 +815,7 @@ async function generate(opts = {}) {
   if (busy || !character) return;
   loreUpdater.abort(); // también al regenerar: el chat tiene prioridad sobre la memoria
   continuityUpdater.abort();
+  relationshipUpdater.abort();
   busy = true;
   syncSendButton();
 
@@ -972,7 +981,7 @@ let sendInFlight = false;
 
 const loreUpdater = createLoreUpdater({
   getContext: () => (character && chat && settings ? { character, chat, messages, settings } : null),
-  isChatBusy: () => busy || sendInFlight || continuityUpdater.isRunning(),
+  isChatBusy: () => busy || sendInFlight || continuityUpdater.isRunning() || relationshipUpdater.isRunning(),
   complete: (prompt, opts) => completeOnce(prompt, settings, opts),
   loadLorebook: async (characterId) => {
     const fresh = await getCharacter(characterId);
@@ -986,6 +995,7 @@ const loreUpdater = createLoreUpdater({
   saveLorebook: async (characterId, entries, previous, tombstones, previousTombstones) => {
     const updated = await saveCharacterLorebook(characterId, entries, previous, { tombstones, previousTombstones });
     if (character && character.id === characterId) character = updated;
+    maybeUpdateRelationship(); // MEM-014: la cantidad de recuerdos pudo cruzar de nivel
   },
   markProgress: async (chatId, count) => {
     const updated = await markChatLorebookProgress(chatId, count);
@@ -1003,7 +1013,7 @@ function maybeUpdateLorebook() {
 // memoria en curso, y se cancela si el usuario envía un mensaje. La lógica vive en api/continuity.js.
 const continuityUpdater = createContinuityUpdater({
   getContext: () => (character && chat && settings ? { character, chat, messages, settings } : null),
-  isChatBusy: () => busy || sendInFlight || loreUpdater.isRunning(),
+  isChatBusy: () => busy || sendInFlight || loreUpdater.isRunning() || relationshipUpdater.isRunning(),
   complete: (request, opts) =>
     request.mode === 'chat' ? completeChatOnce(request.messages, settings, opts) : completeOnce(request.prompt, settings, opts),
   loadChat: (chatId) => getChat(chatId),
@@ -1015,6 +1025,34 @@ const continuityUpdater = createContinuityUpdater({
 
 function maybeUpdateContinuity() {
   continuityUpdater.maybeRun().catch(() => {});
+}
+
+/* ---------- MEM-014: estado de la relación, escrito por el personaje ---------- */
+
+// Misma prioridad que el lorebook y la continuidad: nunca compite con una respuesta ni con las
+// otras dos actualizaciones en curso, y se cancela si el usuario envía un mensaje. La lógica
+// (niveles, selección de recuerdos, verificación, respaldo determinista) vive en api/relationship.js;
+// `cleanText`/`verifyText` reutilizan `cleanRecap`/`verifyRecap` del resumen de continuidad (MEM-007) —
+// se inyectan en vez de importarse para no crear un ciclo (continuity.js ya importa relationship.js).
+const relationshipUpdater = createRelationshipUpdater({
+  getContext: () => (character && chat && settings ? { character, chat, messages, settings } : null),
+  isChatBusy: () => busy || sendInFlight || loreUpdater.isRunning() || continuityUpdater.isRunning(),
+  complete: (request, opts) =>
+    request.mode === 'chat' ? completeChatOnce(request.messages, settings, opts) : completeOnce(request.prompt, settings, opts),
+  cleanText: cleanRecap,
+  verifyText: verifyRecap,
+  loadCharacter: (characterId) => getCharacter(characterId),
+  saveRelationship: async (characterId, patch) => {
+    const updated = await saveCharacterRelationship(characterId, patch);
+    if (character && character.id === characterId) character = updated;
+  },
+});
+
+// Se llama después de CUALQUIER cambio al lorebook (extracción, borrar, deshacer, limpiar): la
+// función misma decide si de verdad cruzó de nivel; si no, no hace nada (mejor esfuerzo, sin red
+// de más). Nunca bloquea la acción que la dispara.
+function maybeUpdateRelationship() {
+  relationshipUpdater.maybeRun().catch(() => {});
 }
 
 // MEM-010: al ABRIR un chat tras una ausencia larga (ver `isLongAbsence`), si hacía falta actualizar el resumen se hace ya, en segundo plano,
@@ -1111,14 +1149,17 @@ async function freshLorebook() {
   return (fresh && fresh.lorebook) || [];
 }
 
-// MEM-006: "Estado de la relación", armado en el momento con lo que ya está en el lorebook (sin servidor, sin
-// modelo y sin guardar nada): frase fija por cantidad de recuerdos, "siempre presentes" tal cual y última actualización.
-function buildRelationshipBlock(entries) {
+// MEM-014: "Estado de la relación". Con pocos recuerdos ("early"), un texto fijo, sin modelo. Desde
+// "growing" lo redacta el propio personaje a partir de sus recuerdos (ver api/relationship.js);
+// editable a mano y regenerable a pedido. El conteo de recuerdos y "siempre presentes" se arma
+// aparte, en el momento, sin servidor (relationshipSummary).
+function buildRelationshipBlock(character) {
+  const entries = (character && character.lorebook) || [];
   const sum = relationshipSummary(entries);
   const box = loreEl('div', 'field');
   box.dataset.role = 'relationship';
   box.appendChild(loreEl('h4', 'sheet__title', 'Estado de la relación'));
-  const phrase = loreEl('div', '', sum.phrase);
+  const phrase = loreEl('div', '', relationshipDisplayText(character));
   phrase.style.fontWeight = '600';
   box.appendChild(phrase);
   if (sum.total) {
@@ -1132,9 +1173,88 @@ function buildRelationshipBlock(entries) {
     const age = relationshipAgeText(sum.lastUpdated);
     if (age) box.appendChild(loreEl('div', 'field__hint', `Última actualización de la memoria: ${age}.`));
   }
-  box.appendChild(loreEl('div', 'field__hint', 'Se arma solo con tus recuerdos guardados (los de abajo); no usa el servidor.'));
+  if (sum.level === 'early') {
+    box.appendChild(loreEl('div', 'field__hint', 'Se están conociendo: hace falta más memoria compartida para que el personaje opine.'));
+  } else {
+    const relUpdatedAge = relationshipAgeText((character.relationship && character.relationship.updated) || 0);
+    box.appendChild(
+      loreEl(
+        'div',
+        'field__hint',
+        `Redactado por ${character.card.name}` + (relUpdatedAge ? ` · ${relUpdatedAge}` : '') +
+          (character.relationship && character.relationship.source === 'manual' ? ' · editado por ti' : '')
+      )
+    );
+    const actions = loreEl('div');
+    actions.style.display = 'flex';
+    actions.style.gap = 'var(--space-2, 8px)';
+    actions.style.marginTop = 'var(--space-2, 8px)';
+    const editBtn = loreEl('button', 'btn btn--sm btn--ghost', 'Editar');
+    editBtn.type = 'button';
+    editBtn.addEventListener('click', () => openRelationshipEdit());
+    const regenBtn = loreEl('button', 'btn btn--sm btn--ghost', 'Regenerar');
+    regenBtn.type = 'button';
+    regenBtn.disabled = relationshipUpdater.isRunning() || busy || sendInFlight;
+    regenBtn.addEventListener('click', async () => {
+      regenBtn.disabled = true;
+      const result = await relationshipUpdater.runNow();
+      openLorebookSheet(
+        result.kind === 'ok'
+          ? 'Relación regenerada.'
+          : result.kind === 'busy'
+            ? 'Hay una respuesta o una actualización en curso; espera a que termine.'
+            : 'No se pudo regenerar ahora mismo.'
+      );
+    });
+    actions.append(editBtn, regenBtn);
+    box.appendChild(actions);
+  }
+  box.appendChild(loreEl('div', 'field__hint', 'El conteo se arma solo con tus recuerdos guardados (los de abajo); no usa el servidor.'));
   box.style.marginBottom = 'var(--space-3, 12px)';
   return box;
+}
+
+// MEM-014: edición manual del texto de relación (solo "growing"/"established": "early" es fijo).
+// Al guardar queda como escrita por el usuario (`source:'manual'`) y una regeneración automática
+// (al cruzar de nivel) ya no la pisa — solo "Regenerar" la reemplaza a propósito.
+function openRelationshipEdit() {
+  if (!character) return;
+  const wrap = loreEl('div');
+  wrap.appendChild(loreEl('h3', 'sheet__title', 'Editar estado de la relación'));
+  const hint = loreEl('div', 'field__hint', `Cómo ve ${character.card.name} la relación con ${(settings && settings.user) || 'ti'}, en su propia voz.`);
+  hint.style.marginBottom = 'var(--space-2, 8px)';
+  wrap.appendChild(hint);
+
+  const text = loreEl('textarea', 'inp');
+  text.value = relationshipDisplayText(character);
+  text.maxLength = RELATIONSHIP_TEXT_MAX_CHARS;
+  text.rows = 3;
+  text.setAttribute('aria-label', 'Estado de la relación');
+  const error = loreEl('div', 'field__label', '');
+
+  const saveBtn = loreEl('button', 'btn', 'Guardar');
+  saveBtn.type = 'button';
+  saveBtn.style.marginTop = 'var(--space-2, 8px)';
+  saveBtn.addEventListener('click', async () => {
+    const value = text.value.replace(/\s+/g, ' ').trim();
+    if (!value) {
+      error.textContent = 'Escribe algo, o usa «Regenerar» en vez de dejarlo vacío.';
+      return;
+    }
+    try {
+      character = await saveCharacterRelationship(character.id, { text: value, source: 'manual' });
+      openLorebookSheet('Estado de la relación guardado.');
+    } catch {
+      error.textContent = 'No se pudo guardar el cambio.';
+    }
+  });
+  const cancelBtn = loreEl('button', 'btn btn--ghost', 'Cancelar');
+  cancelBtn.type = 'button';
+  cancelBtn.style.marginTop = 'var(--space-2, 8px)';
+  cancelBtn.addEventListener('click', () => openLorebookSheet());
+
+  wrap.append(text, error, saveBtn, cancelBtn);
+  app.openSheet(wrap);
 }
 
 // UI-010: detalle de los recuerdos que usó un mensaje. Muestra la COPIA guardada en el mensaje, y avisa si
@@ -1169,7 +1289,7 @@ function openLorebookSheet(note = '') {
   status.appendChild(loreEl('div', 'field__hint', loreStatusText()));
   if (note) status.appendChild(loreEl('div', 'field__label', note));
   wrap.appendChild(status);
-  wrap.appendChild(buildRelationshipBlock(character.lorebook || []));
+  wrap.appendChild(buildRelationshipBlock(character));
 
   const inFlight = loreUpdater.isRunning() || busy || sendInFlight;
   const progress = loreEl(
@@ -1265,6 +1385,7 @@ function openLorebookSheet(note = '') {
             tombstones,
             previousTombstones: tombstones,
           });
+          maybeUpdateRelationship(); // MEM-014: fusionar recuerdos reduce el total; pudo cruzar de nivel
         },
         names: [character.card.name || character.name, settings && settings.user],
       });
@@ -1490,6 +1611,7 @@ function openLoreDeleteConfirm(entryId) {
         tombstones: nextTombstones,
         previousTombstones: prevTombstones,
       });
+      maybeUpdateRelationship(); // MEM-014: borrar reduce el total; pudo cruzar de nivel
       return 'Recuerdo borrado.';
     },
     true
@@ -1510,6 +1632,7 @@ function openLoreUndoConfirm() {
         tombstones: fresh.lorebookTombstonesPrevious || [],
         previousTombstones: null,
       });
+      maybeUpdateRelationship(); // MEM-014: deshacer también puede cambiar el total
       return 'Listo: se volvió al estado anterior de la memoria.';
     },
     false
@@ -1759,7 +1882,7 @@ function buildUsageInfo() {
     const lore = loreBudgetPreview(character.lorebook || []);
     const { approxTokens, budgetTokens, ratio } = estimateContextUsage(
       character.card, messages, settings, chat ? chat.scenario : '', lore.alwaysBlock, lore.topicReserve,
-      { continuity: chat && chat.continuitySummary ? chat.continuitySummary.text : '', relationship: relationshipSummary(character.lorebook || []).level, appearance: appearanceOf(character) }
+      { continuity: chat && chat.continuitySummary ? chat.continuitySummary.text : '', relationship: relationshipForPrompt(character), appearance: appearanceOf(character) }
     );
     const pct = Math.round(Math.min(ratio, 1) * 100);
     hint.textContent = ratio >= 1
@@ -2017,6 +2140,7 @@ async function onImportChat() {
 
   if (busy) cancelGeneration();
   continuityUpdater.abort();
+  relationshipUpdater.abort();
   // MEM-007: el resumen habla de los mensajes que se reemplazan, así que no sirve para el chat importado. Se restaura el
   // que trae el archivo (si lo trae y es válido); si no, vuelve al valor por defecto y se regenera solo cuando haga falta.
   try {

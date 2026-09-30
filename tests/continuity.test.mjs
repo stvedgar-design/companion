@@ -196,10 +196,10 @@ test('buildContinuationRequest (plantilla): son los mismos mensajes del chat nor
   const messages = makeMessages(9);
   const chat = { scenario: '', continuitySummary: { text: 'Resumen viejo.', coveredUntil: 0, updated: 1 } };
   const req = buildContinuationRequest({ character, chat, messages, settings }, '[INSTR]');
-  // MEM-008: con 1 recuerdo el nivel es "few" y la cabecera lleva la línea de la relación (igual que en el chat normal).
-  const normal = buildChatMessages(character.card, messages, settings, '', 'Always keep in mind:\n- Sam es alérgico a los cacahuetes.', '', '', false, { relationship: 'few' });
+  // MEM-014: con 1 recuerdo el nivel es "early" (< 30) y la cabecera lleva el texto fijo + la guía (igual que en el chat normal).
+  const normal = buildChatMessages(character.card, messages, settings, '', 'Always keep in mind:\n- Sam es alérgico a los cacahuetes.', '', '', false, { relationship: { level: 'early' } });
   assert.equal(req.mode, 'chat');
-  assert.ok(normal.messages[0].content.includes('Relationship so far: Sam and Mia are still getting to know each other.'));
+  assert.ok(normal.messages[0].content.includes('Relationship so far: We are still getting to know each other.'));
   assert.deepEqual(req.messages.slice(0, -2), normal.messages);          // mismo prefijo exacto: la caché del servidor se reutiliza
   assert.deepEqual(req.messages.slice(-2), [{ role: 'user', content: '[INSTR]' }, { role: 'assistant', content: CONTINUITY_PREFILL }]);
   assert.deepEqual(req.stop, ['\n']);
@@ -211,7 +211,7 @@ test('buildContinuationRequest (texto simple): el prompt normal sin la pista fin
   const settings = makeSettings({ mode: 'plain', ctx: 4096 });
   const messages = makeMessages(9);
   const req = buildContinuationRequest({ character, chat: { scenario: '' }, messages, settings }, '[INSTR]');
-  const normal = buildPlainPrompt(character.card, messages, settings).prompt;
+  const normal = buildPlainPrompt(character.card, messages, settings, '', '', '', '', false, { relationship: { level: 'early' } }).prompt;
   assert.equal(req.mode, 'plain');
   assert.ok(normal.endsWith('\nMia:'));
   assert.equal(req.prompt, normal.slice(0, -'\nMia:'.length) + `\n[INSTR]\n${CONTINUITY_PREFILL}`);

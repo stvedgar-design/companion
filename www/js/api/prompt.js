@@ -134,27 +134,35 @@ export function scenarioGreeting(character, settings, chatScenario) {
   ];
 }
 
-// MEM-008: estado de la relación en la conversación. Va en la CABECERA, junto a los recuerdos "siempre presentes"
-// (solo cambia cuando el lorebook cruza un umbral de cantidad, así que no se mueve turno a turno). El nivel lo
-// calcula `relationshipSummary().level` (api/relationship.js); aquí solo se elige la frase, en inglés porque el
-// prompt lo está. Sin recuerdos (`none`) o con un nivel desconocido no se envía nada.
-const RELATIONSHIP_LABEL = 'Relationship so far:';
-const RELATIONSHIP_TEMPLATES = Object.freeze({
-  few: (U, N) => `${U} and ${N} are still getting to know each other.`,
-  several: (U, N) => `${U} and ${N} have already shared quite a lot.`,
-  many: (U, N) => `${U} and ${N} have a long shared history.`,
-});
+// MEM-014: estado de la relación en la conversación, escrito por el PERSONAJE (no una frase fija por
+// umbral, salvo en "early": ver api/relationship.js). Va en la CABECERA, junto a los recuerdos
+// "siempre presentes" (solo cambia cuando cruza de nivel o se regenera a pedido, así que no se
+// mueve turno a turno). Sin `relationship` (nivel desconocido/ausente) no se envía nada: el prompt
+// queda idéntico al de antes.
+export const RELATIONSHIP_LABEL = 'Relationship so far:';
+/** Texto fijo (nivel "early", < RELATIONSHIP_GROWING_MIN recuerdos): sin llamada al modelo. */
+export const RELATIONSHIP_EARLY_PROMPT_TEXT = 'We are still getting to know each other.';
+/** Guía breve de comportamiento (nivel "early"): contrarresta que el personaje declare amor prematuro. */
+export const RELATIONSHIP_EARLY_GUIDE =
+  'The relationship is still new: be warm and natural, but do not make deep declarations of love or lifelong promises.';
 
 /**
- * Texto de la línea "Relationship so far: …" o '' si no aplica.
- * @param {string} level  'none'|'few'|'several'|'many' (de `relationshipSummary().level`)
- * @param {string} charName
- * @param {string} userName
+ * Texto de la línea "Relationship so far: …" (y, en "early", la guía de comportamiento, en el mismo
+ * bloque) o '' si no aplica.
+ * @param {{ level?: 'early'|'growing'|'established', text?: string }} [relationship]
+ *   De `relationshipForPrompt()` (api/relationship.js): en "growing"/"established" ya trae el texto
+ *   resuelto (generado por el personaje, o el de respaldo si todavía no hay ninguno); "early" no
+ *   necesita texto, usa el fijo.
  * @returns {string}
  */
-export function formatRelationshipBlock(level, charName, userName) {
-  const make = Object.prototype.hasOwnProperty.call(RELATIONSHIP_TEMPLATES, level) ? RELATIONSHIP_TEMPLATES[level] : null;
-  return make ? `${RELATIONSHIP_LABEL} ${make(userName, charName)}` : '';
+export function formatRelationshipBlock(relationship) {
+  const level = relationship && relationship.level;
+  if (level === 'growing' || level === 'established') {
+    const text = String((relationship && relationship.text) || '').replace(/\s+/g, ' ').trim();
+    return text ? `${RELATIONSHIP_LABEL} ${text}` : '';
+  }
+  if (level === 'early') return `${RELATIONSHIP_LABEL} ${RELATIONSHIP_EARLY_PROMPT_TEXT}\n${RELATIONSHIP_EARLY_GUIDE}`;
+  return '';
 }
 
 // MEM-009: ficha de apariencia del personaje (propia de la app, no de la card). Los rasgos FIJOS van en la cabecera, junto a los "siempre
@@ -191,9 +199,10 @@ export function formatAppearanceCurrent(text, charName, userName) {
 // escenario de la card, nunca lo reemplaza. `loreBlock` es el texto ya
 // armado (ver `formatLoreBlock` en api/lorebook.js) con las entradas del
 // lorebook automático que matchearon por keyword en los últimos mensajes;
-// '' si ninguna matcheó o el chat todavía no tiene lorebook. `relationship` = nivel de MEM-008 ('few'|'several'|'many';
-// cualquier otro valor, o ausente, no añade nada).
-function headBlock(card, settings, chatScenario, loreBlock, relationship = '', appearanceFixed = '') {
+// '' si ninguna matcheó o el chat todavía no tiene lorebook. `relationship` = `{level, text}` de
+// MEM-014 (`relationshipForPrompt()`, api/relationship.js); ausente o sin `level` reconocido no
+// añade nada.
+function headBlock(card, settings, chatScenario, loreBlock, relationship = null, appearanceFixed = '') {
   const N = card.name;
   const U = (settings && settings.user) || 'User';
   const sub = (s) => subMacros(s, N, U);
@@ -214,7 +223,7 @@ function headBlock(card, settings, chatScenario, loreBlock, relationship = '', a
   if (chatScenario) scenarioLines.push(sub(chatScenario));
   if (scenarioLines.length) parts.push(`Scenario: ${scenarioLines.join('\n')}`);
 
-  const relationshipLine = formatRelationshipBlock(relationship, N, U);
+  const relationshipLine = formatRelationshipBlock(relationship);
   if (relationshipLine) parts.push(relationshipLine);
   const appearanceLine = formatAppearanceFixed(appearanceFixed, N, U);
   if (appearanceLine) parts.push(appearanceLine);
@@ -340,11 +349,11 @@ function stableFront(kept, totalCount) {
  * @param {string} [varietyNote] FMT-004: nota breve para que el personaje varíe su vocabulario. Va junto al bloque
  *   "por tema", al FINAL y solo en el prompt construido.
  * @param {boolean} [prefill] FMT-002: si es true, el prompt termina con `FORMAT_PREFILL` (la respuesta arranca dentro de una acción).
- * @param {{ continuity?: string, relationship?: string, appearance?: { fixed?: string, current?: string } }} [extras] MEM-009: `appearance` = ficha de apariencia
+ * @param {{ continuity?: string, relationship?: {level?: string, text?: string}, appearance?: { fixed?: string, current?: string } }} [extras] MEM-009: `appearance` = ficha de apariencia
  *   (`fixed` a la CABECERA, junto a la relación; `current` al FINAL, entre la continuidad y el "por tema"; ausente o vacía: prompt idéntico al de antes).
  *   MEM-007: `continuity` = texto del resumen de continuidad del chat; va al FINAL
- *   (primer bloque, antes del "por tema"). MEM-008: `relationship` = nivel (`'few'|'several'|'many'`) de `relationshipSummary()`;
- *   añade "Relationship so far: …" a la CABECERA, junto a los "siempre presentes". Ausente o vacío: el prompt queda idéntico al de antes.
+ *   (primer bloque, antes del "por tema"). MEM-014: `relationship` = `{level, text}` de `relationshipForPrompt()` (api/relationship.js);
+ *   añade "Relationship so far: …" a la CABECERA, junto a los "siempre presentes". Ausente o sin nivel reconocido: el prompt queda idéntico al de antes.
  * @returns {{ prompt: string, stop: string[] }}
  */
 export function buildPlainPrompt(card, messages, settings, chatScenario = '', loreBlock = '', topicBlock = '', varietyNote = '', prefill = false, extras = {}) {
@@ -452,7 +461,7 @@ export function buildChatMessages(card, messages, settings, chatScenario = '', l
  * @param {string} [chatScenario]
  * @param {string} [loreBlock] Bloque estable de la cabecera ("siempre presentes").
  * @param {number} [topicReserveChars] MEM-004: caracteres que se reservan para el bloque "por tema" (va al final del prompt).
- * @param {{ continuity?: string, relationship?: string }} [extras] MEM-007: el resumen de continuidad (va al final) también ocupa contexto. MEM-008: `relationship` (nivel) suma la línea de la cabecera.
+ * @param {{ continuity?: string, relationship?: {level?: string, text?: string} }} [extras] MEM-007: el resumen de continuidad (va al final) también ocupa contexto. MEM-014: `relationship` suma la línea de la cabecera.
  * @returns {{ approxTokens: number, budgetTokens: number, ratio: number }}
  *   `ratio` es approxTokens/budgetTokens, sin recortar a 1 (puede superar 1
  *   si ya no entra todo el historial y algunos mensajes se recortarían).
@@ -479,11 +488,11 @@ export function estimateContextUsage(card, messages, settings, chatScenario = ''
  * @param {string} [loreBlock] Bloque "siempre presentes" de la cabecera.
  * @param {number} [endChars] Caracteres del bloque final (por tema + continuidad) que se descuentan del presupuesto.
  * @param {number} [extraChars] Reserva adicional hipotética.
- * @param {string} [relationship] MEM-008: nivel de la relación (la línea de la cabecera ocupa presupuesto).
+ * @param {{level?: string, text?: string}} [relationship] MEM-014: estado de la relación (la línea de la cabecera ocupa presupuesto).
  * @param {{ fixed?: string, current?: string }|null} [appearance] MEM-009: ficha de apariencia (los rasgos fijos van en la cabecera; la ropa/estado actual, en el bloque final).
  * @returns {number} 0 si todo cabe; `messages.length - 1` como mucho (siempre queda al menos 1 mensaje).
  */
-export function historyStartIndex(card, messages, settings, chatScenario = '', loreBlock = '', endChars = 0, extraChars = 0, relationship = '', appearance = null) {
+export function historyStartIndex(card, messages, settings, chatScenario = '', loreBlock = '', endChars = 0, extraChars = 0, relationship = null, appearance = null) {
   const N = card.name;
   const U = (settings && settings.user) || 'User';
   const end = Math.max(0, endChars || 0) + Math.max(0, extraChars || 0) + appearanceEndChars(appearance, N, U);

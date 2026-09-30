@@ -12,7 +12,7 @@
 
 import { historyStartIndex, continuityBlockChars, buildChatMessages, buildPlainPrompt, CONTINUITY_RESERVE_CHARS } from './prompt.js';
 import { loreBudgetPreview } from './lorebook.js';
-import { relationshipSummary } from './relationship.js';
+import { relationshipForPrompt } from './relationship.js';
 import { appearanceOf } from '../character-appearance.js';
 
 /** Tope de caracteres de CADA recuento nuevo (lo que se pide y lo que se conserva de la respuesta). */
@@ -270,7 +270,7 @@ export function planForContext(ctx, opts = {}) {
   const continuity = continuityBlockChars(summary.text);
   const endChars = preview.topicReserve + continuity + (preview.topicReserve && continuity ? 1 : 0);
   const scenario = (chat && chat.scenario) || '';
-  const relationship = relationshipSummary((character && character.lorebook) || []).level;
+  const relationship = relationshipForPrompt(character);
   const appearance = appearanceOf(character);
   const windowStart = historyStartIndex(character.card, messages, settings, scenario, preview.alwaysBlock, endChars, 0, relationship, appearance);
   const look = CONTINUITY_LOOKAHEAD_CHARS * (opts.manual ? CONTINUITY_MANUAL_LOOKAHEAD_FACTOR : 1);
@@ -342,8 +342,8 @@ export function buildContinuationRequest(ctx, instruction) {
   const card = character.card;
   const scenario = (chat && chat.scenario) || '';
   const always = loreBudgetPreview((character && character.lorebook) || []).alwaysBlock;
-  // MEM-008: la cabecera incluye la línea de la relación, igual que en el chat normal (así sigue siendo continuación del prefijo).
-  const relationship = relationshipSummary((character && character.lorebook) || []).level;
+  // MEM-014: la cabecera incluye la línea de la relación, igual que en el chat normal (así sigue siendo continuación del prefijo).
+  const relationship = relationshipForPrompt(character);
   // MEM-009: solo los rasgos FIJOS (cabecera): la petición de resumen no lleva el bloque final, pero su cabecera debe ser idéntica a la del chat.
   const appearance = appearanceOf(character);
   const extras = { relationship, ...(appearance && appearance.fixed ? { appearance: { fixed: appearance.fixed } } : {}) };

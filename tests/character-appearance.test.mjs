@@ -155,7 +155,7 @@ test('MEM-009: la petición de resumen lleva la MISMA cabecera que el chat (incl
   const character = { card: CARDS.Mia, lorebook: [], appearance: { ...APP, updated: 1 } };
   const ctx = { character, chat: { scenario: '' }, messages: MSGS, settings: SETTINGS };
   const req = buildContinuationRequest(ctx, '[Task]');
-  const chatHead = buildChatMessages(CARDS.Mia, MSGS, SETTINGS, '', '', '', '', false, { appearance: { fixed: APP.fixed } }).messages[0].content;
+  const chatHead = buildChatMessages(CARDS.Mia, MSGS, SETTINGS, '', '', '', '', false, { appearance: { fixed: APP.fixed }, relationship: { level: 'early' } }).messages[0].content;
   assert.equal(req.messages[0].content, chatHead);
   assert.ok(!JSON.stringify(req.messages).includes('look right now'));
   const bare = buildContinuationRequest({ ...ctx, character: { card: CARDS.Mia, lorebook: [] } }, '[Task]');

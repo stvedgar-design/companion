@@ -5,7 +5,7 @@
 
 import { buildPlainPrompt, buildChatMessages, cleanReply, trimPartial, FORMAT_PREFILL } from './prompt.js';
 import { buildLoreBlocks } from './lorebook.js';
-import { relationshipSummary } from './relationship.js';
+import { relationshipForPrompt } from './relationship.js';
 import { appearanceOf } from '../character-appearance.js';
 import { VARIETY_NOTE, varietyNeeded } from './variety.js';
 
@@ -372,11 +372,12 @@ export async function generateReply({ character, chat, messages, settings, signa
   // MEM-007: resumen de continuidad de ESTE chat (lo que ya no cabe en la ventana). Va al FINAL del prompt, junto al bloque
   // "por tema"; sin resumen guardado no se pasa nada y el prompt queda idéntico al de siempre.
   const continuity = (chat && chat.continuitySummary && chat.continuitySummary.text) || '';
-  // MEM-008: nivel de la relación (según cuántos recuerdos tiene el personaje); va a la CABECERA. Sin recuerdos, no se envía nada.
-  const relationship = relationshipSummary((character && character.lorebook) || []).level;
+  // MEM-014: estado de la relación, escrito por el personaje (o el texto fijo de "early"); va a la CABECERA. Siempre se
+  // envía (incluso en "early" sin recuerdos: la guía de comportamiento aplica desde el primer mensaje).
+  const relationship = relationshipForPrompt(character);
   // MEM-009: ficha de apariencia del personaje (rasgos fijos → cabecera; ropa/estado actual → final). Sin nada escrito, no se pasa nada.
   const appearance = appearanceOf(character);
-  const extras = { ...(continuity ? { continuity } : {}), ...(relationship !== 'none' ? { relationship } : {}), ...(appearance ? { appearance } : {}) };
+  const extras = { ...(continuity ? { continuity } : {}), relationship, ...(appearance ? { appearance } : {}) };
   const genkey = makeGenKey();
   const mode = settings.mode === 'chat' ? 'chat' : 'plain';
   const maxLen = settings.maxLen || 220;

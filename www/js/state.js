@@ -7,6 +7,7 @@ import { normalizeVariants } from './variants.js';
 import { sanitizeMeta } from './perf.js';
 import { parseBackupText, normalizeBackup, analyzeBackup, planImport } from './backup.js';
 import { sanitizeAppearance } from './character-appearance.js';
+import { sanitizeRelationship } from './api/relationship.js';
 
 /**
  * @typedef {Object} Card  Card normalizada: todos los campos siempre presentes.
@@ -56,6 +57,8 @@ import { sanitizeAppearance } from './character-appearance.js';
  *   `lorebookPrevious`/`lorebookPreviousAt`); [] por defecto
  * @property {{ fixed: string, current: string, updated: number }} appearance  // MEM-009: ficha de apariencia propia de la app (NO es parte de la card);
  *   `fixed` (rasgos fijos, ≤200 car.) va a la cabecera del prompt, `current` (ropa/estado, ≤100) al final. Vacía por defecto; ver character-appearance.js
+ * @property {{ text: string, level: 'early'|'growing'|'established', updated: number, source: 'auto'|'manual' }} relationship  // MEM-014: estado
+ *   de la relación escrito por el personaje a partir de sus recuerdos; `{text:'', level:'early', updated:0, source:'auto'}` por defecto; ver api/relationship.js
  * @property {string} chatBackground           // data URL JPEG del fondo de SUS chats, '' si no hay
  * @property {number} chatBackgroundBrightness // 20 a 180 (%), 100 = sin cambios
  * @property {boolean} chatBackgroundFade      // fundido a negro en la mitad inferior de la imagen
@@ -323,6 +326,7 @@ function sanitizeCharacterExtras(raw) {
     lorebookTombstones,
     lorebookTombstonesPrevious,
     appearance: sanitizeAppearance(raw.appearance),
+    relationship: sanitizeRelationship(raw.relationship),
     ...sanitizeCharacterBackground(raw),
   };
 }
@@ -496,6 +500,21 @@ export function createState(backend) {
     const changed = next.fixed !== before.fixed || next.current !== before.current;
     const appearance = changed ? { ...next, updated: next.fixed || next.current ? Date.now() : 0 } : before;
     const updated = { ...character, appearance };
+    await backend.put('characters', characterId, updated);
+    return updated;
+  }
+
+  // MEM-014: persiste (con merge parcial, como saveCharacterAppearance) el estado de relación de un personaje. Lo usa
+  // tanto el actualizador automático (`patch` completo: `{text, level, source:'auto'}`) como una edición manual desde
+  // "Ver lorebook" (`patch` parcial: `{text, source:'manual'}`, conserva el `level` que ya tenía).
+  async function saveCharacterRelationship(characterId, patch) {
+    const character = await getCharacter(characterId);
+    if (!character) throw new Error('El personaje no existe.');
+    const before = character.relationship;
+    const next = sanitizeRelationship({ ...before, ...(patch || {}), updated: 1 });
+    const changed = next.text !== before.text || next.level !== before.level || next.source !== before.source;
+    const relationship = changed ? { ...next, updated: next.text ? Date.now() : 0 } : before;
+    const updated = { ...character, relationship };
     await backend.put('characters', characterId, updated);
     return updated;
   }
@@ -779,6 +798,7 @@ export function createState(backend) {
     saveCharacterLorebook,
     saveCharacterBackground,
     saveCharacterAppearance,
+    saveCharacterRelationship,
     deleteCharacter,
     listChats,
     getChat,
@@ -914,6 +934,7 @@ export const saveCharacter = (...args) => getDefaultInstance().saveCharacter(...
 export const saveCharacterLorebook = (...args) => getDefaultInstance().saveCharacterLorebook(...args);
 export const saveCharacterBackground = (...args) => getDefaultInstance().saveCharacterBackground(...args);
 export const saveCharacterAppearance = (...args) => getDefaultInstance().saveCharacterAppearance(...args);
+export const saveCharacterRelationship = (...args) => getDefaultInstance().saveCharacterRelationship(...args);
 export const deleteCharacter = (...args) => getDefaultInstance().deleteCharacter(...args);
 export const listChats = (...args) => getDefaultInstance().listChats(...args);
 export const getChat = (...args) => getDefaultInstance().getChat(...args);
