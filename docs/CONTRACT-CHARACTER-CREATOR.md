@@ -1,5 +1,12 @@
 # CONTRATO (PROPUESTA) — Creador de personajes guiado
 
+> **Aviso (VER-006, 2026-09-30):** esta propuesta SÍ se implementó — pero en
+> la rama remota `claude/gracious-bell-wbo6rh` (contrato CCC-001), no en
+> `main` y sin que el arquitecto la haya revisado contra este documento.
+> Antes de seguir con esto (o con CCC-002, bloqueada por lo mismo), leé el
+> informe "VER-006" en `docs/HISTORIAL.md`: qué se implementó realmente, en
+> qué se aparta de esta propuesta, y la recomendación de qué portar a `main`.
+
 > Este documento es una **propuesta de diseño para discutir con el
 > usuario**, no una autorización para implementar. Se escribió el
 > 2026-09-23 a pedido explícito del usuario ("escribe estas ideas en la
