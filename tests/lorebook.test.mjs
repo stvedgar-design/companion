@@ -45,7 +45,15 @@ import {
   loreEntryCost,
   toLoreUsed,
   loreIndicatorState,
-  compareLoreUsed
+  compareLoreUsed,
+  isGrounded,
+  GROUNDING_MIN_WORDS,
+  GROUNDING_MIN_RATIO,
+  createTombstone,
+  addTombstone,
+  isTombstoned,
+  LOREBOOK_TOMBSTONES_MAX,
+  stripLegacyExampleFacts
 } from '../www/js/api/lorebook.js';
 
 function makeCharacter(overrides = {}) {
@@ -381,7 +389,17 @@ function makeUpdaterHarness(overrides = {}) {
     busy: false,
     lorebook: [makeEntry({ id: 'a', keys: ['perro'], content: 'El perro se llama Bruno.' })],
     chat: { id: 'chat1', lorebookMessageCount: 0 },
-    messages: Array.from({ length: LOREBOOK_UPDATE_EVERY_MESSAGES }, (_, i) => ({ role: i % 2 ? 'char' : 'user', text: `msg ${i}`, ts: i })),
+    // MEM-013: el último mensaje trae, literal, las palabras de contenido de los hechos que usan
+    // estos tests (filtro de fundamento) — sin esto, `applyExtraction` los rechazaría por no
+    // encontrarlos en la ventana analizada.
+    messages: Array.from({ length: LOREBOOK_UPDATE_EVERY_MESSAGES }, (_, i) => ({
+      role: i % 2 ? 'char' : 'user',
+      text: i === LOREBOOK_UPDATE_EVERY_MESSAGES - 1
+        ? 'Trabaja en una panadería. Edgar toca la guitarra. Edgar compró una bicicleta roja. ' +
+          'Edgar cocina pasta los domingos. Planean un viaje.'
+        : `msg ${i}`,
+      ts: i,
+    })),
     reply: '{"k":["panadería"],"c":"Trabaja en una panadería."}]',
     auto: true, // MEM-002: el disparo automático solo ocurre con Settings.lorebookAuto === true
   };
@@ -532,7 +550,11 @@ test('createLoreUpdater.runNow: con < 4 mensajes avisa; usa como ventana los úl
   assert.deepEqual(await updater.runNow(), { kind: 'toolittle' });
   assert.equal(calls.complete, 0);
 
-  state.messages = Array.from({ length: 30 }, (_, i) => ({ role: i % 2 ? 'char' : 'user', text: `msg ${i}`, ts: i }));
+  state.messages = Array.from({ length: 30 }, (_, i) => ({
+    role: i % 2 ? 'char' : 'user',
+    text: i === 29 ? 'msg 29 — Trabaja en una panadería.' : `msg ${i}`, // MEM-013: fundamento del hecho por defecto
+    ts: i,
+  }));
   state.chat = { id: 'chat1', lorebookMessageCount: 29 }; // maybeRun no tocaría; runNow sí
   assert.equal((await updater.runNow()).kind, 'ok');
   assert.match(calls.prompts[0], /msg 29/);
@@ -1120,4 +1142,201 @@ test('UI-010: compareLoreUsed avisa de recuerdos editados o borrados después, y
   // marcar/desmarcar "siempre presente" también cuenta como cambio
   assert.equal(compareLoreUsed(toLoreUsed([makeEntry({ id: 'x' })], false), [always('x', 'Se conocieron en un café.', { keys: ['café'] })])[0].status, 'edited');
   assert.deepEqual(compareLoreUsed(undefined, undefined), []);
+});
+
+// ---------- MEM-013: filtro de fundamento (isGrounded) ----------
+
+const GROUND_NAMES = ['Alex', 'Mia'];
+
+// Hechos LEGÍTIMOS: parafraseados en tercera persona a partir de lo dicho en el fragmento (como
+// se le pide al modelo). Objetivo del contrato: ≥ 90 % pasa.
+const GROUNDED_CASES = [
+  ['User: Adopté un gato llamado Simba la semana pasada.', 'Alex adoptó un gato llamado Simba la semana pasada.'],
+  ["User: My sister Laura just got a new job at the hospital.", "Alex's sister Laura got a new job at the hospital."],
+  ['User: I am planning a trip to Kyoto next spring with my brother.', 'Alex is planning a trip to Kyoto next spring.'],
+  ['Char: ¿Cómo se llama tu perro? User: Se llama Rocco y le encanta nadar en el lago.', 'El perro de Alex se llama Rocco y le encanta nadar en el lago.'],
+  ['User: I broke my arm skiing last winter, it was terrifying.', 'Alex broke an arm skiing last winter.'],
+  ['User: Mi color favorito es el verde esmeralda, siempre lo uso en mi ropa.', 'El color favorito de Alex es el verde esmeralda.'],
+  ['User: I collect vintage vinyl records, mostly jazz from the 60s.', 'Alex collects vintage vinyl jazz records from the 60s.'],
+  ['User: Vivo en un departamento pequeño cerca del puerto con mi gata Michi.', 'Alex vive cerca del puerto con su gata Michi.'],
+  ['User: My grandmother taught me to bake bread every Sunday.', "Alex's grandmother taught them to bake bread every Sunday."],
+  ['User: Estudio arquitectura y sueño con diseñar un museo algún día.', 'Alex estudia arquitectura y sueña con diseñar un museo.'],
+  ['User: I am terrified of spiders, even small ones make me scream.', 'Alex is terrified of spiders.'],
+  ['User: Mi hermano menor se llama Tomás y toca la batería en una banda.', 'El hermano menor de Alex, Tomás, toca la batería en una banda.'],
+];
+
+// Hechos INVENTADOS o COPIADOS del ejemplo del prompt: nada de esto se dijo en el fragmento.
+// Objetivo del contrato: 100 % se bloquea.
+const UNGROUNDED_CASES = [
+  ['User: hablamos del clima hoy, nada más.', "Zalika mentioned to Petrov that her neighbor's greenhouse grew record tomatoes this year."],
+  ['User: no pasó nada importante hoy.', 'Alex confessed a secret fear of the dark to Mia last night.'],
+  ['Char: ¿Qué tal tu día? User: bien, normal.', 'Alex\'s father was a famous astronaut who walked on Mars.'],
+  ['User: Solo charlamos de tonterías.', 'Alex once lived in Paris for three years studying painting.'],
+  ['User: jaja sí, todo bien por aquí.', 'Mia and Alex adopted a puppy named Rex together last summer.'],
+  ['User: Estoy cansado, fue un día largo.', 'Alex\'s best friend Diego moved to Canada to become a chef.'],
+  ['User: ¿Viste el partido de anoche?', 'Alex has a twin sister named Vera who lives in Berlin.'],
+  ['User: Nada nuevo, la rutina de siempre.', 'Alex was once bitten by a snake while hiking in Peru.'],
+  ['User: Solo quería saludar, nada más que contar.', 'Alex\'s grandfather built the house they grew up in by hand.'],
+  ['User: Todo tranquilo por acá, ¿y tú?', 'Alex secretly writes poetry under a pen name.'],
+];
+
+test('MEM-013 Paso 0 (sintético): isGrounded deja pasar >= 90% de hechos legítimos parafraseados', () => {
+  const results = GROUNDED_CASES.map(([excerpt, fact]) => isGrounded(fact, excerpt, GROUND_NAMES));
+  const passed = results.filter(Boolean).length;
+  assert.ok(passed / GROUNDED_CASES.length >= 0.9, `${passed}/${GROUNDED_CASES.length} pasaron`);
+});
+
+test('MEM-013 Paso 0 (sintético): isGrounded bloquea el 100% del ejemplo copiado y de hechos inventados', () => {
+  const results = UNGROUNDED_CASES.map(([excerpt, fact]) => isGrounded(fact, excerpt, GROUND_NAMES));
+  const blocked = results.filter((r) => !r).length;
+  assert.equal(blocked, UNGROUNDED_CASES.length, `${blocked}/${UNGROUNDED_CASES.length} bloqueados`);
+});
+
+test('isGrounded: sin ninguna palabra de contenido propia (todo nombres/genéricas/stopwords), nunca está fundamentado', () => {
+  assert.equal(isGrounded('Alex and Mia are very nice.', 'Alex and Mia talked for a while.', GROUND_NAMES), false);
+  assert.equal(isGrounded('', 'cualquier cosa', []), false);
+});
+
+test('isGrounded: constantes con los valores documentados (2 palabras o 50%)', () => {
+  assert.equal(GROUNDING_MIN_WORDS, 2);
+  assert.equal(GROUNDING_MIN_RATIO, 0.5);
+});
+
+// ---------- MEM-013: applyExtraction con filtro de fundamento y lápidas ----------
+
+test('applyExtraction: sin excerptText, el filtro de fundamento no actúa (compatibilidad)', () => {
+  const out = applyExtraction([], [{ keys: ['viaje'], content: 'Alex mencionó un viaje inventado a Marte.' }], { now: 1 });
+  assert.equal(out.added, 1);
+  assert.deepEqual(out.rejected, []);
+});
+
+test('applyExtraction: con excerptText, descarta lo no fundamentado y lo reporta en `rejected`', () => {
+  const out = applyExtraction([], [
+    { keys: ['viaje', 'marte'], content: 'Alex mencionó un viaje inventado a Marte.' },
+    { keys: ['gato', 'simba'], content: 'Alex adoptó un gato llamado Simba.' },
+  ], { now: 1, excerptText: 'User: adopté un gato llamado Simba ayer.' });
+  assert.equal(out.added, 1);
+  assert.equal(out.entries[0].content, 'Alex adoptó un gato llamado Simba.');
+  assert.deepEqual(out.rejected, [{ reason: 'ungrounded' }]);
+});
+
+test('applyExtraction: con tombstones, descarta un candidato que coincide con una lápida', () => {
+  const tombstones = [createTombstone({ content: 'Alex adoptó un gato llamado Simba.', keys: ['gato', 'simba'] }, 1)];
+  const out = applyExtraction([], [{ keys: ['gato', 'simba'], content: 'Alex adoptó un gato llamado Simba el mes pasado.' }], {
+    now: 2,
+    tombstones,
+  });
+  assert.equal(out.added, 0);
+  assert.deepEqual(out.rejected, [{ reason: 'tombstone' }]);
+});
+
+// ---------- MEM-013: lápidas (tombstones) ----------
+
+test('createTombstone/addTombstone: copia contenido y keys, recorta por LOREBOOK_TOMBSTONES_MAX (la más antigua sale primero)', () => {
+  const t = createTombstone(makeEntry({ content: '  Se   conocieron   en un café.  ', keys: ['café', 'cita'] }), 5);
+  assert.deepEqual(t, { content: 'Se conocieron en un café.', keys: ['café', 'cita'], at: 5 });
+
+  let list = [];
+  for (let i = 0; i < LOREBOOK_TOMBSTONES_MAX + 3; i++) {
+    list = addTombstone(list, makeEntry({ content: `Hecho número ${i} distinto.`, keys: ['n' + i] }), i);
+  }
+  assert.equal(list.length, LOREBOOK_TOMBSTONES_MAX);
+  assert.equal(list[0].at, 3); // las 3 más viejas (0,1,2) salieron
+  assert.equal(list[list.length - 1].at, LOREBOOK_TOMBSTONES_MAX + 2);
+});
+
+test('isTombstoned: usa el mismo criterio de casi-duplicado que la fusión (MEM-003/005)', () => {
+  const tombstones = [{ content: 'Sam told Mia that the dog Bruno is afraid of thunder', keys: ['bruno', 'thunder'] }];
+  // Casi el mismo hecho (parafraseado): coincide.
+  assert.equal(
+    isTombstoned('Sam mentioned that Bruno the dog is afraid of thunder storms', ['bruno', 'thunder'], tombstones, NAMES2),
+    true
+  );
+  // Un hecho totalmente distinto: no coincide.
+  assert.equal(isTombstoned('Sam took Mia to the lake on Sunday', ['lake'], tombstones, NAMES2), false);
+  assert.equal(isTombstoned('cualquier cosa', ['x'], [], NAMES2), false);
+  assert.equal(isTombstoned('cualquier cosa', ['x'], null, NAMES2), false);
+});
+
+// ---------- MEM-013: limpieza única del ejemplo viejo del prompt ("Bruno" + trueno) ----------
+
+test('stripLegacyExampleFacts: quita entradas AUTOMÁTICAS que combinan Bruno y trueno, en cualquier idioma; deja las demás intactas', () => {
+  const entries = [
+    makeEntry({ id: 'a', content: 'Sam told Mia that the dog Bruno is afraid of thunder', keys: ['bruno', 'thunder'] }),
+    makeEntry({ id: 'b', content: 'A Bruno le teme a los truenos.', keys: ['bruno', 'truenos'] }),
+    makeEntry({ id: 'c', content: 'Bruno adora correr en el parque.', keys: ['bruno', 'parque'] }), // Bruno sin trueno: se queda
+    makeEntry({ id: 'd', content: 'Le teme a los truenos desde niña.', keys: ['truenos'] }), // trueno sin Bruno: se queda
+    { ...makeEntry({ id: 'e', content: 'Sam told Mia that the dog Bruno is afraid of thunder', keys: ['bruno', 'thunder'] }), source: 'manual' }, // manual: nunca se toca
+  ];
+  const { entries: out, removed } = stripLegacyExampleFacts(entries);
+  assert.deepEqual(out.map((e) => e.id), ['c', 'd', 'e']);
+  assert.deepEqual(removed.map((e) => e.id), ['a', 'b']);
+});
+
+test('stripLegacyExampleFacts: sin coincidencias, devuelve la MISMA referencia de arreglo (nada cambia)', () => {
+  const entries = [makeEntry({ id: 'a', content: 'Un hecho normal cualquiera.' })];
+  const result = stripLegacyExampleFacts(entries);
+  assert.equal(result.entries, entries);
+  assert.deepEqual(result.removed, []);
+});
+
+// ---------- MEM-013: createLoreUpdater — migración, fundamento y lápidas de punta a punta ----------
+
+function makeUpdaterHarnessV2(overrides = {}) {
+  const calls = { save: [], rejected: [] };
+  const state = {
+    busy: false,
+    lorebook: [makeEntry({ id: 'legacy', content: 'Sam told Mia that the dog Bruno is afraid of thunder', keys: ['bruno', 'thunder'] })],
+    tombstones: [],
+    chat: { id: 'chat1', lorebookMessageCount: 0 },
+    messages: Array.from({ length: LOREBOOK_UPDATE_EVERY_MESSAGES }, (_, i) => ({
+      role: i % 2 ? 'char' : 'user',
+      text: i === LOREBOOK_UPDATE_EVERY_MESSAGES - 1 ? 'Adopté un gato llamado Simba la semana pasada.' : `msg ${i}`,
+      ts: i,
+    })),
+    reply: overrides.reply || '{"k":["gato","simba"],"c":"Alex adoptó un gato llamado Simba la semana pasada."}]',
+  };
+  const updater = createLoreUpdater({
+    getContext: () => ({ character: makeCharacter({ name: 'Alex' }), chat: state.chat, messages: state.messages, settings: makeSettings({ lorebookAuto: true, user: 'Alex' }) }),
+    isChatBusy: () => state.busy,
+    complete: async () => state.reply,
+    loadLorebook: async () => state.lorebook,
+    loadTombstones: async () => state.tombstones,
+    saveLorebook: async (id, entries, previous, tombstones) => {
+      calls.save.push({ entries, previous, tombstones });
+      state.lorebook = entries;
+      if (tombstones) state.tombstones = tombstones;
+    },
+    markProgress: async () => {},
+    onFactRejected: (info) => calls.rejected.push(info),
+  });
+  return { updater, state, calls };
+}
+
+test('createLoreUpdater: limpia (una vez) el recuerdo-fantasma del ejemplo viejo y deja lápida, antes de construir el prompt', async () => {
+  const { updater, state, calls } = makeUpdaterHarnessV2();
+  await updater.maybeRun();
+  // La entrada "legacy" (Bruno + thunder) ya no está; sí está la nueva, fundamentada.
+  assert.ok(!state.lorebook.some((e) => e.id === 'legacy'));
+  assert.ok(state.lorebook.some((e) => e.content.includes('Simba')));
+  assert.equal(state.tombstones.length, 1);
+  assert.match(state.tombstones[0].content, /Bruno/);
+});
+
+test('createLoreUpdater: un candidato sin fundamento en la ventana analizada se descarta y se reporta (fact_rejected)', async () => {
+  const { updater, state, calls } = makeUpdaterHarnessV2({
+    reply: '{"k":["marte"],"c":"Alex mencionó un viaje inventado a Marte."}]',
+  });
+  const result = await updater.maybeRun();
+  assert.equal(result.kind, 'nochange');
+  assert.deepEqual(calls.rejected, [{ reason: 'ungrounded' }]);
+});
+
+test('createLoreUpdater: un candidato que coincide con una lápida existente se descarta y se reporta', async () => {
+  const { updater, state, calls } = makeUpdaterHarnessV2();
+  state.lorebook = []; // sin el fantasma esta vez, para aislar el caso
+  state.tombstones = [createTombstone({ content: 'Alex adoptó un gato llamado Simba la semana pasada.', keys: ['gato', 'simba'] }, 1)];
+  const result = await updater.maybeRun();
+  assert.equal(result.kind, 'nochange');
+  assert.deepEqual(calls.rejected, [{ reason: 'tombstone' }]);
 });

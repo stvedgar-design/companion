@@ -111,6 +111,8 @@ Los imports son ESM relativos y siempre con extensión `.js`. Los tests importan
  * @property {LoreEntry[]} lorebook // memoria de largo plazo, compartida entre todos los chats de este personaje (por personaje, no por chat: docs/HISTORIAL.md)
  * @property {LoreEntry[]} lorebookPrevious   // MEM-001 v2: copia del lorebook justo antes de la última actualización de memoria (un solo nivel de "Deshacer"); [] por defecto
  * @property {number} lorebookPreviousAt      // MEM-001 v2: cuándo se guardó esa copia (ms); 0 = no hay nada que deshacer (distingue "sin copia" de "el lorebook estaba vacío")
+ * @property {{content:string,keys:string[],at:number}[]} lorebookTombstones  // MEM-013: recuerdos borrados/rechazados, para que la extracción automática no los repita; tope 200 (la más antigua sale primero); [] por defecto
+ * @property {{content:string,keys:string[],at:number}[]} lorebookTombstonesPrevious  // MEM-013: copia de lorebookTombstones de antes de la operación que dejó el "Deshacer" actual (pareja de lorebookPrevious/lorebookPreviousAt); [] por defecto
  * @property {{fixed:string,current:string,updated:number}} appearance // MEM-009: ficha de apariencia propia de la app (NO de la card). `fixed` ≤200 car. (cabecera del prompt), `current` ≤100 car. (final); vacía por defecto; ver www/js/character-appearance.js
  * @property {string} chatBackground            // data URL JPEG del fondo de SUS chats, '' si no hay
  * @property {number} chatBackgroundBrightness  // 20 a 180 (%), 100 = sin cambios

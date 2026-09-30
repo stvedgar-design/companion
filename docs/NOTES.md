@@ -58,7 +58,10 @@ navegación), `setup`, `home`, `chats`, `chat`. Versión: `APP_VERSION`
   (por personaje, compartido entre sus chats), `lorebookPrevious: LoreEntry[]` y
   `lorebookPreviousAt` (MEM-001 v2: copia del lorebook antes de la última
   actualización de memoria, un nivel de "Deshacer"; `[]`/`0` = nada que
-  deshacer), `appearance: {fixed, current, updated}` (MEM-009: ficha de apariencia PROPIA de la app, no parte de la card; `fixed` ≤200 car. a la cabecera del prompt, `current` ≤100 car. al final; vacía por defecto), `chatBackground` (data URL),
+  deshacer), `lorebookTombstones`/`lorebookTombstonesPrevious: LoreTombstone[]`
+  (MEM-013: lo borrado no vuelve; tope 200, pareja de `lorebookPrevious` para que
+  "Deshacer" también revierta lápidas; `[]` por defecto),
+  `appearance: {fixed, current, updated}` (MEM-009: ficha de apariencia PROPIA de la app, no parte de la card; `fixed` ≤200 car. a la cabecera del prompt, `current` ≤100 car. al final; vacía por defecto), `chatBackground` (data URL),
   `chatBackgroundBrightness`, `chatBackgroundFade`, `chatBackgroundFit`.
   Además `updated` y `last`: los escribe `cards/import.js` al importar, pero
   **nada los mantiene** después (el hub ordena por `updated`, o sea por fecha
@@ -85,7 +88,7 @@ personaje (MEM-001 v2: extracción aditiva de una línea vía KoboldCpp, inyecci
 por keyword, hoja "Ver lorebook" con editar/borrar/deshacer y "Actualizar memoria
 ahora"; MEM-002: la actualización automática cada 20 mensajes está APAGADA por
 defecto y se activa con un interruptor en esa hoja); un solo skin (Penumbra Claude) × claro/oscuro; fondo
-de chat por personaje; CI con gate de tests; versión visible en Ajustes; resumen de continuidad por chat (MEM-007, **apagado por defecto**: cuesta ~+2-4 s por respuesta); 536
+de chat por personaje; CI con gate de tests; versión visible en Ajustes; resumen de continuidad por chat (MEM-007, **apagado por defecto**: cuesta ~+2-4 s por respuesta); filtro de fundamento y lápidas contra recuerdos fantasma/inventados (MEM-013); 553
 tests (`node --test tests/*.test.mjs`).
 
 **Verificado en un teléfono real (Hecho, reportado por el tester, 2026-09-24):**
@@ -261,6 +264,7 @@ personajes: segunda iteración visual"; auditoría de recuperabilidad →
 | MEM-009 | Apariencia del personaje (independiente de la card) | Autorizado — **implementado el 2026-09-26** (sesión R1); 21 tests nuevos (incluye Mia, Theo y Ani sintéticos y un servidor falso de punta a punta); hoja verificada en el navegador; **latencia no medida contra el servidor real** (no hace falta según el contrato: texto fijo, misma colocación que MEM-004/008); **pendiente de probar en el teléfono** | `Character.appearance`; `character-appearance.js` (puro); `prompt.js` (`extras.appearance`); hoja `ui/character-look.js` desde el menú ⋮ del chat ("Apariencia del personaje"). La card (`chara_card_v2`) no se toca. Ver "MEM-009" (en `HISTORIAL.md`). |
 | MEM-010 | Repaso al volver tras una ausencia (extiende el disparo del resumen de continuidad) | Autorizado — **implementado el 2026-09-26** (sesión R1); 8 tests nuevos; verificado en el navegador (chat de 120 mensajes con última actividad "hace 10 h": la petición sale ~0,6 s después de mostrar el chat y cede al escribir); **el resumen sigue APAGADO por defecto** (sin cambios); no medido contra el servidor real; **pendiente de probar en el teléfono** | `isLongAbsence` (>8 h desde el ÚLTIMO mensaje) + `maybeRun({ onOpen: true })` + `abortOnOpenRun()` en `api/continuity.js`; `chat.js` lo pide al final de `show()` con 600 ms de retraso. Ver "MEM-010" (en `HISTORIAL.md`). |
 | MEM-011 | "Sintiéndose…" junto al timestamp en mensajes con memoria densa | Autorizado — **implementado el 2026-09-26** (sesión R1); Paso 0 heurístico hecho (24/24 casos propios; con otro vocabulario habla en 6 de 12 y acierta 6/6); **sin modelo, latencia cero**; verificado en el navegador; 12 tests nuevos; **pendiente de la opinión del usuario en el teléfono (es el dato más importante)** | `api/mood.js` (puro), `msgtime.js`; timestamp en TODOS los mensajes con texto y `sintiendo <emoción>` solo con ≥3 recuerdos activados POR TEMA (los "siempre presentes" no cuentan) y una categoría clara. Sustantivo (no adjetivo) para no suponer el género del personaje. Ver "MEM-011" (en `HISTORIAL.md`). |
+| MEM-013 | Recuerdo fantasma: ejemplo del prompt, lápidas y filtro de fundamento | Autorizado — **implementado el 2026-09-30** (Tanda A); Paso 0 contra el servidor real (tabla en `HISTORIAL.md`: 2/10 fantasma con el prompt viejo → 0/10 con prompt nuevo + filtro); 553 tests; verificado en el navegador (borrar → lápida → deshacer); **pendiente de probar en el teléfono** | `Character.lorebookTombstones`/`lorebookTombstonesPrevious`; `isGrounded`/`isTombstoned`/`stripLegacyExampleFacts` en `api/lorebook.js`. **TEL-001 no existe en el código** (desvío documentado): `deps.onFactRejected` queda listo para conectarse el día que exista. Ver "MEM-013" (en `HISTORIAL.md`). |
 | MEM-001 (v1) | (Anulado) versión anterior de MEM-001 | **ANULADO**, reemplazado por MEM-001 v2 | Asumía que el servidor podía devolver una lista larga con saltos de línea. |
 | (previos) | `CONTRACT-LOREBOOK.md` (implementado, parcialmente superado), `CONTRACT-CHARACTER-CREATOR.md` (propuesta, no autorizada), `CONTRACT-HANDOFF.md` (briefing) | — | Ver los avisos al inicio de cada uno. |
 

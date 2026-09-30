@@ -682,6 +682,58 @@ test('guardar el lorebook no pisa un chatBackground* ni un avatar cambiados entr
   assert.equal(after.avatar, 'data:image/png;base64,AVATAR');
 });
 
+// ---------- MEM-013: lorebookTombstones / lorebookTombstonesPrevious ----------
+
+test('un personaje sin lorebookTombstones ni lorebookTombstonesPrevious carga con [] en ambos', async () => {
+  const backend = createMemoryBackend();
+  const state = createState(backend);
+  backend._raw.characters.set('viejo', {
+    id: 'viejo', name: 'Viejo', avatar: '',
+    card: { name: 'Viejo', description: '', personality: '', scenario: '', first_mes: '', mes_example: '', system_prompt: '', post_history_instructions: '', alternate_greetings: [], character_book: null },
+    avatarMode: 'mini', created: 1,
+    lorebook: [{ id: 'l1', keys: ['a'], content: 'Un recuerdo.', updated: 1, source: 'auto' }],
+  });
+  const character = await state.getCharacter('viejo');
+  assert.deepEqual(character.lorebookTombstones, []);
+  assert.deepEqual(character.lorebookTombstonesPrevious, []);
+  assert.equal(character.lorebook.length, 1); // lo existente no cambia
+  assert.deepEqual((await state.listCharacters())[0].lorebookTombstones, []);
+});
+
+test('saveCharacterLorebook con `tombstonesPatch`: guarda `tombstones`, y `previousTombstones` sigue el mismo criterio que `previous` (array = guarda, null = borra, undefined = no toca)', async () => {
+  const state = createState(createMemoryBackend());
+  await state.saveCharacter(makeCharacter({ id: 'x' }));
+  const stone = { content: 'Un recuerdo borrado.', keys: ['a'], at: 1 };
+
+  const withStone = await state.saveCharacterLorebook('x', [], undefined, { tombstones: [stone] });
+  assert.deepEqual(withStone.lorebookTombstones, [stone]);
+  assert.deepEqual(withStone.lorebookTombstonesPrevious, []); // undefined: no se toca
+
+  const withPrev = await state.saveCharacterLorebook('x', [], [], { tombstones: [], previousTombstones: [stone] });
+  assert.deepEqual(withPrev.lorebookTombstones, []);
+  assert.deepEqual(withPrev.lorebookTombstonesPrevious, [stone]);
+
+  const cleared = await state.saveCharacterLorebook('x', [], null, { previousTombstones: null });
+  assert.deepEqual(cleared.lorebookTombstonesPrevious, []);
+  assert.deepEqual(cleared.lorebookTombstones, []); // no se pasó `tombstones`: no cambia
+
+  // Sin `tombstonesPatch`, ninguno de los dos campos se toca (compatibilidad con llamadas viejas).
+  const before = await state.saveCharacterLorebook('x', [], undefined, { tombstones: [stone], previousTombstones: [stone] });
+  const untouched = await state.saveCharacterLorebook('x', [before], before ? [] : []);
+  assert.deepEqual(untouched.lorebookTombstones, [stone]);
+  assert.deepEqual(untouched.lorebookTombstonesPrevious, [stone]);
+});
+
+test('lorebookTombstones se cap a LOREBOOK_TOMBSTONES_MAX al leer (personaje con más, p. ej. de un backup ajeno)', async () => {
+  const backend = createMemoryBackend();
+  const state = createState(backend);
+  const many = Array.from({ length: 210 }, (_, i) => ({ content: `Hecho ${i}`, keys: ['k' + i], at: i }));
+  backend._raw.characters.set('x', { ...makeCharacter({ id: 'x' }), lorebookTombstones: many });
+  const character = await state.getCharacter('x');
+  assert.equal(character.lorebookTombstones.length, 200);
+  assert.equal(character.lorebookTombstones[0].at, 10); // las 10 más viejas se recortan
+});
+
 test('MEM-002: lorebookAuto es false por defecto y solo acepta true estricto', async () => {
   const state = createState(createMemoryBackend());
   assert.equal((await state.getSettings()).lorebookAuto, false);

@@ -48,6 +48,12 @@ import { sanitizeAppearance } from './character-appearance.js';
  * @property {number} lorebookPreviousAt  // cuándo se guardó esa copia (ms); 0 = no hay nada que
  *   deshacer. Existe porque `lorebookPrevious: []` no distingue "no hay copia" de "el lorebook
  *   estaba vacío antes de la primera actualización".
+ * @property {{content: string, keys: string[], at: number}[]} lorebookTombstones  // MEM-013: lo que el
+ *   usuario borró (o que la limpieza única quitó), para que la extracción automática no lo repita;
+ *   tope LOREBOOK_TOMBSTONES_MAX (api/lorebook.js), la más antigua sale primero; [] por defecto
+ * @property {{content: string, keys: string[], at: number}[]} lorebookTombstonesPrevious  // copia de
+ *   `lorebookTombstones` de ANTES de la operación que dejó el nivel de "Deshacer" actual (pareja de
+ *   `lorebookPrevious`/`lorebookPreviousAt`); [] por defecto
  * @property {{ fixed: string, current: string, updated: number }} appearance  // MEM-009: ficha de apariencia propia de la app (NO es parte de la card);
  *   `fixed` (rasgos fijos, ≤200 car.) va a la cabecera del prompt, `current` (ropa/estado, ≤100) al final. Vacía por defecto; ver character-appearance.js
  * @property {string} chatBackground           // data URL JPEG del fondo de SUS chats, '' si no hay
@@ -276,6 +282,25 @@ function sanitizeLoreEntry(raw) {
   };
 }
 
+// MEM-013: tope de lápidas por personaje (mismo valor que LOREBOOK_TOMBSTONES_MAX en
+// api/lorebook.js; no se importa para no crear una dependencia de state.js hacia esa capa).
+const LOREBOOK_TOMBSTONES_MAX = 200;
+
+// Valida una lápida suelta (recuerdo borrado/rechazado). Descarta lo que no tenga forma válida,
+// igual que sanitizeLoreEntry.
+function sanitizeTombstone(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const content = typeof raw.content === 'string' ? raw.content.trim() : '';
+  if (!content) return null;
+  const keys = Array.isArray(raw.keys) ? raw.keys.map((k) => String(k || '')).filter(Boolean) : [];
+  return { content, keys, at: Number.isFinite(raw.at) ? raw.at : Date.now() };
+}
+
+function sanitizeTombstones(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw.map(sanitizeTombstone).filter(Boolean).slice(-LOREBOOK_TOMBSTONES_MAX);
+}
+
 // Asegura que un Character tenga un `lorebook` y campos de fondo de chat
 // válidos (personajes guardados antes de esas features no los tienen
 // todavía). No toca el resto del objeto: a diferencia de sanitizeChat(), el
@@ -288,7 +313,18 @@ function sanitizeCharacterExtras(raw) {
     ? raw.lorebookPrevious.map(sanitizeLoreEntry).filter(Boolean)
     : [];
   const lorebookPreviousAt = Number.isFinite(raw.lorebookPreviousAt) ? raw.lorebookPreviousAt : 0;
-  return { ...raw, lorebook, lorebookPrevious, lorebookPreviousAt, appearance: sanitizeAppearance(raw.appearance), ...sanitizeCharacterBackground(raw) };
+  const lorebookTombstones = sanitizeTombstones(raw.lorebookTombstones);
+  const lorebookTombstonesPrevious = sanitizeTombstones(raw.lorebookTombstonesPrevious);
+  return {
+    ...raw,
+    lorebook,
+    lorebookPrevious,
+    lorebookPreviousAt,
+    lorebookTombstones,
+    lorebookTombstonesPrevious,
+    appearance: sanitizeAppearance(raw.appearance),
+    ...sanitizeCharacterBackground(raw),
+  };
 }
 
 // MEM-007: tope duro de lo que se acepta guardar (el tope "de trabajo" del resumen vive en api/continuity.js
@@ -410,7 +446,11 @@ export function createState(backend) {
   // `previous` (opcional) controla el "Deshacer" de un nivel: un arreglo
   // guarda esa copia (con la hora actual); `null` la borra; `undefined` la
   // deja como estaba.
-  async function saveCharacterLorebook(characterId, lorebook, previous) {
+  // `tombstonesPatch` (opcional, MEM-013): `{ tombstones, previousTombstones }`. `tombstones`
+  // (array) reemplaza la lista actual de lápidas; `previousTombstones` guarda/borra la pareja de
+  // `previous` para que "Deshacer" también revierta lápidas (mismo criterio: array = guarda, null =
+  // borra, undefined = no toca). Sin este parámetro, las lápidas no se tocan.
+  async function saveCharacterLorebook(characterId, lorebook, previous, tombstonesPatch) {
     const character = await getCharacter(characterId);
     if (!character) throw new Error('El personaje no existe.');
     const patch = { lorebook };
@@ -420,6 +460,14 @@ export function createState(backend) {
     } else if (previous === null) {
       patch.lorebookPrevious = [];
       patch.lorebookPreviousAt = 0;
+    }
+    if (tombstonesPatch && Array.isArray(tombstonesPatch.tombstones)) {
+      patch.lorebookTombstones = tombstonesPatch.tombstones;
+    }
+    if (tombstonesPatch && Array.isArray(tombstonesPatch.previousTombstones)) {
+      patch.lorebookTombstonesPrevious = tombstonesPatch.previousTombstones;
+    } else if (tombstonesPatch && tombstonesPatch.previousTombstones === null) {
+      patch.lorebookTombstonesPrevious = [];
     }
     const updated = sanitizeCharacterExtras({ ...character, ...patch });
     await backend.put('characters', characterId, updated);

@@ -183,9 +183,10 @@ export function buildExtractionPrompt(character, settings, windowMessages, exist
       `Then, if ${U}'s own lines in the excerpt contain a distinctive noun or verb about that fact, add 1 more keyword copied EXACTLY as ${U} wrote it; if there is no clear one, skip it. ` +
       `Never use the names "${N}" or "${U}" as keywords, nor generic words like "personality", "person", "likes" or "feelings". ` +
       `Put every keyword in double quotes.`,
-    `Reply with ONE line only: a compact JSON array with no line breaks and no markdown, like ` +
-      `[{"k":["bruno","thunder","hides"],"c":"${U} told ${N} that the dog Bruno is afraid of thunder"}], one fact per object. ` +
-      `If there is nothing new worth remembering, reply [].`,
+    `Reply with ONE line only: a compact JSON array with no line breaks and no markdown. This shows the FORMAT ONLY, ` +
+      `it is unrelated to this chat and you must NEVER copy its names or its fact: ` +
+      `[{"k":["greenhouse","tomatoes"],"c":"Zalika mentioned to Petrov that her neighbor's greenhouse grew record tomatoes this year"}]. ` +
+      `Write the REAL facts from the excerpt below, one object per fact. If there is nothing new worth remembering, reply with exactly [] and nothing else.`,
     known ? `Already known (keywords only, do not repeat these facts): ${known}` : '',
     'Excerpt:',
   ].filter(Boolean).join('\n\n');
@@ -701,6 +702,120 @@ export function hasFirstPersonVoice(content) {
   return false;
 }
 
+/* ---------- MEM-013: filtro de fundamento (contra recuerdos inventados o copiados del ejemplo) ---------- */
+
+// Un candidato pasa si al menos GROUNDING_MIN_WORDS de sus palabras de contenido distintivas
+// aparecen en el fragmento de conversación analizado, O si al menos GROUNDING_MIN_RATIO de
+// ellas aparecen (para hechos con pocas palabras de contenido). Basta cualquiera de las dos.
+export const GROUNDING_MIN_WORDS = 2;
+export const GROUNDING_MIN_RATIO = 0.5;
+
+/**
+ * ¿El contenido está respaldado por el fragmento de conversación? Compara palabras de
+ * CONTENIDO (sin stopwords, nombres propios ni genéricas, con la misma raíz ligera que MEM-005)
+ * del candidato contra las del fragmento. Un candidato sin ninguna palabra de contenido propia
+ * (todo nombres/genéricas/stopwords) nunca está fundamentado. Pura.
+ * @param {string} content
+ * @param {string} excerptText
+ * @param {string[]} [names]
+ * @returns {boolean}
+ */
+export function isGrounded(content, excerptText, names = []) {
+  const nameWords = nameWordSet(names);
+  const words = [...contentWords(content, nameWords)];
+  if (!words.length) return false;
+  const excerptWords = contentWords(excerptText, nameWords);
+  const matched = words.filter((w) => excerptWords.has(w));
+  if (!matched.length) return false;
+  return matched.length >= GROUNDING_MIN_WORDS || matched.length / words.length >= GROUNDING_MIN_RATIO;
+}
+
+/* ---------- MEM-013: lápidas (tombstones) — lo que el usuario borró no vuelve ---------- */
+
+/**
+ * @typedef {Object} LoreTombstone
+ * @property {string} content  // normalizado (espacios colapsados), del recuerdo borrado/rechazado
+ * @property {string[]} keys
+ * @property {number} at
+ */
+
+// Tope de lápidas guardadas por personaje: la más antigua sale primero (FIFO).
+export const LOREBOOK_TOMBSTONES_MAX = 200;
+
+/**
+ * @param {LoreEntry} entry
+ * @param {number} [now]
+ * @returns {LoreTombstone}
+ */
+export function createTombstone(entry, now = Date.now()) {
+  return {
+    content: collapse(entry && entry.content),
+    keys: Array.isArray(entry && entry.keys) ? entry.keys.slice() : [],
+    at: now,
+  };
+}
+
+/**
+ * Añade una lápida por `entry` a `tombstones`, recortando por LOREBOOK_TOMBSTONES_MAX
+ * (la más antigua sale primero). Pura.
+ * @param {LoreTombstone[]} tombstones
+ * @param {LoreEntry} entry
+ * @param {number} [now]
+ * @returns {LoreTombstone[]}
+ */
+export function addTombstone(tombstones, entry, now = Date.now()) {
+  const list = (Array.isArray(tombstones) ? tombstones : []).slice();
+  list.push(createTombstone(entry, now));
+  while (list.length > LOREBOOK_TOMBSTONES_MAX) list.shift();
+  return list;
+}
+
+/**
+ * ¿`content`/`keys` coincide con alguna lápida (mismo criterio de casi-duplicado que la fusión,
+ * MEM-003/005: ≥ LOREBOOK_MERGE_MIN_SHARED palabras y ≥ LOREBOOK_MERGE_OVERLAP de solapamiento,
+ * o LOREBOOK_MERGE_OVERLAP_SAME_KEYS si comparten 2+ keys)? Pura.
+ * @param {string} content
+ * @param {string[]} keys
+ * @param {LoreTombstone[]} tombstones
+ * @param {string[]} [names]
+ * @returns {boolean}
+ */
+export function isTombstoned(content, keys, tombstones, names = []) {
+  return (Array.isArray(tombstones) ? tombstones : []).some((t) =>
+    t && areNearDuplicates(content, t.content, names, { keysA: keys, keysB: t.keys })
+  );
+}
+
+/* ---------- MEM-013: limpieza única de los recuerdos-fantasma del ejemplo viejo del prompt ---------- */
+
+// El ejemplo anterior del prompt de extracción mezclaba "Bruno" (perro) y "thunder"/"trueno" (le
+// teme a los truenos); el modelo a veces lo copiaba tal cual. Detecta esa combinación temática en
+// una entrada AUTOMÁTICA, sin importar el idioma o el orden de las palabras. NUNCA toca entradas
+// `manual` (el usuario pudo escribir algo parecido a propósito). Pura.
+const LEGACY_EXAMPLE_DOG_WORDS = ['bruno'];
+const LEGACY_EXAMPLE_THUNDER_WORDS = ['thunder', 'trueno', 'truenos'];
+
+function isLegacyExampleFact(entry) {
+  if (!entry || entry.source === 'manual') return false;
+  const folded = foldText(collapse(entry.content));
+  const hasDog = LEGACY_EXAMPLE_DOG_WORDS.some((w) => folded.includes(w));
+  const hasThunder = LEGACY_EXAMPLE_THUNDER_WORDS.some((w) => folded.includes(w));
+  return hasDog && hasThunder;
+}
+
+/**
+ * Quita de `entries` las entradas automáticas que coinciden con el ejemplo viejo del prompt
+ * ("Bruno" + trueno). Pura; no muta lo recibido.
+ * @param {LoreEntry[]} entries
+ * @returns {{ entries: LoreEntry[], removed: LoreEntry[] }}
+ */
+export function stripLegacyExampleFacts(entries) {
+  const list = Array.isArray(entries) ? entries : [];
+  const removed = list.filter(isLegacyExampleFact);
+  if (!removed.length) return { entries: list, removed: [] };
+  return { entries: list.filter((e) => !isLegacyExampleFact(e)), removed };
+}
+
 // Valida y acota UNA entrada cruda del modelo. null si no sirve (incluye los
 // hechos sin nombre, los escritos en primera persona y los de menos de LOREBOOK_MIN_CONTENT_WORDS palabras).
 function normalizeIncoming(raw, names) {
@@ -741,10 +856,16 @@ function normalizeIncoming(raw, names) {
  * guarda; y una nueva que hable de lo mismo que una `auto` existente (ver
  * `areNearDuplicates`) se fusiona con ella AUNQUE no compartan keys (se
  * conserva el contenido más informativo).
+ * MEM-013: si se pasa `opts.excerptText`, un candidato sin fundamento en ese texto (ver
+ * `isGrounded`) se descarta; sin `excerptText` este filtro no se aplica (compatibilidad con
+ * llamadas que no lo necesitan, p. ej. pruebas). Si se pasa `opts.tombstones`, un candidato que
+ * coincida con una lápida (ver `isTombstoned`) también se descarta. Los descartes por estos dos
+ * motivos se listan en `rejected` (`{ reason: 'ungrounded'|'tombstone' }`, sin el texto del
+ * recuerdo) para telemetría.
  * @param {LoreEntry[]} previousEntries
  * @param {object[]} incomingEntries  Salida de `parseExtractionResponse`.
- * @param {{ now?: number, ignoreKeys?: string[] }} [opts]
- * @returns {{ entries: LoreEntry[], added: number, updated: number, changed: boolean }}
+ * @param {{ now?: number, ignoreKeys?: string[], excerptText?: string, tombstones?: LoreTombstone[] }} [opts]
+ * @returns {{ entries: LoreEntry[], added: number, updated: number, changed: boolean, rejected: {reason: string}[] }}
  */
 export function applyExtraction(previousEntries, incomingEntries, opts = {}) {
   const now = typeof opts.now === 'number' ? opts.now : Date.now();
@@ -758,10 +879,23 @@ export function applyExtraction(previousEntries, incomingEntries, opts = {}) {
   const touched = new Set();
   const addedIds = [];
   let updated = 0;
+  const rejected = [];
 
   const incoming = (Array.isArray(incomingEntries) ? incomingEntries : [])
     .map((raw) => normalizeIncoming(raw, names))
     .filter(Boolean)
+    .filter((inc) => {
+      if (typeof opts.excerptText !== 'string' || !opts.excerptText) return true;
+      if (isGrounded(inc.content, opts.excerptText, names)) return true;
+      rejected.push({ reason: 'ungrounded' });
+      return false;
+    })
+    .filter((inc) => {
+      if (!opts.tombstones) return true;
+      if (!isTombstoned(inc.content, inc.keys, opts.tombstones, names)) return true;
+      rejected.push({ reason: 'tombstone' });
+      return false;
+    })
     .slice(0, LOREBOOK_EXTRACT_MAX_NEW_ENTRIES);
 
   for (const inc of incoming) {
@@ -809,7 +943,7 @@ export function applyExtraction(previousEntries, incomingEntries, opts = {}) {
     added--;
   }
 
-  return { entries, added, updated, changed: added + updated > 0 };
+  return { entries, added, updated, changed: added + updated > 0, rejected };
 }
 
 /* ---------- edición manual ---------- */
@@ -890,14 +1024,21 @@ function makeGenKey() {
  * = `ok` | `nochange` | `unparsed` | `unavailable` | `aborted` | `error` |
  * `skipped` | `busy` | `toolittle`.
  *
+ * MEM-013: antes de construir el prompt, limpia (una vez, mejor esfuerzo) los recuerdos-fantasma
+ * del ejemplo viejo (ver `stripLegacyExampleFacts`), dejando lápida; y filtra los candidatos de la
+ * extracción sin fundamento en el fragmento analizado o que coincidan con una lápida (ver
+ * `applyExtraction`). `deps.loadTombstones`/`deps.onFactRejected` son opcionales: sin ellos, el
+ * filtro de lápidas no actúa (el de fundamento sí, siempre) y no se reportan rechazos.
  * @param {{
  *   getContext: () => ({ character: object, chat: object, messages: object[], settings: object }|null),
  *   isChatBusy: () => boolean,
  *   complete: (prompt: string, opts: { signal: AbortSignal, genkey: string, maxLen: number, temp: number }) => Promise<string>,
  *   loadLorebook: (characterId: string) => Promise<LoreEntry[]>,
- *   saveLorebook: (characterId: string, entries: LoreEntry[], previous: LoreEntry[]) => Promise<void>,
+ *   loadTombstones?: (characterId: string) => Promise<LoreTombstone[]>,
+ *   saveLorebook: (characterId: string, entries: LoreEntry[], previous: LoreEntry[], tombstones?: LoreTombstone[], previousTombstones?: LoreTombstone[]) => Promise<void>,
  *   markProgress: (chatId: string, count: number) => Promise<void>,
  *   onStatus?: (status: { kind: string, added?: number, updated?: number, at: number }) => void,
+ *   onFactRejected?: (info: { reason: 'ungrounded'|'tombstone' }) => void,
  * }} deps
  */
 export function createLoreUpdater(deps) {
@@ -932,6 +1073,29 @@ export function createLoreUpdater(deps) {
       }
       if (controller.signal.aborted) return setStatus('aborted');
 
+      let tombstones = [];
+      if (deps.loadTombstones) {
+        try {
+          tombstones = (await deps.loadTombstones(characterId)) || [];
+        } catch {
+          tombstones = [];
+        }
+      }
+
+      // MEM-013: limpieza única (mejor esfuerzo) de recuerdos-fantasma del ejemplo viejo del
+      // prompt, antes de construirlo con los "ya conocidos". Deja lápida por cada uno.
+      const stripped = stripLegacyExampleFacts(existing);
+      if (stripped.removed.length) {
+        const withTombstones = stripped.removed.reduce((acc, e) => addTombstone(acc, e), tombstones);
+        try {
+          await deps.saveLorebook(characterId, stripped.entries, existing, withTombstones, tombstones);
+          existing = stripped.entries;
+          tombstones = withTombstones;
+        } catch {
+          // Mejor esfuerzo: si falla, se reintenta en la próxima actualización.
+        }
+      }
+
       const prompt = buildExtractionPrompt(character, settings, windowMessages, existing);
       let raw;
       try {
@@ -951,10 +1115,22 @@ export function createLoreUpdater(deps) {
       try {
         if (incoming) {
           const fresh = await deps.loadLorebook(characterId);
+          const excerptText = transcriptLines(windowMessages, character.card.name, settings && settings.user).join('\n');
           const applied = applyExtraction(fresh, incoming, {
             ignoreKeys: [character.card.name, settings && settings.user],
+            excerptText,
+            tombstones,
           });
-          if (applied.changed) await deps.saveLorebook(characterId, applied.entries, fresh);
+          if (applied.changed) await deps.saveLorebook(characterId, applied.entries, fresh, tombstones, tombstones);
+          if (deps.onFactRejected) {
+            for (const r of applied.rejected) {
+              try {
+                deps.onFactRejected(r);
+              } catch {
+                // la UI/telemetría nunca debe romper la extracción
+              }
+            }
+          }
           outcome = applied.changed
             ? { kind: 'ok', added: applied.added, updated: applied.updated }
             : { kind: 'nochange' };

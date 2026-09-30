@@ -13,6 +13,7 @@ import {
   loreBudgetPreview,
   loreIndicatorState,
   compareLoreUsed,
+  addTombstone,
   LOREBOOK_UPDATE_EVERY_MESSAGES,
   LOREBOOK_MAX_ENTRY_CHARS,
   LOREBOOK_ALWAYS_CHAR_BUDGET,
@@ -977,8 +978,13 @@ const loreUpdater = createLoreUpdater({
     const fresh = await getCharacter(characterId);
     return (fresh && fresh.lorebook) || [];
   },
-  saveLorebook: async (characterId, entries, previous) => {
-    const updated = await saveCharacterLorebook(characterId, entries, previous);
+  // MEM-013: lápidas — lo que se borró (o la limpieza única del ejemplo viejo quitó) no vuelve.
+  loadTombstones: async (characterId) => {
+    const fresh = await getCharacter(characterId);
+    return (fresh && fresh.lorebookTombstones) || [];
+  },
+  saveLorebook: async (characterId, entries, previous, tombstones, previousTombstones) => {
+    const updated = await saveCharacterLorebook(characterId, entries, previous, { tombstones, previousTombstones });
     if (character && character.id === characterId) character = updated;
   },
   markProgress: async (chatId, count) => {
@@ -1252,7 +1258,13 @@ function openLorebookSheet(note = '') {
       const result = await cleanStoredLorebook({
         load: freshLorebook,
         save: async (entries, previous) => {
-          character = await saveCharacterLorebook(character.id, entries, previous);
+          // MEM-013: "Limpiar recuerdos" no toca lápidas; se guarda la misma lista como "antes" y
+          // "ahora" para que un "Deshacer" posterior no las altere.
+          const tombstones = character.lorebookTombstones || [];
+          character = await saveCharacterLorebook(character.id, entries, previous, {
+            tombstones,
+            previousTombstones: tombstones,
+          });
         },
         names: [character.card.name || character.name, settings && settings.user],
       });
@@ -1467,7 +1479,17 @@ function openLoreDeleteConfirm(entryId) {
     `¿Borrar este recuerdo? «${preview}»`,
     'Borrar',
     async () => {
-      character = await saveCharacterLorebook(character.id, removeLoreEntry(await freshLorebook(), entryId));
+      // MEM-013: al borrar, deja una lápida (así la extracción automática no lo trae de vuelta) y
+      // habilita "Deshacer" para este borrado en particular (revierte el recuerdo Y la lápida).
+      const fresh = await freshLorebook();
+      const deleted = fresh.find((e) => e.id === entryId);
+      const nextEntries = removeLoreEntry(fresh, entryId);
+      const prevTombstones = character.lorebookTombstones || [];
+      const nextTombstones = deleted ? addTombstone(prevTombstones, deleted) : prevTombstones;
+      character = await saveCharacterLorebook(character.id, nextEntries, fresh, {
+        tombstones: nextTombstones,
+        previousTombstones: prevTombstones,
+      });
       return 'Recuerdo borrado.';
     },
     true
@@ -1482,7 +1504,12 @@ function openLoreUndoConfirm() {
     async () => {
       const fresh = await getCharacter(character.id);
       if (!fresh || !fresh.lorebookPreviousAt) return 'No hay ninguna actualización reciente que deshacer.';
-      character = await saveCharacterLorebook(character.id, fresh.lorebookPrevious, null);
+      // MEM-013: revierte también las lápidas a como estaban antes de esa actualización (así
+      // deshacer un borrado quita la lápida correspondiente).
+      character = await saveCharacterLorebook(character.id, fresh.lorebookPrevious, null, {
+        tombstones: fresh.lorebookTombstonesPrevious || [],
+        previousTombstones: null,
+      });
       return 'Listo: se volvió al estado anterior de la memoria.';
     },
     false
