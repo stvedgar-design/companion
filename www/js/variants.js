@@ -26,21 +26,25 @@ export function activeVariantIndex(m) {
 function pickVariant(m) {
   const v = { text: m.text };
   if (Array.isArray(m.loreUsed)) v.loreUsed = m.loreUsed;
+  if (typeof m.feeling === 'string') v.feeling = m.feeling;
   return v;
 }
 
 /**
- * Añade una versión nueva (no borra ninguna) y la deja activa. `m.text`/`m.loreUsed` pasan a ser los de la nueva.
+ * Añade una versión nueva (no borra ninguna) y la deja activa. `m.text`/`m.loreUsed`/`m.feeling` pasan a
+ * ser los de la nueva (MEM-015: `feeling` sigue a la variante activa, igual que `loreUsed`).
  * @param {object} m mensaje del personaje (tal como está: su `text` es la versión que se ve ahora)
- * @param {{ text: string, loreUsed?: object[], ts?: number }} next
+ * @param {{ text: string, loreUsed?: object[], feeling?: string, ts?: number }} next
  */
 export function addVariant(m, next) {
   const current = variantCount(m) > 1 ? m.variants.map((v, i) => (i === activeVariantIndex(m) ? pickVariant(m) : v)) : [pickVariant(m)];
   const added = { text: next.text };
   if (Array.isArray(next.loreUsed)) added.loreUsed = next.loreUsed;
-  const { loreUsed: _drop, ...base } = m;
+  if (typeof next.feeling === 'string') added.feeling = next.feeling;
+  const { loreUsed: _drop, feeling: _dropFeeling, ...base } = m;
   const out = { ...base, text: added.text, variants: [...current, added], activeVariant: current.length };
   if (added.loreUsed) out.loreUsed = added.loreUsed;
+  if (added.feeling) out.feeling = added.feeling;
   if (typeof next.ts === 'number') out.ts = next.ts;
   return out;
 }
@@ -52,9 +56,10 @@ export function selectVariant(m, index) {
   const current = activeVariantIndex(m);
   const variants = m.variants.map((v, i) => (i === current ? pickVariant(m) : v));
   const target = variants[index];
-  const { loreUsed: _drop, ...base } = m;
+  const { loreUsed: _drop, feeling: _dropFeeling, ...base } = m;
   const out = { ...base, text: target.text, variants, activeVariant: index };
   if (Array.isArray(target.loreUsed)) out.loreUsed = target.loreUsed;
+  if (typeof target.feeling === 'string') out.feeling = target.feeling;
   return out;
 }
 
@@ -68,10 +73,11 @@ export function editActiveText(m, text) {
 /**
  * Valida y normaliza los campos de variantes de un mensaje leído del almacenamiento o de un archivo ajeno. Nunca lanza
  * ni descarta el mensaje: lo peor que hace es quitar `variants`/`activeVariant` y dejar `text` (la versión visible).
- * @param {object} m mensaje ya con `loreUsed` saneado
+ * @param {object} m mensaje ya con `loreUsed`/`feeling` saneados
  * @param {(raw: unknown) => object[]|undefined} cleanLore saneador de `loreUsed` (el de `state.js`)
+ * @param {(raw: unknown) => string|undefined} [cleanFeeling] saneador de `feeling` (MEM-015, `api/feeling.js#sanitizeFeeling`); opcional para no romper llamadas viejas
  */
-export function normalizeVariants(m, cleanLore) {
+export function normalizeVariants(m, cleanLore, cleanFeeling) {
   if (!m || typeof m !== 'object' || !('variants' in m || 'activeVariant' in m)) return m;
   const { variants, activeVariant, ...rest } = m;
   if (rest.role !== 'char' || !Array.isArray(variants)) return rest;
@@ -79,7 +85,11 @@ export function normalizeVariants(m, cleanLore) {
     .map((v) => {
       if (!v || typeof v !== 'object' || typeof v.text !== 'string' || !v.text) return null;
       const lore = cleanLore ? cleanLore(v.loreUsed) : undefined;
-      return lore === undefined ? { text: v.text } : { text: v.text, loreUsed: lore };
+      const feeling = cleanFeeling ? cleanFeeling(v.feeling) : undefined;
+      const out = { text: v.text };
+      if (lore !== undefined) out.loreUsed = lore;
+      if (feeling !== undefined) out.feeling = feeling;
+      return out;
     })
     .filter(Boolean);
   if (clean.length < 2) return rest;
@@ -92,6 +102,7 @@ export function normalizeVariants(m, cleanLore) {
   const text = typeof rest.text === 'string' && rest.text ? rest.text : clean[active].text;
   const fixed = { text };
   if (Array.isArray(rest.loreUsed)) fixed.loreUsed = rest.loreUsed;
+  if (typeof rest.feeling === 'string') fixed.feeling = rest.feeling;
   clean[active] = fixed;
   return { ...rest, text, variants: clean, activeVariant: active };
 }

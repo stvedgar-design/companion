@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { addVariant, selectVariant, editActiveText, variantCount, activeVariantIndex, normalizeVariants } from '../www/js/variants.js';
 import { createState, sanitizeMessage, sanitizeLoreUsed } from '../www/js/state.js';
 import { buildPlainPrompt, buildChatMessages } from '../www/js/api/prompt.js';
+import { sanitizeFeeling } from '../www/js/api/feeling.js';
 
 const lore = (c) => [{ id: 'l', keys: ['k'], content: c, always: false }];
 
@@ -107,6 +108,34 @@ function memoryBackend() {
     _raw: stores,
   };
 }
+
+test('MEM-015: sanitizeMessage valida `feeling` (solo mensajes del personaje, solo una palabra de la lista cerrada)', () => {
+  assert.equal(sanitizeMessage({ role: 'char', text: 'hola', ts: 1, feeling: 'joy' }).feeling, 'joy');
+  assert.equal('feeling' in sanitizeMessage({ role: 'char', text: 'hola', ts: 1, feeling: 'not-a-real-feeling' }), false);
+  assert.equal('feeling' in sanitizeMessage({ role: 'user', text: 'hola', ts: 1, feeling: 'joy' }), false, 'un mensaje del usuario nunca lleva sentimiento');
+  const noFeeling = { role: 'char', text: 'hola', ts: 1 };
+  assert.deepEqual(sanitizeMessage(noFeeling), noFeeling);
+});
+
+test('MEM-015: `feeling` sigue a la variante activa, igual que `loreUsed` — regenerar, navegar y normalizar', () => {
+  let m = addVariant({ role: 'char', text: 'uno', ts: 1, feeling: 'joy' }, { text: 'dos', feeling: 'calm' });
+  assert.equal(m.feeling, 'calm');
+  assert.deepEqual(m.variants, [{ text: 'uno', feeling: 'joy' }, { text: 'dos', feeling: 'calm' }]);
+  m = addVariant(m, { text: 'tres' }); // sin sentimiento (p. ej. el ajuste estaba apagado)
+  assert.equal('feeling' in m, false);
+  m = selectVariant(m, 0);
+  assert.equal(m.feeling, 'joy');
+  m = selectVariant(m, 2);
+  assert.equal('feeling' in m, false);
+
+  const normalized = normalizeVariants(
+    { role: 'char', text: 'a', ts: 1, feeling: 'joy', variants: [{ text: 'a', feeling: 'not-valid' }, { text: 'b', feeling: 'calm' }], activeVariant: 0 },
+    sanitizeLoreUsed,
+    sanitizeFeeling
+  );
+  assert.deepEqual(normalized.variants[0], { text: 'a', feeling: 'joy' }, 'el dato del mensaje manda sobre el de la copia, igual que loreUsed');
+  assert.deepEqual(normalized.variants[1], { text: 'b', feeling: 'calm' });
+});
 
 test('UI-017: las variantes se guardan y se leen; la copia de seguridad v2 las exporta TODAS y las importa; una copia sin variantes sigue importando', async () => {
   const state = createState(memoryBackend());

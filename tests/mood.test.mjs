@@ -125,7 +125,8 @@ test('MEM-011: chat.js pone el timestamp en TODOS los mensajes con texto y la em
   const src = readFileSync(new URL('../www/js/ui/chat.js', import.meta.url), 'utf8');
   assert.match(src, /const stampText = m\.text \? formatMessageTime\(m\.ts\) : '';/);
   assert.match(src, /if \(showLore \|\| showVariants \|\| stampText\)/);
-  assert.match(src, /const mood = m\.role === 'char' \? moodText\(m\.loreUsed\) : '';/);
+  // MEM-015: la palabra elegida por el propio personaje manda; moodText (MEM-011) sigue de respaldo, sin llamar al servidor.
+  assert.match(src, /const mood = m\.role === 'char' \? feelingDisplayText\(m\.feeling\) \|\| moodText\(m\.loreUsed\) : '';/);
   const mood = readFileSync(new URL('../www/js/api/mood.js', import.meta.url), 'utf8');
   assert.ok(!/fetch|import /.test(mood), 'mood.js es puro: sin red ni dependencias');
   const css = readFileSync(new URL('../www/css/chat.css', import.meta.url), 'utf8');

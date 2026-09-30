@@ -28,6 +28,7 @@ import {
 } from '../api/relationship.js';
 import { appearanceOf } from '../character-appearance.js';
 import { moodText } from '../api/mood.js';
+import { createFeelingUpdater, feelingDisplayText } from '../api/feeling.js';
 import { formatMessageTime, formatMessageFullTime } from '../msgtime.js';
 import { createContinuityUpdater, coveredCount, CONTINUITY_TOTAL_CHARS, CONTINUITY_ON_OPEN_DELAY_MS, cleanRecap, verifyRecap } from '../api/continuity.js';
 import { openChatBackground } from './chat-background.js';
@@ -467,7 +468,9 @@ function buildStamp(m, text) {
   time.title = formatMessageFullTime(m.ts);
   time.textContent = text;
   stamp.appendChild(time);
-  const mood = m.role === 'char' ? moodText(m.loreUsed) : '';
+  // MEM-015: la palabra que el propio personaje eligió manda; sin ella (ajuste apagado, sin
+  // servidor, sin palabra válida) se muestra el respaldo heurístico de MEM-011, sin llamar al modelo.
+  const mood = m.role === 'char' ? feelingDisplayText(m.feeling) || moodText(m.loreUsed) : '';
   if (mood) {
     const label = document.createElement('span');
     label.className = 'chat-mood';
@@ -737,6 +740,7 @@ function onMessagesScroll() {
 
 function onInputChange() {
   continuityUpdater.abortOnOpenRun(); // MEM-010: el usuario empezó a escribir: el repaso al abrir el chat cede (prioridad absoluta al mensaje)
+  feelingUpdater.abort(); // MEM-015: a diferencia de las otras tres, esta cede con la PRIMERA tecla, no solo al enviar
   autosizeInput();
   syncSendButton();
   if (chat) draftByChat.set(chat.id, els.input.value);
@@ -793,6 +797,7 @@ async function onSendClick() {
   loreUpdater.abort();
   continuityUpdater.abort();
   relationshipUpdater.abort();
+  feelingUpdater.abort();
   sendInFlight = true;
   try {
     messages.push({ role: 'user', text, ts: Date.now() });
@@ -806,6 +811,10 @@ async function onSendClick() {
     // difirió hasta aquí: ahora el chat está libre.
     maybeUpdateLorebook();
     maybeUpdateContinuity();
+    // MEM-015: generate() ya lo intentó, pero con `sendInFlight` todavía en true (isChatBusy lo frenó
+    // igual que a las otras tres mientras dura TODO onSendClick, no solo generate()); se reintenta acá.
+    const lastIdx = messages.length - 1;
+    if (messages[lastIdx] && messages[lastIdx].role === 'char' && messages[lastIdx].text) maybeUpdateFeeling(lastIdx);
   }
 }
 
@@ -818,6 +827,7 @@ async function generate(opts = {}) {
   loreUpdater.abort(); // también al regenerar: el chat tiene prioridad sobre la memoria
   continuityUpdater.abort();
   relationshipUpdater.abort();
+  feelingUpdater.abort();
   busy = true;
   syncSendButton();
 
@@ -890,6 +900,9 @@ async function generate(opts = {}) {
     syncSendButton();
     finishStreamRow(idx);
     await persistChat();
+    // MEM-015: después de mostrar y guardar la respuesta, en segundo plano (apagado por defecto; ver
+    // Settings.feelingsEnabled). Nunca sobre un mensaje vacío que se acaba de quitar de `messages`.
+    if (idx >= 0 && messages[idx] && messages[idx].role === 'char' && messages[idx].text) maybeUpdateFeeling(idx);
   }
 }
 
@@ -985,7 +998,7 @@ let sendInFlight = false;
 
 const loreUpdater = createLoreUpdater({
   getContext: () => (character && chat && settings ? { character, chat, messages, settings } : null),
-  isChatBusy: () => busy || sendInFlight || continuityUpdater.isRunning() || relationshipUpdater.isRunning(),
+  isChatBusy: () => busy || sendInFlight || continuityUpdater.isRunning() || relationshipUpdater.isRunning() || feelingUpdater.isRunning(),
   complete: (prompt, opts) => completeOnce(prompt, settings, opts),
   loadLorebook: async (characterId) => {
     const fresh = await getCharacter(characterId);
@@ -1038,7 +1051,7 @@ function notifyNewMemory(name, entries) {
 // memoria en curso, y se cancela si el usuario envía un mensaje. La lógica vive en api/continuity.js.
 const continuityUpdater = createContinuityUpdater({
   getContext: () => (character && chat && settings ? { character, chat, messages, settings } : null),
-  isChatBusy: () => busy || sendInFlight || loreUpdater.isRunning() || relationshipUpdater.isRunning(),
+  isChatBusy: () => busy || sendInFlight || loreUpdater.isRunning() || relationshipUpdater.isRunning() || feelingUpdater.isRunning(),
   complete: (request, opts) =>
     request.mode === 'chat' ? completeChatOnce(request.messages, settings, opts) : completeOnce(request.prompt, settings, opts),
   loadChat: (chatId) => getChat(chatId),
@@ -1067,7 +1080,7 @@ function maybeUpdateContinuity() {
 // se inyectan en vez de importarse para no crear un ciclo (continuity.js ya importa relationship.js).
 const relationshipUpdater = createRelationshipUpdater({
   getContext: () => (character && chat && settings ? { character, chat, messages, settings } : null),
-  isChatBusy: () => busy || sendInFlight || loreUpdater.isRunning() || continuityUpdater.isRunning(),
+  isChatBusy: () => busy || sendInFlight || loreUpdater.isRunning() || continuityUpdater.isRunning() || feelingUpdater.isRunning(),
   complete: (request, opts) =>
     request.mode === 'chat' ? completeChatOnce(request.messages, settings, opts) : completeOnce(request.prompt, settings, opts),
   cleanText: cleanRecap,
@@ -1090,6 +1103,30 @@ const relationshipUpdater = createRelationshipUpdater({
 // de más). Nunca bloquea la acción que la dispara.
 function maybeUpdateRelationship() {
   relationshipUpdater.maybeRun().catch(() => {});
+}
+
+/* ---------- MEM-015: el personaje dice cómo se siente, en su voz (lista cerrada) ---------- */
+
+// Misma prioridad que las otras tres actualizaciones en segundo plano: nunca compite con una
+// respuesta ni con las demás, y se cancela apenas el usuario escribe (más estricto que las otras:
+// ver `onInputChange`). Apagado por defecto (`Settings.feelingsEnabled`; el propio api/feeling.js
+// respeta el ajuste, no hace falta chequearlo acá). Un solo intento por mensaje, sin reintentos.
+const feelingUpdater = createFeelingUpdater({
+  getContext: () => (character && chat && settings ? { character, chat, messages, settings } : null),
+  isChatBusy: () => busy || sendInFlight || loreUpdater.isRunning() || continuityUpdater.isRunning() || relationshipUpdater.isRunning(),
+  complete: (request, opts) =>
+    request.mode === 'chat' ? completeChatOnce(request.messages, settings, opts) : completeOnce(request.prompt, settings, opts),
+  loadChatMessages: (chatId) => getChatMessages(chatId),
+  saveFeeling: async (chatId, idx, word) => {
+    if (!chat || chat.id !== chatId || !messages[idx] || messages[idx].role !== 'char') return;
+    messages[idx] = { ...messages[idx], feeling: word };
+    await saveChatMessages(chatId, messages);
+    refreshMessageRow(idx);
+  },
+});
+
+function maybeUpdateFeeling(idx) {
+  feelingUpdater.maybeRun(idx).catch(() => {});
 }
 
 // MEM-010: al ABRIR un chat tras una ausencia larga (ver `isLongAbsence`), si hacía falta actualizar el resumen se hace ya, en segundo plano,
@@ -2187,6 +2224,7 @@ async function onImportChat() {
   if (busy) cancelGeneration();
   continuityUpdater.abort();
   relationshipUpdater.abort();
+  feelingUpdater.abort();
   // MEM-007: el resumen habla de los mensajes que se reemplazan, así que no sirve para el chat importado. Se restaura el
   // que trae el archivo (si lo trae y es válido); si no, vuelve al valor por defecto y se regenera solo cuando haga falta.
   try {

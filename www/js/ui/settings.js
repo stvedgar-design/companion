@@ -65,6 +65,14 @@ export function openSettings(app) {
       <div class="field__hint">Cada respuesta empieza ya dentro de una acción en cursiva, y si llega con asteriscos mal puestos pero con el diálogo entre comillas, se muestra bien (diálogo normal, el resto en cursiva). Los mensajes sin asteriscos ni comillas no se tocan. No hace el chat más lento.</div>
     </div>
 
+    <div class="field">
+      <label class="field__label" style="display:flex;align-items:center;gap:var(--space-2, 8px)">
+        <input type="checkbox" id="settings-feelings" style="accent-color:var(--color-accent, #8b1fe0)">
+        <span>Sentimientos del personaje</span>
+      </label>
+      <div class="field__hint">Cuando una respuesta usa 3 o más recuerdos, el personaje elige en su propia voz una palabra de una lista fija ("sintiendo nostalgia", junto a la hora). Es una llamada corta aparte, después de mostrar la respuesta: no la retrasa. Apagado por defecto.</div>
+    </div>
+
     <div class="menu-group" aria-hidden="true">Seguridad</div>
     <div class="field">
       <label class="field__label">Bloqueo con PIN</label>
@@ -130,6 +138,7 @@ export function openSettings(app) {
     mode: q('#settings-mode'),
     variety: q('#settings-variety'),
     format: q('#settings-format'),
+    feelings: q('#settings-feelings'),
     pinBody: q('#settings-pin-body'),
     fontSizeBtns: Array.from(node.querySelectorAll('#settings-fontsize [data-size-value]')),
     appearanceBtn: q('#settings-appearance'),
@@ -148,6 +157,7 @@ export function openSettings(app) {
     els.mode.value = settings.mode;
     els.variety.checked = settings.varietyAssist === true;
     els.format.checked = settings.formatAssist !== false;
+    els.feelings.checked = settings.feelingsEnabled === true;
     renderPinBody(settings);
     renderFontSize(settings.messageFontSize);
   });
@@ -241,6 +251,10 @@ export function openSettings(app) {
 
   els.format.addEventListener('change', () => {
     saveSettings({ formatAssist: els.format.checked });
+  });
+
+  els.feelings.addEventListener('change', () => {
+    saveSettings({ feelingsEnabled: els.feelings.checked });
   });
 
   els.appearanceBtn.addEventListener('click', () => {

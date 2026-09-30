@@ -9,6 +9,7 @@ import { parseBackupText, normalizeBackup, analyzeBackup, planImport } from './b
 import { sanitizeAppearance } from './character-appearance.js';
 import { sanitizeRelationship } from './api/relationship.js';
 import { sanitizePersonalityTags } from './personality-tags.js';
+import { sanitizeFeeling } from './api/feeling.js';
 
 /**
  * @typedef {Object} Card  Card normalizada: todos los campos siempre presentes.
@@ -114,6 +115,10 @@ import { sanitizePersonalityTags } from './personality-tags.js';
  * @property {{ ttftMs: number, totalMs: number, chars: number }} [meta]
  *   UI-001, solo mensajes del personaje generados por el servidor: tiempo hasta el primer fragmento, tiempo total (ms) y
  *   caracteres de la respuesta. Ausente = mensaje anterior a UI-001 / sin dato. No viaja nunca al modelo (el prompt solo lee `text`).
+ * @property {string} [feeling]
+ *   MEM-015, solo mensajes del personaje: una palabra EXACTA de `api/feeling.js#FEELING_WORDS`, elegida por el propio
+ *   personaje ("sintiendo <etiqueta>", junto al timestamp). Ausente = sin dato (se muestra el respaldo heurístico de
+ *   MEM-011 en su lugar, `api/mood.js`). Sigue a la variante activa, igual que `loreUsed` (ver `variants.js`).
  */
 
 /**
@@ -135,6 +140,7 @@ import { sanitizePersonalityTags } from './personality-tags.js';
  * @property {boolean} formatAssist // FMT-002: la respuesta del personaje arranca ya dentro de una acción (`*`); true por defecto
  * @property {boolean} splitTypography // UI-023 (experimental): en los mensajes del personaje con acciones en cursiva, el diálogo usa una tipografía sans y la acción la del skin; false por defecto
  * @property {15|16|17|18|19} messageFontSize // UI-026: tamaño del texto de los mensajes del chat (px); 17 por defecto. El ancho de las burbujas NO depende de este valor.
+ * @property {boolean} feelingsEnabled // MEM-015: el personaje elige una palabra de sentimiento (api/feeling.js) tras una respuesta con 3+ recuerdos; false por defecto (Paso 0 no encontró motivo para encenderlo solo: ver docs/HISTORIAL.md, "MEM-015")
  */
 
 // UI-024: el único skin visible; ui/shell.js (THEMES) lo repite porque no importa state.js.
@@ -161,6 +167,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   formatAssist: true,
   splitTypography: false,
   messageFontSize: 17,
+  feelingsEnabled: false,
 });
 
 // UI-026: pasos permitidos del tamaño de texto de los mensajes.
@@ -220,6 +227,7 @@ function sanitizeSettings(raw) {
     formatAssist: merged.formatAssist !== false,
     splitTypography: merged.splitTypography === true,
     messageFontSize: MESSAGE_FONT_SIZES.includes(merged.messageFontSize) ? merged.messageFontSize : DEFAULT_SETTINGS.messageFontSize,
+    feelingsEnabled: merged.feelingsEnabled === true,
   };
 }
 
@@ -260,7 +268,7 @@ export function sanitizeLoreUsed(raw) {
   return clean;
 }
 
-// Solo toca `loreUsed`, (UI-017) `variants`/`activeVariant` y (UI-001) `meta`; cualquier otro campo del mensaje (y los mensajes sin ellos) pasan tal cual.
+// Solo toca `loreUsed`, `feeling` (MEM-015), (UI-017) `variants`/`activeVariant` y (UI-001) `meta`; cualquier otro campo del mensaje (y los mensajes sin ellos) pasan tal cual.
 export function sanitizeMessage(m) {
   if (!m || typeof m !== 'object') return m;
   if ('meta' in m) {
@@ -273,7 +281,12 @@ export function sanitizeMessage(m) {
     const clean = m.role === 'char' ? sanitizeLoreUsed(loreUsed) : undefined;
     m = clean === undefined ? rest : { ...rest, loreUsed: clean };
   }
-  return normalizeVariants(m, sanitizeLoreUsed);
+  if ('feeling' in m) {
+    const { feeling, ...rest } = m;
+    const clean = m.role === 'char' ? sanitizeFeeling(feeling) : undefined;
+    m = clean === undefined ? rest : { ...rest, feeling: clean };
+  }
+  return normalizeVariants(m, sanitizeLoreUsed, sanitizeFeeling);
 }
 
 function previewLast(messages) {

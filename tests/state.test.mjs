@@ -65,6 +65,7 @@ test('getSettings devuelve valores por defecto cuando no hay nada guardado', asy
     formatAssist: true,
     splitTypography: false, // UI-023
     messageFontSize: 17, // UI-026
+    feelingsEnabled: false, // MEM-015
   });
 });
 
