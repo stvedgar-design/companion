@@ -32,6 +32,7 @@ import { formatMessageTime, formatMessageFullTime } from '../msgtime.js';
 import { createContinuityUpdater, coveredCount, CONTINUITY_TOTAL_CHARS, CONTINUITY_ON_OPEN_DELAY_MS, cleanRecap, verifyRecap } from '../api/continuity.js';
 import { openChatBackground } from './chat-background.js';
 import { openCharacterAppearance } from './character-look.js';
+import { openCharacterEditor } from './character-editor.js';
 import { formatMessage } from './format.js';
 import { variantCount, activeVariantIndex, addVariant, selectVariant, editActiveText } from '../variants.js';
 import { MESSAGE_ACTIONS, availableMessageActions, revealDelta, shouldCloseOnScroll } from './msgmenu.js';
@@ -2032,6 +2033,19 @@ function onMenu() {
       // Sincroniza la copia en memoria: otras escrituras (p. ej. "Cambiar avatar") guardan el personaje entero y no deben pisar la ficha.
       openCharacterAppearance(app, character, (updated) => {
         character.appearance = updated.appearance;
+      });
+    }),
+    // CCC-001: leer y editar nombre, personalidad, descripción, escenario, saludo, ejemplo, apariencia y
+    // estilo de formato — de CUALQUIER personaje (creado con este flujo o importado, como Mia/Ani/Theo).
+    menuItem('Ver personaje', () => {
+      if (!character) return;
+      openCharacterEditor(app, {
+        character,
+        onSaved: (updated) => {
+          character = updated;
+          els.headName.textContent = character.name;
+          applyAvatarMode();
+        },
       });
     })
   );

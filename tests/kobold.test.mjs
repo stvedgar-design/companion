@@ -772,6 +772,23 @@ test('FMT-002 (texto simple): con formatAssist el prompt termina en " *" y el te
   }
 });
 
+test('CCC-003: formatStyle "plain" NO afecta el arranque en "*" (formatAssist sigue siendo solo un ajuste global; decisión de producto pendiente)', async () => {
+  const seen = {};
+  const { server } = createFakeServer({ onChatStream: chatStreamer(['I wave.*'], seen) });
+  const base = await listen(server);
+  try {
+    const result = await generateReply({
+      character: makeCharacter({ formatStyle: 'plain' }),
+      messages: [{ role: 'user', text: 'Hola', ts: 1 }],
+      settings: makeSettings(base, { mode: 'chat', formatAssist: true }),
+    });
+    assert.equal(seen.body.messages.at(-1).role, 'assistant', 'formatAssist sigue arrancando en "*" sin importar formatStyle');
+    assert.equal(result.text, '*I wave.*');
+  } finally {
+    server.close();
+  }
+});
+
 test('FMT-002: si el modelo ya abre su propia acción con "*" no se duplica; una respuesta vacía sigue vacía', async () => {
   const seen = {};
   const a = createFakeServer({ onChatStream: chatStreamer(['*I nod.* Sure'], seen) });

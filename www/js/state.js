@@ -8,6 +8,7 @@ import { sanitizeMeta } from './perf.js';
 import { parseBackupText, normalizeBackup, analyzeBackup, planImport } from './backup.js';
 import { sanitizeAppearance } from './character-appearance.js';
 import { sanitizeRelationship } from './api/relationship.js';
+import { sanitizePersonalityTags } from './personality-tags.js';
 
 /**
  * @typedef {Object} Card  Card normalizada: todos los campos siempre presentes.
@@ -66,6 +67,13 @@ import { sanitizeRelationship } from './api/relationship.js';
  *   El fondo es por personaje (no global, no por chat): ver docs/NOTES.md,
  *   "Fondo de chat por personaje". Se ve solo dentro de sus chats — el resto
  *   de la app sigue el fondo del skin activo (ver www/css/themes.css).
+ * @property {'nomi'|'plain'} formatStyle  // CCC-001: estilo de escritura de ESTE personaje. 'nomi' = acciones entre
+ *   asteriscos (Mia, Theo): `formatAssist` (arranque en `*`) y la reparación de asteriscos de format.js se aplican
+ *   normalmente. 'plain' = sin asteriscos ni comillas (Ani): ninguno de los dos se aplica a sus respuestas, así no se le
+ *   fuerza un formato que su card no usa. 'nomi' por defecto (así ningún personaje existente cambia de comportamiento).
+ * @property {string[]} personalityTags  // CCC-001: ids de personality-tags.js elegidos al crear/editar este personaje
+ *   con el creador guiado (`card.personality` se ensambla desde ellos). `[]` = la personalidad de la card es texto libre
+ *   (importada, o editada a mano sin pasar por las etiquetas) y se muestra/edita como tal, nunca como pills inventadas.
  */
 
 /**
@@ -162,6 +170,11 @@ const DEFAULT_CHARACTER_BACKGROUND = Object.freeze({
   chatBackgroundFade: false,
   chatBackgroundFit: 'fill',
 });
+
+// CCC-001: por defecto 'nomi' (el estilo de asteriscos, el único que existía hasta ahora) para que ningún
+// personaje ya guardado (Mia, Theo, Ani) cambie de comportamiento hasta que el usuario elija 'plain' a mano
+// desde la pantalla de edición.
+const DEFAULT_FORMAT_STYLE = 'nomi';
 
 const SETTINGS_KEY = 'main';
 
@@ -324,6 +337,8 @@ function sanitizeCharacterExtras(raw) {
   const lorebookPreviousAt = Number.isFinite(raw.lorebookPreviousAt) ? raw.lorebookPreviousAt : 0;
   const lorebookTombstones = sanitizeTombstones(raw.lorebookTombstones);
   const lorebookTombstonesPrevious = sanitizeTombstones(raw.lorebookTombstonesPrevious);
+  const formatStyle = raw.formatStyle === 'plain' ? 'plain' : DEFAULT_FORMAT_STYLE;
+  const personalityTags = sanitizePersonalityTags(raw.personalityTags);
   return {
     ...raw,
     lorebook,
@@ -334,6 +349,8 @@ function sanitizeCharacterExtras(raw) {
     appearance: sanitizeAppearance(raw.appearance),
     relationship: sanitizeRelationship(raw.relationship),
     ...sanitizeCharacterBackground(raw),
+    formatStyle,
+    personalityTags,
   };
 }
 

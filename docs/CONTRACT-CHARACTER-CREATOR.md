@@ -1,11 +1,16 @@
 # CONTRATO (PROPUESTA) — Creador de personajes guiado
 
-> **Aviso (VER-006, 2026-09-30):** esta propuesta SÍ se implementó — pero en
-> la rama remota `claude/gracious-bell-wbo6rh` (contrato CCC-001), no en
-> `main` y sin que el arquitecto la haya revisado contra este documento.
-> Antes de seguir con esto (o con CCC-002, bloqueada por lo mismo), leé el
-> informe "VER-006" en `docs/HISTORIAL.md`: qué se implementó realmente, en
-> qué se aparta de esta propuesta, y la recomendación de qué portar a `main`.
+> **ANULADO (2026-09-27, en `main` desde CCC-003 el 2026-09-30).** Esta
+> propuesta queda reemplazada y superada por el contrato **CCC-001**
+> (`docs/HISTORIAL.md`, sección "CCC-001: creador y editor de personajes
+> propios"; registro en `docs/NOTES.md`), implementado originalmente en la
+> rama remota `claude/gracious-bell-wbo6rh` (VER-006 lo detectó sin fusionar)
+> y traído a `main` por **CCC-003** (ver "CCC-003" en `docs/HISTORIAL.md`).
+> Se conserva este archivo solo como referencia histórica del análisis de la
+> card de Mia (§2) — el código real vive en `www/js/personality-tags.js`,
+> `www/js/cards/build.js` y `www/js/ui/character-editor.js`. No uses el
+> resto de este documento (§3 en adelante) para implementar nada nuevo:
+> donde discrepe con CCC-001/CCC-003, mandan esos contratos.
 
 > Este documento es una **propuesta de diseño para discutir con el
 > usuario**, no una autorización para implementar. Se escribió el
