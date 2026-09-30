@@ -865,7 +865,8 @@ function normalizeIncoming(raw, names) {
  * @param {LoreEntry[]} previousEntries
  * @param {object[]} incomingEntries  Salida de `parseExtractionResponse`.
  * @param {{ now?: number, ignoreKeys?: string[], excerptText?: string, tombstones?: LoreTombstone[] }} [opts]
- * @returns {{ entries: LoreEntry[], added: number, updated: number, changed: boolean, rejected: {reason: string}[] }}
+ * @returns {{ entries: LoreEntry[], added: number, updated: number, changed: boolean, rejected: {reason: string}[], addedEntries: LoreEntry[] }}
+ *   MEM-012: `addedEntries` son las entradas NUEVAS que quedaron (tras el recorte por tope), en el mismo orden en que se agregaron.
  */
 export function applyExtraction(previousEntries, incomingEntries, opts = {}) {
   const now = typeof opts.now === 'number' ? opts.now : Date.now();
@@ -943,7 +944,7 @@ export function applyExtraction(previousEntries, incomingEntries, opts = {}) {
     added--;
   }
 
-  return { entries, added, updated, changed: added + updated > 0, rejected };
+  return { entries, added, updated, changed: added + updated > 0, rejected, addedEntries: addedIds.slice() };
 }
 
 /* ---------- edición manual ---------- */
@@ -1132,7 +1133,7 @@ export function createLoreUpdater(deps) {
             }
           }
           outcome = applied.changed
-            ? { kind: 'ok', added: applied.added, updated: applied.updated }
+            ? { kind: 'ok', added: applied.added, updated: applied.updated, addedEntries: applied.addedEntries }
             : { kind: 'nochange' };
         }
         // El servidor respondió: se avanza el marcador aunque el texto no se

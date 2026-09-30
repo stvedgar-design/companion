@@ -456,6 +456,16 @@ input[type=range]:focus-visible{
   visibility: visible;
   transform: translateX(-50%) translateY(0);
 }
+/* MEM-012: aviso tocable (p. ej. "fulano aprendió algo nuevo de ti" → ver el recuerdo). */
+.toast--tappable{ cursor: pointer; }
+/* MEM-012: aviso "prominente" (cambio de nivel de relación) — mismo componente, un poco más de
+   presencia visual: borde de acento y letra un toque más grande. Sigue siendo un aviso breve, no un
+   modal ni una notificación de sistema operativo. */
+.toast--prominent{
+  border-color: var(--color-accent, #8b1fe0);
+  font-size: var(--fs-md);
+  font-weight: 600;
+}
 
 /* ---------- Movimiento reducido ---------- */
 @media (prefers-reduced-motion: reduce){

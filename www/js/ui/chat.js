@@ -1001,10 +1001,31 @@ const loreUpdater = createLoreUpdater({
     const updated = await markChatLorebookProgress(chatId, count);
     if (chat && chat.id === chatId) chat = updated;
   },
+  // MEM-012: aviso en el momento (mismo punto donde ya se detecta un recuerdo nuevo; no duplica nada).
+  onStatus: (status) => {
+    if (status.kind !== 'ok' || !status.added) return;
+    const entries = status.addedEntries || [];
+    const name = (character && character.name) || 'Tu personaje';
+    notifyNewMemory(name, entries);
+  },
 });
 
 function maybeUpdateLorebook() {
   loreUpdater.maybeRun().catch(() => {});
+}
+
+// MEM-012: "{Nombre} aprendió algo nuevo de ti" (o "varias cosas", si la extracción agregó más de un
+// recuerdo a la vez — no se apilan avisos, ya vienen agrupados en el mismo evento). Tocable: con un
+// solo recuerdo nuevo, abre justo ESE recuerdo; con varios, abre "Ver lorebook" completo. El aviso
+// nunca muestra el contenido del recuerdo, solo que algo se guardó.
+function notifyNewMemory(name, entries) {
+  const text = entries.length > 1 ? `${name} aprendió varias cosas nuevas de ti.` : `${name} aprendió algo nuevo de ti.`;
+  app.toast(text, {
+    onClick: () => {
+      if (entries.length === 1) openLoreEdit(entries[0].id);
+      else openLorebookSheet();
+    },
+  });
 }
 
 /* ---------- resumen de continuidad del chat (MEM-007, docs/HISTORIAL.md) ---------- */
@@ -1020,6 +1041,12 @@ const continuityUpdater = createContinuityUpdater({
   saveContinuity: async (chatId, summary) => {
     const updated = await saveChatContinuity(chatId, summary);
     if (chat && chat.id === chatId) chat = updated;
+  },
+  // MEM-012: mismo punto donde ya se detecta que el resumen se actualizó.
+  onStatus: (status) => {
+    if (status.kind !== 'ok') return;
+    const name = (character && character.name) || 'Tu personaje';
+    app.toast(`${name} repasó lo que ha pasado hasta ahora.`, { onClick: () => openContinuitySheet() });
   },
 });
 
@@ -1045,6 +1072,12 @@ const relationshipUpdater = createRelationshipUpdater({
   saveRelationship: async (characterId, patch) => {
     const updated = await saveCharacterRelationship(characterId, patch);
     if (character && character.id === characterId) character = updated;
+  },
+  // MEM-012: mismo punto donde ya se detecta el cambio de nivel (MEM-014). Más presencia visual que
+  // un aviso normal, como pide el contrato, pero el mismo componente (no un modal).
+  onLevelChanged: () => {
+    const name = (character && character.name) || 'Tu personaje';
+    app.toast(`Tu relación con ${name} ha crecido.`, { prominent: true, ms: 5000, onClick: () => openLorebookSheet() });
   },
 });
 

@@ -417,6 +417,7 @@ function makeUpdaterHarness(overrides = {}) {
     loadLorebook: async () => state.lorebook,
     saveLorebook: async (id, entries, previous) => { calls.save.push({ entries, previous }); state.lorebook = entries; },
     markProgress: async (chatId, count) => { calls.progress.push([chatId, count]); state.chat = { ...state.chat, lorebookMessageCount: count }; },
+    onStatus: overrides.onStatus,
   });
   return { updater, state, calls };
 }
@@ -433,6 +434,18 @@ test('createLoreUpdater: agrega, guarda la copia anterior y avanza el marcador',
   assert.match(calls.prompts[0], /Already known/);
   assert.match(calls.prompts[0], /perro/);
   assert.equal(state.lorebook.length, 2);
+});
+
+test('MEM-012: createLoreUpdater — onStatus se dispara con "ok" y trae addedEntries (para el aviso de recuerdo nuevo)', async () => {
+  const statuses = [];
+  const { updater } = makeUpdaterHarness({ onStatus: (s) => statuses.push(s) });
+  const result = await updater.maybeRun();
+  assert.equal(result.kind, 'ok');
+  assert.equal(result.addedEntries.length, 1);
+  assert.equal(result.addedEntries[0].content, 'Trabaja en una panadería.');
+  const ok = statuses.find((s) => s.kind === 'ok');
+  assert.ok(ok, 'onStatus debe recibir un status "ok"');
+  assert.equal(ok.addedEntries.length, 1);
 });
 
 test('createLoreUpdater NO inicia una extracción mientras hay una generación de chat en curso', async () => {
@@ -1228,6 +1241,28 @@ test('applyExtraction: con tombstones, descarta un candidato que coincide con un
   });
   assert.equal(out.added, 0);
   assert.deepEqual(out.rejected, [{ reason: 'tombstone' }]);
+});
+
+// ---------- MEM-012: applyExtraction expone las entradas NUEVAS (addedEntries) ----------
+
+test('applyExtraction: addedEntries trae las entradas nuevas (no las actualizadas ni las que ya existían)', () => {
+  const prev = [makeEntry({ id: 'old', keys: ['viejo'], content: 'Un hecho viejo distinto.' })];
+  const out = applyExtraction(prev, [
+    { keys: ['guitarra'], content: 'Edgar toca la guitarra los domingos.' },
+    { keys: ['bicicleta'], content: 'Edgar compró una bicicleta roja ayer.' },
+  ], { now: 5 });
+  assert.equal(out.added, 2);
+  assert.equal(out.addedEntries.length, 2);
+  assert.deepEqual(out.addedEntries.map((e) => e.content), ['Edgar toca la guitarra los domingos.', 'Edgar compró una bicicleta roja ayer.']);
+  assert.ok(out.addedEntries.every((e) => out.entries.includes(e)));
+});
+
+test('applyExtraction: addedEntries es [] cuando solo se actualiza una entrada existente (nada "nuevo")', () => {
+  const prev = [makeEntry({ id: 'a', keys: ['panadería'], content: 'Trabaja en una panadería.' })];
+  const out = applyExtraction(prev, [{ keys: ['panadería'], content: 'Trabaja en una panadería del centro.' }], { now: 5 });
+  assert.equal(out.added, 0);
+  assert.equal(out.updated, 1);
+  assert.deepEqual(out.addedEntries, []);
 });
 
 // ---------- MEM-013: lápidas (tombstones) ----------

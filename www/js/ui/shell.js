@@ -111,11 +111,30 @@ export function setGlassTint(rgb) {
   }
 }
 
-export function toast(text, ms = 3800) {
+// MEM-012: además del texto llano de siempre, un aviso puede ser tocable (`onClick`, p. ej. para ir a
+// ver el recuerdo nuevo) y/o "prominente" (`prominent`, un poco más de presencia visual — cambio de
+// nivel de relación). Un solo nodo en el DOM (`#toast`): un aviso nuevo siempre reemplaza al anterior,
+// así que nunca hay dos apilados.
+let toastClickHandler = null;
+export function toast(text, opts = {}) {
   const node = el('toast');
   if (!node) return;
+  const { ms = 3800, onClick, prominent = false } = typeof opts === 'number' ? { ms: opts } : opts;
   node.textContent = text;
   node.classList.add('is-visible');
+  node.classList.toggle('toast--prominent', !!prominent);
+  if (toastClickHandler) {
+    node.removeEventListener('click', toastClickHandler);
+    toastClickHandler = null;
+  }
+  node.classList.toggle('toast--tappable', !!onClick);
+  if (onClick) {
+    toastClickHandler = () => {
+      node.classList.remove('is-visible');
+      onClick();
+    };
+    node.addEventListener('click', toastClickHandler);
+  }
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => node.classList.remove('is-visible'), ms);
 }
