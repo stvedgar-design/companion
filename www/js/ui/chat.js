@@ -52,9 +52,7 @@ const ICON_SEND = '<svg viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></s
 const ICON_STOP = '<svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2.5"/></svg>';
 const ICON_DOWN = '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12l7 7 7-7"/></svg>';
 
-const AVATAR_MODES = ['none', 'mini', 'large'];
 const NEAR_BOTTOM_PX = 140;
-const KEYBOARD_VH_RATIO = 0.75;
 
 let root = null;
 let app = null;
@@ -69,8 +67,6 @@ let busy = false;
 let abortCtl = null;
 
 let atBottom = true;
-let keyboardOpen = false;
-let maxVh = 0;
 let blurTimeoutId = null;
 
 const draftByChat = new Map();
@@ -83,15 +79,9 @@ export function init(rootEl, appApi) {
     <div class="topbar">
       <button class="ib" type="button" id="chat-back" aria-label="Volver">${ICON_BACK}</button>
       <div class="chat-head" id="chat-head">
-        <button class="chat-head__avbtn" type="button" id="chat-head-avbtn" aria-label="Cambiar vista de foto">
-          <div class="av av--sm chat-head__av" id="chat-head-av" hidden></div>
-        </button>
         <button class="chat-head__namebtn" type="button" id="chat-head-name" aria-label="Ver ficha del personaje"></button>
       </div>
       <button class="ib" type="button" id="chat-menu" aria-label="Más">${ICON_MENU}</button>
-    </div>
-    <div class="chat-avatarpanel" id="chat-avatarpanel" hidden>
-      <div class="av chat-avatarpanel__img" id="chat-avatarpanel-img"></div>
     </div>
     <div class="chat-messageswrap">
       <div class="chat-bg" id="chat-bg" hidden>
@@ -108,12 +98,8 @@ export function init(rootEl, appApi) {
 
   els = {
     back: root.querySelector('#chat-back'),
-    headAvBtn: root.querySelector('#chat-head-avbtn'),
-    headAv: root.querySelector('#chat-head-av'),
     headName: root.querySelector('#chat-head-name'),
     menu: root.querySelector('#chat-menu'),
-    avatarPanel: root.querySelector('#chat-avatarpanel'),
-    avatarPanelImg: root.querySelector('#chat-avatarpanel-img'),
     bg: root.querySelector('#chat-bg'),
     bgFade: root.querySelector('#chat-bg-fade'),
     messages: root.querySelector('#chat-messages'),
@@ -124,7 +110,6 @@ export function init(rootEl, appApi) {
   };
 
   els.back.addEventListener('click', onBack);
-  els.headAvBtn.addEventListener('click', onCycleAvatarMode);
   els.headName.addEventListener('click', onOpenCharacterSheet);
   els.menu.addEventListener('click', onMenu);
   els.input.addEventListener('input', onInputChange);
@@ -214,14 +199,11 @@ export async function show({ chatId } = {}) {
 
   busy = false;
   abortCtl = null;
-  keyboardOpen = false;
-  maxVh = 0;
 
   els.headName.textContent = character.name;
   els.input.value = draftByChat.get(chat.id) || '';
   autosizeInput();
   syncSendButton();
-  applyAvatarMode();
   applyChatBackground();
   updateGlassTint();
   renderMessages();
@@ -257,48 +239,25 @@ export function hide() {
   setGlassTint(null);
 }
 
-/* ---------- avatar en 3 modos ---------- */
-
-function applyAvatarMode() {
-  if (!character) return;
-  const mode = character.avatarMode || 'mini';
-
-  els.headAv.hidden = mode !== 'mini';
-  if (mode === 'mini') setAvatarEl(els.headAv, character);
-
-  const showLarge = mode === 'large';
-  els.avatarPanel.hidden = !showLarge;
-  if (showLarge) setAvatarEl(els.avatarPanelImg, character);
-  els.avatarPanel.classList.toggle('chat-avatarpanel--collapsed', showLarge && keyboardOpen);
-}
-
-async function onCycleAvatarMode() {
-  if (!character) return;
-  const idx = AVATAR_MODES.indexOf(character.avatarMode || 'mini');
-  const next = AVATAR_MODES[(idx + 1) % AVATAR_MODES.length];
-  character.avatarMode = next;
-  applyAvatarMode();
-  try {
-    character = await saveCharacter(character);
-  } catch (err) {
-    app.toast('No se pudo guardar la preferencia de avatar.');
-  }
-}
-
 // UI-027: tocar el nombre en la cabecera abre la ficha de lectura (foto grande, relación, rasgos,
 // recuerdos…), con un botón "Editar" que lleva al editor de CCC-001/CCC-003.
+// UI-028: la cabecera ya no muestra ningún avatar propio (ni el círculo chico ni el retrato grande
+// expandible) — la foto del personaje ahora vive junto a sus burbujas (`buildMessageRow`) y en la
+// ficha (UI-027). Si el nombre o la foto cambiaron (editar o "Cambiar foto" desde la ficha), se
+// rehace la lista para que las burbujas ya vistas usen el avatar nuevo.
 function onOpenCharacterSheet() {
   if (!character) return;
   openCharacterSheet(app, character, {
     onUpdated: (updated) => {
       character = updated;
       els.headName.textContent = character.name;
-      applyAvatarMode();
+      renderMessages();
     },
     openMemories: () => openLorebookSheet(),
   });
 }
 
+// Avatar-o-inicial dentro de un `.av` ya existente (círculo junto a las burbujas del personaje, UI-028).
 function setAvatarEl(el, ch) {
   el.replaceChildren();
   if (ch && ch.avatar) {
@@ -329,17 +288,9 @@ function detachViewportListeners() {
   }
 }
 
+// Mantiene el chat pegado abajo cuando el teclado abre/cierra (el resto de la detección de "¿está
+// abierto el teclado?" que vivía acá era solo para el retrato grande de la cabecera; UI-028 lo quitó).
 function checkKeyboardFromVh() {
-  const raw = getComputedStyle(document.documentElement).getPropertyValue('--vh');
-  const px = parseFloat(raw);
-  if (Number.isFinite(px) && px > 0) {
-    if (px > maxVh) maxVh = px;
-    const dropped = maxVh > 0 && px < maxVh * KEYBOARD_VH_RATIO;
-    keyboardOpen = dropped || document.activeElement === els.input;
-  } else {
-    keyboardOpen = document.activeElement === els.input;
-  }
-  applyAvatarMode();
   scrollToBottom(false);
 }
 
@@ -440,26 +391,48 @@ function setBubbleContent(bubble, m) {
 
 function buildMessageRow(m, i) {
   const isLast = i === messages.length - 1;
+  const isChar = m.role === 'char';
   const row = document.createElement('div');
-  row.className = 'chat-row ' + (m.role === 'user' ? 'chat-row--user' : 'chat-row--char');
+  row.className = 'chat-row ' + (isChar ? 'chat-row--char' : 'chat-row--user');
   row.dataset.index = String(i);
   // Altura estimada mientras la fila esté fuera de pantalla (chat.css: contain-intrinsic-size). No afecta a lo que se ve.
   row.style.setProperty('--row-h', estimateRowHeight(m.text, rowCharsPerLine, loreIndicatorState(m) !== 'none' || variantCount(m) > 1, true) + 'px');
 
+  // UI-028: avatar circular junto a las burbujas del personaje, alineado arriba. Solo en el PRIMERO de
+  // cada racha de mensajes consecutivos del personaje (se mira `messages[i-1]`, estable: nada cambia el
+  // `role` de un mensaje ya guardado); en el resto de la racha se reserva el mismo ancho con un div vacío,
+  // para que todas las burbujas de la racha queden alineadas igual. Reutiliza `character.avatar` tal cual
+  // (mismo data: URL en cada fila que lo usa, así el navegador decodifica la imagen una sola vez).
+  let body = row;
+  if (isChar) {
+    const startsStreak = i === 0 || messages[i - 1].role !== 'char';
+    const avatarSlot = document.createElement('div');
+    if (startsStreak) {
+      avatarSlot.className = 'chat-row__avatar av';
+      setAvatarEl(avatarSlot, character);
+    } else {
+      avatarSlot.className = 'chat-row__avatarspace';
+    }
+    row.appendChild(avatarSlot);
+    body = document.createElement('div');
+    body.className = 'chat-row__body';
+    row.appendChild(body);
+  }
+
   const bubble = document.createElement('div');
   bubble.className = 'chat-bubble';
-  if (m.role === 'char' && !m.text && busy && isLast) {
+  if (isChar && !m.text && busy && isLast) {
     bubble.appendChild(buildDots());
   } else {
     setBubbleContent(bubble, m);
   }
-  row.appendChild(bubble);
+  body.appendChild(bubble);
 
   // Línea bajo la burbuja: marcapáginas de memoria (UI-010), el selector de versiones de una respuesta regenerada (UI-017) y (MEM-011) el
   // timestamp de TODOS los mensajes, con "sintiendo …" solo en respuestas que activaron 3 o más recuerdos y de las que hay una emoción clara.
   const loreState = loreIndicatorState(m);
   const showLore = loreState !== 'none' && !!m.text;
-  const showVariants = m.role === 'char' && variantCount(m) > 1 && !!m.text;
+  const showVariants = isChar && variantCount(m) > 1 && !!m.text;
   const stampText = m.text ? formatMessageTime(m.ts) : '';
   if (showLore || showVariants || stampText) {
     const meta = document.createElement('div');
@@ -478,7 +451,7 @@ function buildMessageRow(m, i) {
     }
     if (showVariants) meta.appendChild(buildVariantNav(m, i)); // después del marcapáginas: este no cambia de sitio (UI-016)
     if (stampText) meta.appendChild(buildStamp(m, stampText));
-    row.appendChild(meta);
+    body.appendChild(meta);
   }
 
   return row;
@@ -584,7 +557,9 @@ function openMessageMenu(row) {
   menu.querySelectorAll('[data-action]').forEach((btn) => {
     btn.hidden = !allowed.includes(btn.dataset.action);
   });
-  row.appendChild(menu);
+  // UI-028: en un mensaje del personaje el menú va DENTRO de `.chat-row__body`, alineado con la burbuja
+  // (no con el avatar); `row` mismo sigue siendo el objetivo para un mensaje del usuario (sin ese wrapper).
+  (row.querySelector(':scope > .chat-row__body') || row).appendChild(menu);
   row.classList.add('chat-row--selected');
   selectedRow = row;
   menuIndex = i;
@@ -790,8 +765,6 @@ function onInputKeydown(e) {
 
 function onInputFocus() {
   clearTimeout(blurTimeoutId);
-  keyboardOpen = true;
-  applyAvatarMode();
 }
 
 function onInputBlur() {
@@ -855,7 +828,9 @@ async function generate(opts = {}) {
   const row = appendMessageRow(messages.length - 1) || els.messages.lastElementChild;
   scrollToBottom(true);
   streamRow = row;
-  streamBubble = row ? row.firstElementChild : null;
+  // UI-028: la burbuja ya no es siempre el primer hijo de la fila (las del personaje ahora
+  // empiezan con el avatar/espacio reservado) — se busca por clase en vez de asumir la posición.
+  streamBubble = row ? row.querySelector('.chat-bubble') : null;
   streamReply = reply;
 
   abortCtl = new AbortController();
@@ -2072,7 +2047,7 @@ function onMenu() {
         onSaved: (updated) => {
           character = updated;
           els.headName.textContent = character.name;
-          applyAvatarMode();
+          renderMessages();
         },
       });
     })
@@ -2114,7 +2089,7 @@ async function onChangeAvatar() {
   character.avatarLarge = avatarLarge;
   try {
     character = await saveCharacter(character);
-    applyAvatarMode();
+    renderMessages();
     app.toast('Avatar actualizado.');
   } catch (err) {
     app.toast('No se pudo guardar el avatar.');

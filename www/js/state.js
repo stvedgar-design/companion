@@ -46,7 +46,7 @@ import { sanitizePersonalityTags } from './personality-tags.js';
  *   junto con `avatar` (`cards/avatar.js`, `makeAvatarSet`) cada vez que se elige una foto nueva. Sin campo propio en
  *   `sanitizeCharacterExtras`: sobrevive el guardado igual que `avatar`, vía el resto del objeto sin tocar.
  * @property {Card} card
- * @property {'none'|'mini'|'large'} avatarMode
+ * @property {'none'|'mini'|'large'} avatarMode // ARCHIVADO por UI-028: la cabecera del chat ya no tiene ningún avatar propio que ciclar (ver docs/HISTORIAL.md, "UI-028"); se conserva en el esquema por compatibilidad con copias viejas
  * @property {number} created
  * @property {LoreEntry[]} lorebook  // memoria de largo plazo autogenerada de ESTE personaje,
  *   compartida entre todos sus chats (ver docs/NOTES.md, "Lorebook por personaje")

@@ -2,29 +2,13 @@
    Usa variables de tokens.css y clases de base.css; no redefine base.css,
    no usa la unidad vh (solo la variable --vh) y no usa position: fixed. */
 
-/* --- barra superior: avatar (cicla de vista) + nombre (abre la ficha, UI-027) --- */
+/* --- barra superior: limpia, sin avatar propio (UI-028) — solo el nombre, que abre la ficha (UI-027) --- */
 .chat-head {
   flex: 1;
   min-width: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: var(--space-1);
-}
-.chat-head__avbtn {
-  flex: none;
-  display: grid;
-  place-items: center;
-  min-width: 44px;
-  min-height: 44px;
-  border-radius: var(--radius-md);
-}
-.chat-head__avbtn:active { background: var(--color-surface-2); }
-.chat-head__avbtn:focus-visible { outline: 2px solid var(--color-accent-2); outline-offset: 2px; }
-.chat-head__av[hidden] { display: none; }
-.chat-head__av {
-  border-radius: var(--radius-md);
-  border: 1px solid var(--color-accent-soft);
 }
 /* UI-027: el nombre abre la ficha del personaje; la flechita es el "indicio discreto" de que se puede tocar. */
 .chat-head__name {
@@ -50,39 +34,6 @@
 }
 .chat-head__name:active { background: var(--color-surface-2); }
 .chat-head__name:focus-visible { outline: 2px solid var(--color-accent-2); outline-offset: 2px; }
-
-/* --- panel de avatar grande (modo "large") --- */
-.chat-avatarpanel {
-  flex: none;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  padding: var(--space-2) var(--space-4) var(--space-1);
-  max-height: calc(var(--vh) * 0.32);
-  min-height: 96px;
-  overflow: hidden;
-  transition: max-height var(--dur) ease, min-height var(--dur) ease,
-    opacity var(--dur) ease, padding var(--dur) ease;
-}
-.chat-avatarpanel[hidden] { display: none; }
-.chat-avatarpanel--collapsed {
-  max-height: 0;
-  min-height: 0;
-  padding-top: 0;
-  padding-bottom: 0;
-  opacity: 0;
-}
-@media (prefers-reduced-motion: reduce) {
-  .chat-avatarpanel { transition: none; }
-}
-.chat-avatarpanel__img {
-  width: auto;
-  height: 100%;
-  max-width: 100%;
-  aspect-ratio: 1 / 1;
-  border-radius: var(--radius-lg);
-}
-.chat-avatarpanel__img img { object-fit: cover; }
 
 /* --- fondo de chat personalizado (opcional, ver ui/appearance.js) --- */
 .chat-bg {
@@ -132,8 +83,31 @@
     flex-shrink: 0; /* sin esto, con la contención las filas (hijas de una columna flex con scroll) se encogen a 0 px */
   }
 }
-.chat-row--char { align-self: flex-start; align-items: flex-start; }
 .chat-row--user { align-self: flex-end; align-items: flex-end; }
+/* UI-028: la fila del personaje pasa a ser una fila horizontal (avatar + burbuja), alineada arriba. El
+   max-width crece EXACTAMENTE lo que ocupan el avatar y el hueco entre avatar y burbuja, así la burbuja en
+   sí conserva el mismo ancho útil que antes (88 % del contenedor) en vez de perder ese espacio — el hueco
+   que se "gasta" es el margen vacío que antes quedaba sin usar a la derecha, nunca el de la burbuja. */
+:root { --char-avatar-size: 34px; }
+.chat-row--char {
+  align-self: flex-start;
+  align-items: flex-start;
+  flex-direction: row;
+  gap: var(--space-2);
+  max-width: calc(88% + var(--char-avatar-size) + var(--space-2));
+}
+.chat-row__avatar,
+.chat-row__avatarspace {
+  flex: none;
+  width: var(--char-avatar-size);
+  height: var(--char-avatar-size);
+}
+.chat-row__avatar { font-size: 13px; }
+.chat-row__body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0; /* para que el texto siga envolviendo/recortando bien dentro de la fila flex */
+}
 
 .chat-bubble {
   padding: var(--space-3) var(--space-4);
