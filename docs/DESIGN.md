@@ -140,6 +140,14 @@ Ajuste en Ajustes → Apariencia (`Settings.splitTypography`, **apagado por defe
 
 En iMessage el ajuste no se nota (su `--font` ya es esa pila). Opinión del usuario tras probarlo: **pendiente** (es quien decide si algún día queda encendido por defecto).
 
+## Tamaño del texto de los mensajes (UI-026)
+
+Ajuste en Ajustes → Apariencia (`Settings.messageFontSize`, 15-19, 17 por defecto), mismo control visual que el selector claro/oscuro. Cambia SOLO el tamaño de letra de `.chat-bubble`; el ancho de las burbujas no depende de él (`.chat-row` usa `max-width: 88%`, el padding de `.chat-bubble` está en px fijos).
+
+| Token | Valor por defecto | Nota |
+|---|---|---|
+| `--msg-font-size` (`tokens.css`, global) | `17px` | Aplicado por `shell.applyMessageFontSize()` (al arrancar y al cambiarlo, vista previa inmediata). Con el valor por defecto el aspecto es idéntico al de antes de UI-026 (era un `17px` fijo en `chat.css`). |
+
 ## Métricas técnicas: "esconder, no eliminar" (UI-020)
 
 Principio del proyecto (decisión del usuario): los datos técnicos (conteo de mensajes, contexto usado, y toda medición futura como las de UI-001/UI-005) **se siguen calculando y siguen disponibles** para Claude Code y el arquitecto, pero **no se muestran de entrada** al usuario final, cuya experiencia es chatear. Su lugar es la sección plegable **"Diagnóstico"** del menú ⋮ del chat (datos DE ESE CHAT; UI-025 lo dejó ahí porque sin un chat abierto no tienen sentido) o, para lo global (prueba de fluidez, banco de estrés, protección de datos del sistema), el grupo "Diagnóstico" de Ajustes (`buildDiagnostics` en `www/js/ui/chat.js`; cerrada por defecto; texto de aviso "Información técnica. No hace falta entenderla para usar la app."). Contratos posteriores que midan algo deben añadirlo dentro de esa sección (o de una equivalente plegada), no en la pantalla principal. Los criterios generales de ingeniería están en `docs/PRINCIPIOS-DE-INGENIERIA.md` (DOC-005).

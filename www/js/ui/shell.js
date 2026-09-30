@@ -77,6 +77,13 @@ export function applySplitTypography(on) {
   else delete document.documentElement.dataset.splitFont;
 }
 
+// UI-026: tamaño del texto de los mensajes (15-19px; 17 por defecto). Solo una variable CSS que
+// lee `.chat-bubble` (chat.css) — el ancho de las burbujas no depende de ella (ver tokens.css).
+export function applyMessageFontSize(px) {
+  const n = Number(px);
+  document.documentElement.style.setProperty('--msg-font-size', `${Number.isFinite(n) ? n : 17}px`);
+}
+
 // Claro/oscuro, aplica sobre cualquier skin (ver themes.css).
 export function applyThemeMode(mode) {
   document.documentElement.dataset.mode = mode === 'light' ? 'light' : 'dark';

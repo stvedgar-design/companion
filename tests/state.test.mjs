@@ -1,7 +1,7 @@
 // tests/state.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createState, sanitizeLoreUsed, sanitizeContinuity } from '../www/js/state.js';
+import { createState, sanitizeLoreUsed, sanitizeContinuity, MESSAGE_FONT_SIZES } from '../www/js/state.js';
 import { cleanStoredLorebook } from '../www/js/api/lorebook.js';
 
 // ---------- backend en memoria, implementa el mismo contrato que el backend de IndexedDB ----------
@@ -64,6 +64,7 @@ test('getSettings devuelve valores por defecto cuando no hay nada guardado', asy
     varietyAssist: false,
     formatAssist: true,
     splitTypography: false, // UI-023
+    messageFontSize: 17, // UI-026
   });
 });
 
@@ -1043,6 +1044,22 @@ test('UI-023: splitTypography es false por defecto, solo acepta true y las copia
   const old = await createState(backend).getSettings();
   assert.equal(old.splitTypography, false);
   assert.equal(old.theme, 'penumbra-claude'); // UI-024: 'penumbra' migra en silencio
+});
+
+// ---------- UI-026: Settings.messageFontSize ----------
+
+test('UI-026: messageFontSize es 17 por defecto, solo acepta 15-19 y las copias previas (o valores raros) caen en 17', async () => {
+  const state = createState(createMemoryBackend());
+  assert.equal((await state.getSettings()).messageFontSize, 17);
+  for (const px of MESSAGE_FONT_SIZES) {
+    assert.equal((await state.saveSettings({ messageFontSize: px })).messageFontSize, px);
+  }
+  for (const bad of [14, 20, 17.5, '17', null, undefined, NaN]) {
+    assert.equal((await state.saveSettings({ messageFontSize: bad })).messageFontSize, 17, String(bad));
+  }
+  const backend = createMemoryBackend();
+  await backend.put('settings', 'main', { url: 'http://x:5001', user: 'Sam' }); // copia de antes de UI-026
+  assert.equal((await createState(backend).getSettings()).messageFontSize, 17);
 });
 
 // ---------- MEM-007: resumen de continuidad por chat ----------

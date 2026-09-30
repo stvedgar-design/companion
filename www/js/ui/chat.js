@@ -1977,14 +1977,9 @@ function onMenu() {
 
   // UI-025: este menú solo trae lo que se usa a diario en ESTE chat/personaje. Los ajustes globales (servidor, formato, PIN,
   // apariencia, copia de seguridad, diagnóstico y rendimiento) viven en Ajustes, desde el engranaje del hub (ui/settings.js).
-  // Navegación (sin encabezado)
-  wrap.appendChild(
-    menuItem('Volver a los chats de este personaje', () => {
-      if (busy) cancelGeneration();
-      app.navigate('chats', { characterId: chat.characterId });
-    })
-  );
-
+  // UI-026: se quitó "Volver a los chats de este personaje" — el botón atrás de Android (UI-014) ya hace esa navegación
+  // cuando se llegó al chat DESDE esa lista o tocando el retrato en el hub (ver docs/HISTORIAL.md, "UI-026": desde
+  // "Continuar" en el hub se entra directo al chat, así que atrás vuelve al hub, no a esta lista — límite conocido).
   const characterItems = [
     menuItem('Fondo del chat', () => openChatBackground(app, character)),
     menuItem('Ver lorebook', () => openLorebookSheet()),

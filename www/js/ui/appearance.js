@@ -3,8 +3,8 @@
 // tiene uno solo, Penumbra Claude; los demás están archivados en css/themes-archived.css). El fondo de chat es otra cosa —
 // es por personaje, se edita desde el menú ⋮ del chat (ver ui/chat-background.js).
 
-import { getSettings, saveSettings } from '../state.js';
-import { applyThemeMode, applySplitTypography } from './shell.js';
+import { getSettings, saveSettings, MESSAGE_FONT_SIZES } from '../state.js';
+import { applyThemeMode, applySplitTypography, applyMessageFontSize } from './shell.js';
 
 export function openAppearance(app) {
   const node = document.createElement('div');
@@ -28,6 +28,14 @@ export function openAppearance(app) {
       <div class="field__hint">Experimental. En los mensajes del personaje que traen acciones en cursiva, el diálogo se ve con letra sin serifas y la acción conserva la letra del skin. Apagado, todo se ve como siempre.</div>
     </div>
 
+    <div class="field">
+      <div class="field__label">Tamaño del texto de los mensajes</div>
+      <div class="appearance-skins" id="appearance-fontsize">
+        ${MESSAGE_FONT_SIZES.map((px) => `<button class="appearance-skin" type="button" data-size-value="${px}">${px}</button>`).join('')}
+      </div>
+      <div class="field__hint">Solo cambia el tamaño de la letra; el ancho de las burbujas no cambia.</div>
+    </div>
+
     <div class="field__hint">El fondo de chat (imagen, brillo, etc.) es por personaje — se edita desde el menú ⋮ dentro de cada chat.</div>
   `;
 
@@ -35,6 +43,7 @@ export function openAppearance(app) {
   const els = {
     modeBtns: Array.from(node.querySelectorAll('[data-mode-value]')),
     split: q('#appearance-split'),
+    sizeBtns: Array.from(node.querySelectorAll('[data-size-value]')),
   };
 
   function renderMode(themeMode) {
@@ -43,15 +52,31 @@ export function openAppearance(app) {
     });
   }
 
+  function renderFontSize(px) {
+    els.sizeBtns.forEach((btn) => {
+      btn.classList.toggle('appearance-skin--active', Number(btn.dataset.sizeValue) === px);
+    });
+  }
+
   getSettings().then((settings) => {
     renderMode(settings.themeMode);
     els.split.checked = settings.splitTypography === true;
+    renderFontSize(settings.messageFontSize);
   });
 
   els.split.addEventListener('change', async () => {
     const splitTypography = els.split.checked;
     await saveSettings({ splitTypography });
     applySplitTypography(splitTypography);
+  });
+
+  els.sizeBtns.forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const messageFontSize = Number(btn.dataset.sizeValue);
+      renderFontSize(messageFontSize); // vista previa inmediata, antes de que termine de guardar
+      applyMessageFontSize(messageFontSize);
+      await saveSettings({ messageFontSize });
+    });
   });
 
   els.modeBtns.forEach((btn) => {

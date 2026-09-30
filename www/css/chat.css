@@ -116,7 +116,7 @@
 .chat-bubble {
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-lg);
-  font-size: 17px;
+  font-size: var(--msg-font-size, 17px);
   line-height: 1.5;
   word-wrap: break-word;
   overflow-wrap: anywhere;

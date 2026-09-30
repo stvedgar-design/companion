@@ -83,6 +83,10 @@
   --fs-xl: 20px;
   --fs-2xl: 26px;
   --fs-3xl: 34px;
+  /* UI-026: tamaño del texto de los mensajes del chat, elegible en Ajustes → Apariencia (15-19px; 17px por
+     defecto, igual al --fs-lg de siempre). Solo afecta el texto: el ancho de las burbujas no depende de esta
+     variable (.chat-row usa max-width en % y el padding de .chat-bubble está en px, no en unidades de fuente). */
+  --msg-font-size: 17px;
 
   /* Radios */
   --radius-sm: 10px;
