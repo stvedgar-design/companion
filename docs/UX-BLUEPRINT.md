@@ -118,8 +118,10 @@ tamaño Pequeño, de la lista de contratos sugeridos (sección 9).
 | Menú de un mensaje | [msgmenu.js](../www/js/ui/msgmenu.js) (lógica) + [chat.js](../www/js/ui/chat.js) (pantalla) | Tocar un mensaje |
 
 No existen hoy (verificado, no están en el código): pantalla de "Mi perfil", modo
-Disponible/Ausente, buzón de mensajes proactivos, "duplicar personaje", galería de fotos, wizard del
+Disponible/Ausente, buzón de mensajes proactivos, galería de fotos, wizard del
 creador con plantillas. Todas figuran como pendientes en `docs/NOTES.md` — ver sección 8.
+("Duplicar personaje" se implementó por UI-033, 2026-10-01 — ver fila 7 de la sección 12 y
+`docs/HISTORIAL.md`.)
 
 ---
 
@@ -332,7 +334,7 @@ explícito de no añadir pantallas, interruptores ni avisos de restricción.
 | Función pendiente | Ubicación tentativa (PROPUESTA) | Notas |
 |---|---|---|
 | Wizard del creador (con plantillas) | Reemplazaría la pantalla única de `character-editor.js` al CREAR (no al editar); entrada desde "Crear personaje" en el hub | Depende de que CCC-002 (guías/ejemplos) se resuelva primero o en conjunto |
-| Duplicar personaje | Ficha del personaje, junto a "Editar" (acción secundaria) | No existe ningún código relacionado hoy — es 100% nuevo |
+| ~~Duplicar personaje~~ | **Hecho, UI-033 (2026-10-01)** — Ficha del personaje, junto a "Editar" | — |
 | Memoria como "historia compartida" (chats = episodios) | Renombrar la pantalla de "lista de chats" (`chats.js`) sin cambiar su lógica; "episodio" pasaría a usarse en los rótulos de exportar/resumen | Es un cambio de vocabulario primero, de estructura de datos después (si se quiere "resumen de identidad" periódico, eso sí es un contrato aparte, ya anotado como pendiente en `docs/NOTES.md`) |
 | Perfil del usuario ("Mi perfil") | Ajustes → Conexión (junto a "Tu nombre en el chat"), como pantalla propia si crece (foto para el avatar del usuario, horario) | Hoy "Tu nombre" ya vive ahí; un campo de foto sería la primera pieza |
 | Disponible/Ausente | Ajustes → nueva sección "Presencia" (ámbito App: es un interruptor global, no por personaje, según la decisión ya tomada en `docs/NOTES.md`) | Pendiente de diseño de cola/segundo plano, fuera de este documento |
@@ -352,7 +354,7 @@ explícito de no añadir pantallas, interruptores ni avisos de restricción.
 | 4 | ~~Mover "Fondo del chat" del menú ⋮ a la ficha del personaje~~ — **hecho, UI-032 (2026-09-30)** | Pequeño | Bajo | Puede ir junto con el #3 |
 | 5 | ~~CCC-002 reformulado sobre CCC-003 (guías por campo, botón "Ejemplo", plantilla `<START>`/`{{user}}`/`{{char}}`, campo "Instrucciones")~~ — **hecho, CCC-002 (2026-09-30)** | Mediano | Medio | Ninguno |
 | 6 | Wizard del creador de personajes con plantillas y ejemplos | Grande | Medio | #5 (comparten pantalla) |
-| 7 | Duplicar personaje | Pequeño–Mediano | Bajo | Ninguno |
+| 7 | ~~Duplicar personaje~~ — **hecho, UI-033 (2026-10-01)** | Pequeño–Mediano | Bajo | Ninguno |
 | 8 | Memoria como "historia compartida": renombrar chats → episodios en la interfaz (sin tocar datos) | Pequeño | Bajo | Decisión de vocabulario del usuario |
 | 9 | Galería de fotos por personaje (pestaña "Fotos" en la ficha) | Grande | Alto (nuevo almacén de imágenes, posible migración de IndexedDB) | Depende de que exista contenido que mostrar ahí (hoy no hay generación de imágenes) |
 | 10 | Buscador dentro de Ajustes | Pequeño | Bajo | Ninguno — hoy Ajustes es una sola pantalla corta, prioridad baja hasta que crezca |

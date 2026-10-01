@@ -406,6 +406,16 @@ input[type=range]:focus-visible{
   margin: 0;
   font-size: var(--fs-xl);
   font-weight: 600;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+/* UI-033: "Editar" y "Duplicar" juntos, sin apretar el nombre cuando es largo. */
+.char-sheet__nameactions{
+  display: flex;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  justify-content: flex-end;
+  gap: var(--space-2);
 }
 .char-sheet__chips{
   display: flex;

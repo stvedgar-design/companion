@@ -3152,3 +3152,83 @@ donde tenía que corregirse).
 **Pendiente de probar en el teléfono** (no se puede verificar fuera de un APK real): que el `maxlength`
 del DOM se comporte igual con el teclado de autocompletado real de Android (el bypass de esta sesión fue
 simulado vía JS para forzar el peor caso; el recorte al guardar es independiente de eso y ya se probó).
+
+## UI-033 (2026-10-01): duplicar personaje (sin chats ni recuerdos)
+
+Función 100% nueva (confirmado por `UX-BLUEPRINT.md`: no existía ningún código relacionado). Alcance:
+`www/js/ui/character-sheet.js` — ningún otro módulo.
+
+**Diseño: `duplicateCharacterData(character)`, función pura.** En vez de listar a mano cada campo que
+SÍ hay que copiar (frágil: cualquier campo nuevo que se agregue a `Character` en el futuro, como el
+"Instrucciones" de CCC-002 recién hecho, quedaría afuera si alguien se olvida de actualizar la lista),
+se parte de `{ ...character }` (copia TODO) y solo se sobrescriben los campos que un personaje duplicado
+NO debe heredar:
+- `id` (uno nuevo, mismo algoritmo que `newId()` de `state.js` pero escrito en el lugar — ver nota de
+  pureza abajo).
+- `name`: `"{Nombre} (copia)"`.
+- `created`/`updated`: `Date.now()` (es un personaje nuevo, no hereda la fecha de creación del original).
+- `last`: `''` (vista previa del chat más reciente; no aplica, no tiene chats).
+- `lorebook`, `lorebookPrevious`, `lorebookPreviousAt`, `lorebookTombstones`, `lorebookTombstonesPrevious`:
+  vacíos/`0` (sin memoria heredada).
+- `relationship`: `{ text: '', level: 'early', updated: 0, source: 'auto' }` (estado inicial, igual que
+  un personaje recién creado).
+
+Todo lo demás viaja tal cual porque YA estaba dentro del objeto copiado: `card` completa (incluida
+`post_history_instructions` de CCC-002, sin tener que nombrarla aparte), `appearance`, `avatar`/
+`avatarLarge`, `chatBackground*`, `formatStyle`, `personalityTags`. Los chats NO se tocan para nada —
+viven en otros stores (`chatMeta`/`chatMsgs`) indexados por `characterId`, y esta función ni siquiera
+los lee.
+
+**Por qué no se importó `newId()` de `state.js`.** Se probó primero importarlo (como hace
+`character-editor.js`), pero ese `newId` exportado pasa por `getDefaultInstance()`, que exige
+`indexedDB` real — rompía los tests (`node --test` no tiene IndexedDB). Para mantener
+`duplicateCharacterData` pura y testeable sin abrir una base de datos (principio 10 de
+`docs/PRINCIPIOS-DE-INGENIERIA.md`), se escribió inline el mismo algoritmo de un solo uso
+(`'c' + Date.now().toString(36) + Math.random().toString(36).slice(2,8)`), documentado como tal.
+
+**Decisión documentada (pedida por el contrato): el avatar y el fondo de chat se copian de verdad, no
+por referencia.** Antes de escribir código se confirmó en `state.js` (typedef de `Character`) que
+`avatar`/`avatarLarge`/`chatBackground` son strings `data:` guardados DENTRO del propio registro del
+personaje — no hay ningún store de blobs aparte ni una referencia compartida que pudiera romperse si
+uno de los dos personajes se borra después. Copiar el objeto ya copia la imagen entera.
+
+**Dónde vive el botón y qué pasa al tocarlo.** "Duplicar" queda junto a "Editar" en la ficha
+(`character-sheet.js`), dentro de un contenedor nuevo `.char-sheet__nameactions` (CSS en `base.css`:
+los dos botones se envuelven en una fila propia a la derecha, y el nombre gana `min-width:0` +
+`overflow-wrap:anywhere` para no empujarlos fuera de la pantalla con un nombre largo). Al tocarlo:
+`saveCharacter(duplicateCharacterData(current))` → cierra la ficha actual → `app.navigate('chats',
+{ characterId: saved.id })` (mismo patrón que usa `character-editor.js` al crear un personaje nuevo) →
+abre la ficha del DUPLICADO encima, ya en la lista de chats de ESE personaje. Se decidió abrir la ficha
+con `opts: {}` (sin `onUpdated`/`openMemories` heredados de la ficha original): reusar los callbacks de
+quien abrió la ficha original (p. ej. `chats.js`, que guarda `character`/`chats` en variables de módulo
+atadas al personaje ORIGINAL) habría sido un bug — `openMemories` habría navegado a los chats del
+personaje equivocado. Como el duplicado no tiene recuerdos ni chats todavía, no hace falta ese enganche:
+tocar "N recuerdos · Ver" en su ficha (muestra "0 recuerdos") no hace nada, consistente con que no hay
+nada que mostrar.
+
+**Verificado en el navegador integrado (375×812)**, con un personaje sembrado a mano en IndexedDB con 2
+chats (uno con mensaje, uno vacío), 1 recuerdo y relación en nivel `established`:
+1. Ficha del original: "Editar" y "Duplicar" visibles uno junto al otro, sin romper el layout.
+2. Tocar "Duplicar" aterriza DIRECTO en la ficha de "Prueba CCC-002 (copia)": misma descripción y
+   mismos rasgos, fecha de creación de HOY (no la del original), "0 recuerdos · Ver".
+3. Volver atrás desde la ficha del duplicado muestra su lista de chats: solo el chat vacío que
+   `chats.js` auto-crea para cualquier personaje sin chats (mecanismo preexistente, no agregado por
+   este contrato) — cero chats heredados del original.
+4. Verificado en IndexedDB: el original conserva sus 2 chats, su recuerdo y su relación intactos; el
+   duplicado tiene `lorebook: []`, `relationship.level: 'early'` y un id y fecha de creación distintos.
+
+**Tests.** `tests/character-sheet.test.mjs`: 4 tests nuevos para `duplicateCharacterData` (copia la
+ficha completa incluida `post_history_instructions`; no copia lorebook/deshacer/lápidas/relación;
+`created`/`updated` nuevos y `last` vacío; no muta el objeto original). `node --test tests/*.test.mjs`:
+637/637 (633 + 4).
+
+**No bloqueado por ninguna condición de parada:** copiar avatar/apariencia no tocó el esquema de
+IndexedDB (son strings dentro del mismo registro, sin store nuevo ni migración); reutilizar
+`saveCharacter()` (la misma función que usa el creador) no duplicó lógica — es la única pieza que hacía
+falta reutilizar, ya que `character-editor.js` arma el objeto a mano leyendo campos de formulario (no
+hay una función de "crear personaje desde datos" separada que `duplicateCharacterData` pudiera llamar
+en su lugar).
+
+**Pendiente de probar en el teléfono** (no se puede verificar fuera de un APK real): el resto es
+idéntico a cualquier otra operación de `saveCharacter()` ya probada en el teléfono anteriormente, así
+que no se espera comportamiento distinto, pero no se verificó ahí en esta sesión.

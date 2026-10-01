@@ -32,6 +32,42 @@ function personalityLabel(id) {
 }
 
 /**
+ * UI-033: datos de un personaje NUEVO e independiente, duplicado de `character` — misma ficha (nombre
+ * con sufijo, personalidad, descripción, situación actual, primer mensaje, ejemplo de diálogo,
+ * apariencia, instrucciones de CCC-002, avatar, fondo de chat), pero en el mismo estado que un
+ * personaje recién creado respecto a memoria y relación: sin chats (no es asunto de esta función: los
+ * chats se guardan aparte, con su propio `characterId`, y nunca se tocan acá), sin lorebook, sin
+ * resumen de continuidad (vive en `Chat`, no en `Character`) y con la relación en `early`. Pura, sin
+ * guardar nada — quien llama hace `saveCharacter(duplicateCharacterData(original))`.
+ *
+ * Decisión documentada: el avatar (`avatar`/`avatarLarge`) y el fondo de chat (`chatBackground*`) se
+ * guardan como data URL DENTRO del propio registro del personaje (no como blobs en un store aparte),
+ * así que copiar el objeto los copia de verdad — no hay ninguna referencia compartida con el original
+ * que pueda romperse si uno de los dos se borra después.
+ * @param {import('../state.js').Character} character
+ * @returns {import('../state.js').Character}
+ */
+export function duplicateCharacterData(character) {
+  const now = Date.now();
+  return {
+    ...character,
+    // Mismo patrón que `newId()` en state.js (no se importa de ahí para mantener esta función pura y
+    // testeable sin IndexedDB: ese `newId` exportado depende de la instancia por defecto del backend real).
+    id: 'c' + now.toString(36) + Math.random().toString(36).slice(2, 8),
+    name: `${character.name} (copia)`,
+    created: now,
+    updated: now,
+    last: '',
+    lorebook: [],
+    lorebookPrevious: [],
+    lorebookPreviousAt: 0,
+    lorebookTombstones: [],
+    lorebookTombstonesPrevious: [],
+    relationship: { text: '', level: 'early', updated: 0, source: 'auto' },
+  };
+}
+
+/**
  * Qué mostrar y qué ocultar en la ficha, a partir del personaje — función pura, sin DOM, para poder
  * probarla. "Rasgos" nunca inventa etiquetas para una card importada sin `personalityTags`: si no las
  * tiene, usa el texto libre de `card.personality` tal cual; si tampoco hay texto, se oculta la sección.
@@ -135,7 +171,24 @@ export function openCharacterSheet(app, character, opts = {}) {
         },
       });
     });
-    nameRow.appendChild(editBtn);
+    const nameActions = el('div', 'char-sheet__nameactions');
+    nameActions.appendChild(editBtn);
+    const duplicateBtn = el('button', 'btn btn--ghost btn--sm', 'Duplicar');
+    duplicateBtn.type = 'button';
+    duplicateBtn.addEventListener('click', async () => {
+      duplicateBtn.disabled = true;
+      try {
+        const saved = await saveCharacter(duplicateCharacterData(current));
+        app.closeSheet();
+        await app.navigate('chats', { characterId: saved.id });
+        openCharacterSheet(app, saved, {});
+      } catch {
+        app.toast('No se pudo duplicar el personaje.');
+        duplicateBtn.disabled = false;
+      }
+    });
+    nameActions.appendChild(duplicateBtn);
+    nameRow.appendChild(nameActions);
     node.appendChild(nameRow);
 
     // ---------- 3. relación (MEM-014; nunca se toca, solo se lee) ----------
