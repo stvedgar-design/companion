@@ -5,6 +5,7 @@
 
 import { getSettings, saveSettings } from '../state.js';
 import { applyThemeMode, applySplitTypography } from './shell.js';
+import { logEvent, TEL_EVENTS } from '../telemetry.js';
 
 export function openAppearance(app) {
   const node = document.createElement('div');
@@ -52,6 +53,7 @@ export function openAppearance(app) {
     const splitTypography = els.split.checked;
     await saveSettings({ splitTypography });
     applySplitTypography(splitTypography);
+    logEvent(TEL_EVENTS.EXPERIMENTAL_SETTING_CHANGED, { setting: 'splitTypography', enabled: splitTypography });
   });
 
   els.modeBtns.forEach((btn) => {

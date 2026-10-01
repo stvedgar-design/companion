@@ -3,6 +3,7 @@
 // lorebook): se abre desde la ficha del personaje (UI-031; antes vivía en el menú ⋮ de un chat). La ficha es propia de la app, no forma parte de la card.
 
 import { saveCharacterAppearance } from '../state.js';
+import { logEvent, TEL_EVENTS } from '../telemetry.js';
 import { APPEARANCE_FIXED_MAX, APPEARANCE_CURRENT_MAX, sanitizeAppearance } from '../character-appearance.js';
 
 function el(tag, className, text) {
@@ -82,8 +83,13 @@ export function openCharacterAppearance(app, character, onSaved) {
     saveBtn.disabled = true;
     clearBtn.disabled = true;
     try {
+      const before = base;
       const updated = await saveCharacterAppearance(character.id, patch);
       const next = sanitizeAppearance(updated.appearance);
+      // TEL-002: solo si de verdad cambió algo (nunca el contenido, solo que se editó).
+      if (next.fixed !== before.fixed || next.current !== before.current) {
+        logEvent(TEL_EVENTS.APPEARANCE_EDITED, { characterId: character.id });
+      }
       const fixedChanged = next.fixed !== base.fixed;
       base = next;
       fixed.input.value = next.fixed;

@@ -476,7 +476,9 @@ export function createContinuityUpdater(deps) {
       if (current.text !== startSummary.text || current.updated !== startSummary.updated) return setStatus('aborted');
       await deps.saveContinuity(chat.id, { text: finalText, coveredUntil: plan.coveredUntil, updated: now() });
       attempts.delete(attemptKey);
-      return setStatus('ok', { added: recap.length, condensed, coveredMessages: plan.to - plan.from, manual: !!manual });
+      // TEL-002: `onOpen` viaja en el estado para que quien escuche `onStatus` distinga la causa (desborde, repaso
+      // al volver de MEM-010 o manual) sin que continuity.js sepa nada de telemetría.
+      return setStatus('ok', { added: recap.length, condensed, coveredMessages: plan.to - plan.from, manual: !!manual, onOpen: !!onOpen });
     } catch {
       return setStatus('error');
     } finally {

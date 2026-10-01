@@ -22,6 +22,7 @@ import {
 import { PERSONALITY_TAGS, MAX_PERSONALITY_TAGS, sanitizePersonalityTags } from '../personality-tags.js';
 import { sanitizeAppearance, APPEARANCE_FIXED_MAX, APPEARANCE_CURRENT_MAX } from '../character-appearance.js';
 import { CHARACTER_ARCHETYPES } from '../data/character-archetypes.js';
+import { logEvent, TEL_EVENTS } from '../telemetry.js';
 
 // CCC-002: ejemplos de referencia para el botón "Ejemplo" de cada campo. Inventados a propósito (nunca
 // contenido real de un personaje del usuario); en inglés, como el resto del contenido narrativo de las
@@ -416,6 +417,11 @@ async function saveFromFields(app, fields, { editing, source, opts }) {
       personalityTags,
     };
     const saved = await saveCharacter(updated);
+    // TEL-002: solo si la apariencia de verdad cambió — nunca el contenido, solo que se editó.
+    const before = sanitizeAppearance(source ? source.appearance : undefined);
+    if (appearance.fixed !== before.fixed || appearance.current !== before.current) {
+      logEvent(TEL_EVENTS.APPEARANCE_EDITED, { characterId: saved.id });
+    }
     app.toast('Guardado.');
     if (opts.onSaved) opts.onSaved(saved);
     app.closeSheet();
@@ -439,6 +445,7 @@ async function saveFromFields(app, fields, { editing, source, opts }) {
       personalityTags,
     };
     const saved = await saveCharacter(character);
+    logEvent(TEL_EVENTS.CHARACTER_CREATED, { characterId: saved.id, method: 'guided' });
     app.closeSheet();
     app.navigate('chats', { characterId: saved.id });
   }

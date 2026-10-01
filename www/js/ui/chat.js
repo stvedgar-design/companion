@@ -20,6 +20,7 @@ import {
 } from '../api/lorebook.js';
 import {
   relationshipSummary,
+  sanitizeRelationship,
   relationshipAgeText,
   relationshipDisplayText,
   relationshipForPrompt,
@@ -32,6 +33,7 @@ import { createFeelingUpdater, feelingDisplayText } from '../api/feeling.js';
 import { formatMessageTime, formatMessageFullTime } from '../msgtime.js';
 import { createContinuityUpdater, coveredCount, CONTINUITY_TOTAL_CHARS, CONTINUITY_ON_OPEN_DELAY_MS, cleanRecap, verifyRecap } from '../api/continuity.js';
 import { openCharacterSheet } from './character-sheet.js';
+import { logEvent, TEL_EVENTS } from '../telemetry.js';
 import { formatMessage } from './format.js';
 import { variantCount, activeVariantIndex, addVariant, selectVariant, editActiveText } from '../variants.js';
 import { MESSAGE_ACTIONS, availableMessageActions, revealDelta, shouldCloseOnScroll } from './msgmenu.js';
@@ -799,6 +801,7 @@ async function onSendClick() {
     messages.push({ role: 'user', text, ts: Date.now() });
     appendMessageRow(messages.length - 1);
     scrollToBottom(true);
+    logMessageEvent('user');
     await persistChat();
     await generate();
   } finally {
@@ -862,7 +865,10 @@ async function generate(opts = {}) {
     // Una respuesta completa (no cortada por el usuario) guarda sus tiempos.
     if (reply.text && firstChunkAt && !(result && result.aborted)) {
       replyMeta = { ttftMs: firstChunkAt - startedAt, totalMs: performance.now() - startedAt, chars: reply.text.length };
+      // TEL-002: solo los tiempos y el largo (números), nunca el texto.
+      logEvent(TEL_EVENTS.REPLY_TIME, { characterId: character.id, ttftMs: Math.round(replyMeta.ttftMs), totalMs: Math.round(replyMeta.totalMs), chars: replyMeta.chars });
     }
+    if (reply.text) logMessageEvent('char');
     // UI-010: qué recuerdos viajaron en el prompt de ESTE mensaje (copia; `[]` si ninguno).
     if (result && Array.isArray(result.loreUsed)) reply.loreUsed = result.loreUsed;
     // Vacía tras el reintento automático: no se guarda nada (ver `finally`) y
@@ -992,6 +998,13 @@ async function persistChat() {
 // errores en el flujo normal del chat.
 let sendInFlight = false;
 
+// TEL-002: conteo de mensajes por personaje y por día (nunca el contenido). `day` en UTC para no depender
+// de la zona horaria del teléfono.
+function logMessageEvent(role) {
+  if (!character) return;
+  logEvent(TEL_EVENTS.MESSAGE, { characterId: character.id, role, day: new Date().toISOString().slice(0, 10) });
+}
+
 const loreUpdater = createLoreUpdater({
   getContext: () => (character && chat && settings ? { character, chat, messages, settings } : null),
   isChatBusy: () => busy || sendInFlight || continuityUpdater.isRunning() || relationshipUpdater.isRunning() || feelingUpdater.isRunning(),
@@ -1016,6 +1029,11 @@ const loreUpdater = createLoreUpdater({
   },
   // MEM-012: aviso en el momento (mismo punto donde ya se detecta un recuerdo nuevo; no duplica nada).
   onStatus: (status) => {
+    if (status.kind === 'ok' && character) {
+      // TEL-002: solo cuántos recuerdos se crearon/fusionaron.
+      if (status.added > 0) logEvent(TEL_EVENTS.MEMORY_CREATED, { characterId: character.id, source: 'auto', count: status.added });
+      if (status.updated > 0) logEvent(TEL_EVENTS.MEMORY_MERGED, { characterId: character.id, count: status.updated });
+    }
     if (status.kind !== 'ok' || !status.added) return;
     const entries = status.addedEntries || [];
     const name = (character && character.name) || 'Tu personaje';
@@ -1058,6 +1076,11 @@ const continuityUpdater = createContinuityUpdater({
   // MEM-012: mismo punto donde ya se detecta que el resumen se actualizó.
   onStatus: (status) => {
     if (status.kind !== 'ok') return;
+    if (character && chat) {
+      // TEL-002: causa del resumen, nunca su texto.
+      const cause = status.manual ? 'manual' : status.onOpen ? 'resume' : 'overflow';
+      logEvent(TEL_EVENTS.CONTINUITY_UPDATED, { characterId: character.id, chatId: chat.id, cause });
+    }
     const name = (character && character.name) || 'Tu personaje';
     app.toast(`${name} repasó lo que ha pasado hasta ahora.`, { onClick: () => openContinuitySheet() });
   },
@@ -1074,6 +1097,7 @@ function maybeUpdateContinuity() {
 // (niveles, selección de recuerdos, verificación, respaldo determinista) vive en api/relationship.js;
 // `cleanText`/`verifyText` reutilizan `cleanRecap`/`verifyRecap` del resumen de continuidad (MEM-007) —
 // se inyectan en vez de importarse para no crear un ciclo (continuity.js ya importa relationship.js).
+let relationshipLevelBefore = 'early';
 const relationshipUpdater = createRelationshipUpdater({
   getContext: () => (character && chat && settings ? { character, chat, messages, settings } : null),
   isChatBusy: () => busy || sendInFlight || loreUpdater.isRunning() || continuityUpdater.isRunning() || feelingUpdater.isRunning(),
@@ -1083,12 +1107,18 @@ const relationshipUpdater = createRelationshipUpdater({
   verifyText: verifyRecap,
   loadCharacter: (characterId) => getCharacter(characterId),
   saveRelationship: async (characterId, patch) => {
+    // TEL-002: solo LEE el nivel guardado antes de pisarlo, para registrar de→a en onLevelChanged.
+    relationshipLevelBefore = sanitizeRelationship(character && character.relationship).level;
     const updated = await saveCharacterRelationship(characterId, patch);
     if (character && character.id === characterId) character = updated;
   },
   // MEM-012: mismo punto donde ya se detecta el cambio de nivel (MEM-014). Más presencia visual que
   // un aviso normal, como pide el contrato, pero el mismo componente (no un modal).
-  onLevelChanged: () => {
+  onLevelChanged: ({ level } = {}) => {
+    // TEL-002: escala vigente de MEM-014 (early/growing/established); si regeneró en el mismo nivel, no es un cambio.
+    if (character && level && level !== relationshipLevelBefore) {
+      logEvent(TEL_EVENTS.RELATIONSHIP_LEVEL_CHANGED, { characterId: character.id, from: relationshipLevelBefore, to: level });
+    }
     const name = (character && character.name) || 'Tu personaje';
     app.toast(`Tu relación con ${name} ha crecido.`, { prominent: true, ms: 5000, onClick: () => openLorebookSheet() });
   },
@@ -1459,6 +1489,7 @@ function openLorebookSheet(note = '') {
         },
         names: [character.card.name || character.name, settings && settings.user],
       });
+      if (result.merged > 0) logEvent(TEL_EVENTS.MEMORY_MERGED, { characterId: character.id, count: result.merged });
       openLorebookSheet(loreCleanMessage(result));
     } catch {
       openLorebookSheet('No se pudo limpiar. No se cambió nada.');
@@ -1614,6 +1645,7 @@ function openLoreEdit(entryId) {
         return;
       }
       character = await saveCharacterLorebook(character.id, next);
+      logEvent(TEL_EVENTS.MEMORY_EDITED, { characterId: character.id });
       openLorebookSheet('Recuerdo guardado.');
     } catch {
       error.textContent = 'No se pudo guardar el cambio.';
@@ -1681,6 +1713,7 @@ function openLoreDeleteConfirm(entryId) {
         tombstones: nextTombstones,
         previousTombstones: prevTombstones,
       });
+      logEvent(TEL_EVENTS.MEMORY_DELETED, { characterId: character.id });
       maybeUpdateRelationship(); // MEM-014: borrar reduce el total; pudo cruzar de nivel
       return 'Recuerdo borrado.';
     },
@@ -1861,6 +1894,7 @@ function openContinuitySheet(note = '') {
     autoBox.disabled = true;
     try {
       settings = await saveSettings({ continuityAuto: enable });
+      logEvent(TEL_EVENTS.EXPERIMENTAL_SETTING_CHANGED, { setting: 'continuityAuto', enabled: enable });
       openContinuitySheet(enable ? 'Resumen automático activado.' : 'Resumen automático desactivado.');
     } catch {
       autoBox.checked = !enable;

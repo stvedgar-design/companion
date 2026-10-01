@@ -14,6 +14,8 @@ import { applyMessageFontSize } from './shell.js';
 import { APP_VERSION } from '../version.js';
 import { runFluencyTest, FLUENCY_SECONDS } from './fluency.js';
 import { openDiagnostics } from './diagnostics.js';
+import { logEvent, TEL_EVENTS } from '../telemetry.js';
+import { openUsageReport } from './usage-report.js';
 import { startImport } from './backup-import.js';
 import { getPersistenceResult, describePersistence } from '../persist.js';
 
@@ -132,6 +134,14 @@ export function openSettings(app) {
       <div class="field__hint">Prueba de estrés con datos inventados para medir qué tan fluida va la app en este teléfono.</div>
     </div>
 
+    <div class="field">
+      <label class="field__label">Informe de uso</label>
+      <div class="settings-row">
+        <button class="btn btn--ghost btn--sm" id="settings-usage-report" type="button">Exportar informe de uso</button>
+      </div>
+      <div class="field__hint">Cuántos recuerdos, resúmenes y mensajes hubo, y qué ajustes probaste — solo números y fechas, nunca el texto de tus chats. Registrado desde que esta función se activó, no antes. Nada sale del teléfono salvo que tú lo exportes.</div>
+    </div>
+
     <div class="settings-version">Companion v${APP_VERSION}</div>
   `;
 
@@ -153,6 +163,7 @@ export function openSettings(app) {
     search: q('#settings-search'),
     searchEmpty: q('#settings-search-empty'),
     diag: q('#settings-diag'),
+    usageReport: q('#settings-usage-report'),
     fluency: q('#settings-fluency'),
     fluencyResult: q('#settings-fluency-result'),
     fluencyCopyRow: q('#settings-fluency-copyrow'),
@@ -255,10 +266,12 @@ export function openSettings(app) {
 
   els.variety.addEventListener('change', () => {
     saveSettings({ varietyAssist: els.variety.checked });
+    logEvent(TEL_EVENTS.EXPERIMENTAL_SETTING_CHANGED, { setting: 'varietyAssist', enabled: els.variety.checked });
   });
 
   els.format.addEventListener('change', () => {
     saveSettings({ formatAssist: els.format.checked });
+    logEvent(TEL_EVENTS.EXPERIMENTAL_SETTING_CHANGED, { setting: 'formatAssist', enabled: els.format.checked });
   });
 
   els.feelings.addEventListener('change', () => {
@@ -287,6 +300,7 @@ export function openSettings(app) {
   });
 
   els.diag.addEventListener('click', () => openDiagnostics(app));
+  els.usageReport.addEventListener('click', () => openUsageReport(app));
 
   // UI-001: mide la fluidez del desplazamiento (ver ui/fluency.js). Nada sale del teléfono.
   let fluencyText = '';
