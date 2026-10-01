@@ -62,6 +62,10 @@ import { sanitizeFeeling } from './api/feeling.js';
  * @property {{content: string, keys: string[], at: number}[]} lorebookTombstonesPrevious  // copia de
  *   `lorebookTombstones` de ANTES de la operación que dejó el nivel de "Deshacer" actual (pareja de
  *   `lorebookPrevious`/`lorebookPreviousAt`); [] por defecto
+ * @property {(LoreEntry & { archivedAt: number })[]} lorebookArchive  // MEM-016: recuerdos "borrados" por el usuario, ARCHIVADOS en vez
+ *   de eliminados. Lista aparte (no un campo dentro de `lorebook`) a propósito: así prompt, relación, avisos, resumen y
+ *   cualquier lector de `character.lorebook` los ignoran sin filtrar nada. Un recuerdo vive en UNA de las dos listas (si un
+ *   "Deshacer" lo devuelve a `lorebook`, `sanitizeCharacterExtras` lo quita de aquí). [] por defecto (todo lo anterior queda activo).
  * @property {{ fixed: string, current: string, updated: number }} appearance  // MEM-009: ficha de apariencia propia de la app (NO es parte de la card);
  *   `fixed` (rasgos fijos, ≤200 car.) va a la cabecera del prompt, `current` (ropa/estado, ≤100) al final. Vacía por defecto; ver character-appearance.js
  * @property {{ text: string, level: 'early'|'growing'|'established', updated: number, source: 'auto'|'manual' }} relationship  // MEM-014: estado
@@ -336,6 +340,30 @@ function sanitizeTombstone(raw) {
   return { content, keys, at: Number.isFinite(raw.at) ? raw.at : Date.now() };
 }
 
+// MEM-016: tope de recuerdos archivados por personaje (generoso: son pocos y de texto corto).
+const LOREBOOK_ARCHIVE_MAX = 200;
+
+// Un recuerdo archivado es un recuerdo válido + cuándo se archivó. `archivedAt` ausente/inválido = ahora.
+function sanitizeArchivedEntry(raw) {
+  const entry = sanitizeLoreEntry(raw);
+  if (!entry) return null;
+  return { ...entry, archivedAt: Number.isFinite(raw.archivedAt) ? raw.archivedAt : Date.now() };
+}
+
+function sanitizeArchive(raw, activeEntries) {
+  if (!Array.isArray(raw)) return [];
+  const active = new Set((activeEntries || []).map((e) => e.id));
+  const seen = new Set();
+  const out = [];
+  for (const item of raw) {
+    const entry = sanitizeArchivedEntry(item);
+    if (!entry || active.has(entry.id) || seen.has(entry.id)) continue;
+    seen.add(entry.id);
+    out.push(entry);
+  }
+  return out.slice(-LOREBOOK_ARCHIVE_MAX);
+}
+
 function sanitizeTombstones(raw) {
   if (!Array.isArray(raw)) return [];
   return raw.map(sanitizeTombstone).filter(Boolean).slice(-LOREBOOK_TOMBSTONES_MAX);
@@ -355,6 +383,7 @@ function sanitizeCharacterExtras(raw) {
   const lorebookPreviousAt = Number.isFinite(raw.lorebookPreviousAt) ? raw.lorebookPreviousAt : 0;
   const lorebookTombstones = sanitizeTombstones(raw.lorebookTombstones);
   const lorebookTombstonesPrevious = sanitizeTombstones(raw.lorebookTombstonesPrevious);
+  const lorebookArchive = sanitizeArchive(raw.lorebookArchive, lorebook);
   const formatStyle = raw.formatStyle === 'plain' ? 'plain' : DEFAULT_FORMAT_STYLE;
   const personalityTags = sanitizePersonalityTags(raw.personalityTags);
   return {
@@ -364,6 +393,7 @@ function sanitizeCharacterExtras(raw) {
     lorebookPreviousAt,
     lorebookTombstones,
     lorebookTombstonesPrevious,
+    lorebookArchive,
     appearance: sanitizeAppearance(raw.appearance),
     relationship: sanitizeRelationship(raw.relationship),
     ...sanitizeCharacterBackground(raw),
@@ -495,6 +525,8 @@ export function createState(backend) {
   // (array) reemplaza la lista actual de lápidas; `previousTombstones` guarda/borra la pareja de
   // `previous` para que "Deshacer" también revierta lápidas (mismo criterio: array = guarda, null =
   // borra, undefined = no toca). Sin este parámetro, las lápidas no se tocan.
+  // `tombstonesPatch.archive` (opcional, MEM-016): array = reemplaza la lista de recuerdos archivados; ausente = no
+  // la toca. Va en el mismo objeto porque archivar/restaurar cambia lorebook, lápidas y archivo a la vez, en un solo guardado.
   async function saveCharacterLorebook(characterId, lorebook, previous, tombstonesPatch) {
     const character = await getCharacter(characterId);
     if (!character) throw new Error('El personaje no existe.');
@@ -513,6 +545,9 @@ export function createState(backend) {
       patch.lorebookTombstonesPrevious = tombstonesPatch.previousTombstones;
     } else if (tombstonesPatch && tombstonesPatch.previousTombstones === null) {
       patch.lorebookTombstonesPrevious = [];
+    }
+    if (tombstonesPatch && Array.isArray(tombstonesPatch.archive)) {
+      patch.lorebookArchive = tombstonesPatch.archive;
     }
     const updated = sanitizeCharacterExtras({ ...character, ...patch });
     await backend.put('characters', characterId, updated);

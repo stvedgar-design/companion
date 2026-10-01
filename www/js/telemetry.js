@@ -23,6 +23,8 @@ export const TEL_EVENTS = Object.freeze({
   MEMORY_MERGED: 'memory_merged',
   MEMORY_EDITED: 'memory_edited',
   MEMORY_DELETED: 'memory_deleted',
+  MEMORY_ARCHIVED: 'memory_archived',
+  MEMORY_RESTORED: 'memory_restored',
   CONTINUITY_UPDATED: 'continuity_updated',
   RELATIONSHIP_LEVEL_CHANGED: 'relationship_level_changed',
   EXPERIMENTAL_SETTING_CHANGED: 'experimental_setting_changed',

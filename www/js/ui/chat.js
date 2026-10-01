@@ -8,6 +8,10 @@ import {
   createLoreUpdater,
   editLoreEntry,
   removeLoreEntry,
+  archiveLoreEntry,
+  restoreLoreEntry,
+  purgeArchivedEntry,
+  removeTombstonesFor,
   parseKeysInput,
   cleanStoredLorebook,
   loreBudgetPreview,
@@ -1498,6 +1502,14 @@ function openLorebookSheet(note = '') {
 
   wrap.append(autoRow, autoHint, progress, refreshBtn, costHint, undoBtn, cleanBtn, cleanHint);
 
+  // MEM-016: entrada a los recuerdos archivados (con su cantidad).
+  const archivedCount = (character.lorebookArchive || []).length;
+  const archiveBtn = loreEl('button', 'btn btn--ghost', `Recuerdos archivados (${archivedCount})`);
+  archiveBtn.type = 'button';
+  archiveBtn.style.marginTop = 'var(--space-2, 8px)';
+  archiveBtn.addEventListener('click', () => openLoreArchiveSheet());
+  wrap.appendChild(archiveBtn);
+
   // MEM-004: "Siempre presentes" (van en cada respuesta, con tope) y "Por tema" (solo cuando sale una palabra clave).
   const all = character.lorebook || [];
   const alwaysEntries = all.filter((e) => e.always);
@@ -1664,7 +1676,9 @@ function openLoreEdit(entryId) {
 // CIERRA la hoja al responder y obligaría a reabrirla: esa secuencia
 // cerrar+abrir es justo la carrera con el historial que ya dio un bug real,
 // ver docs/NOTES.md, "Bugs reales encontrados usando la app").
-function openLoreConfirm(message, confirmText, onConfirm, danger) {
+// `back(note)`: a dónde vuelve tras cancelar o confirmar (por defecto, la pantalla principal del lorebook;
+// MEM-016: la vista de archivados vuelve a sí misma).
+function openLoreConfirm(message, confirmText, onConfirm, danger, back = openLorebookSheet) {
   const wrap = loreEl('div');
   wrap.appendChild(loreEl('p', 'sheet__title', message));
   const actions = loreEl('div');
@@ -1674,16 +1688,16 @@ function openLoreConfirm(message, confirmText, onConfirm, danger) {
   const cancelBtn = loreEl('button', 'btn btn--ghost', 'Cancelar');
   cancelBtn.type = 'button';
   cancelBtn.style.flex = '1';
-  cancelBtn.addEventListener('click', () => openLorebookSheet());
+  cancelBtn.addEventListener('click', () => back());
   const okBtn = loreEl('button', danger ? 'btn btn--danger' : 'btn', confirmText);
   okBtn.type = 'button';
   okBtn.style.flex = '1';
   okBtn.addEventListener('click', async () => {
     okBtn.disabled = true;
     try {
-      openLorebookSheet(await onConfirm());
+      back(await onConfirm());
     } catch {
-      openLorebookSheet('No se pudo guardar el cambio.');
+      back('No se pudo guardar el cambio.');
     }
   });
   actions.append(cancelBtn, okBtn);
@@ -1691,6 +1705,9 @@ function openLoreConfirm(message, confirmText, onConfirm, danger) {
   app.openSheet(wrap);
 }
 
+// MEM-016: "Borrar" ahora ARCHIVA. El recuerdo sale de la lista y deja de usarse (prompt, relación), pero se conserva
+// en "Recuerdos archivados", de donde se puede restaurar o borrar de verdad. Sigue dejando la lápida de MEM-013 (así la
+// extracción automática no lo vuelve a crear mientras esté archivado) y habilita "Deshacer" para este paso.
 function openLoreDeleteConfirm(entryId) {
   const entry = ((character && character.lorebook) || []).find((e) => e.id === entryId);
   if (!entry) {
@@ -1699,25 +1716,107 @@ function openLoreDeleteConfirm(entryId) {
   }
   const preview = entry.content.length > 120 ? entry.content.slice(0, 120) + '…' : entry.content;
   openLoreConfirm(
-    `¿Borrar este recuerdo? «${preview}»`,
-    'Borrar',
+    `Archivar este recuerdo. Podrás recuperarlo después. «${preview}»`,
+    'Archivar',
     async () => {
-      // MEM-013: al borrar, deja una lápida (así la extracción automática no lo trae de vuelta) y
-      // habilita "Deshacer" para este borrado en particular (revierte el recuerdo Y la lápida).
-      const fresh = await freshLorebook();
-      const deleted = fresh.find((e) => e.id === entryId);
-      const nextEntries = removeLoreEntry(fresh, entryId);
-      const prevTombstones = character.lorebookTombstones || [];
-      const nextTombstones = deleted ? addTombstone(prevTombstones, deleted) : prevTombstones;
-      character = await saveCharacterLorebook(character.id, nextEntries, fresh, {
-        tombstones: nextTombstones,
+      const fresh = await getCharacter(character.id);
+      const current = (fresh && fresh.lorebook) || [];
+      const moved = archiveLoreEntry(current, (fresh && fresh.lorebookArchive) || [], entryId);
+      if (!moved.archived) return 'Ese recuerdo ya no existe.';
+      const prevTombstones = (fresh && fresh.lorebookTombstones) || [];
+      character = await saveCharacterLorebook(character.id, moved.entries, current, {
+        tombstones: addTombstone(prevTombstones, moved.archived),
         previousTombstones: prevTombstones,
+        archive: moved.archive,
+      });
+      logEvent(TEL_EVENTS.MEMORY_ARCHIVED, { characterId: character.id });
+      maybeUpdateRelationship(); // MEM-014: archivar reduce el total de recuerdos activos; pudo cruzar de nivel
+      return 'Recuerdo archivado. Puedes recuperarlo en «Recuerdos archivados».';
+    },
+    false
+  );
+}
+
+// MEM-016: vista de archivados (dentro de la misma pantalla de lorebook, un paso más adentro).
+function openLoreArchiveSheet(note = '') {
+  if (!character) return;
+  const archive = (character.lorebookArchive || []).slice().sort((a, b) => (b.archivedAt || 0) - (a.archivedAt || 0));
+  const wrap = loreEl('div');
+  wrap.appendChild(loreEl('h3', 'sheet__title', `Recuerdos archivados de ${character.name}`));
+  wrap.appendChild(
+    loreEl('div', 'field__hint', 'No se usan en las respuestas ni cuentan para la relación. Restaura los que quieras volver a tener, o bórralos para siempre.')
+  );
+  if (note) wrap.appendChild(loreEl('div', 'field__label', note));
+  if (!archive.length) wrap.appendChild(loreEl('div', 'field__hint', 'No hay recuerdos archivados.'));
+  archive.forEach((entry) => {
+    const field = loreEl('div', 'field');
+    field.appendChild(loreEl('div', 'field__label', entry.content));
+    field.appendChild(loreEl('div', 'field__hint', `Archivado ${relationshipAgeText(entry.archivedAt)}`));
+    const actions = loreEl('div');
+    actions.style.display = 'flex';
+    actions.style.gap = 'var(--space-2, 8px)';
+    actions.style.marginTop = 'var(--space-2, 8px)';
+    const restoreBtn = loreEl('button', 'btn btn--sm', 'Restaurar');
+    restoreBtn.type = 'button';
+    restoreBtn.addEventListener('click', async () => {
+      restoreBtn.disabled = true;
+      try {
+        const fresh = await getCharacter(character.id);
+        const current = (fresh && fresh.lorebook) || [];
+        const moved = restoreLoreEntry(current, (fresh && fresh.lorebookArchive) || [], entry.id);
+        if (!moved.restored) {
+          openLoreArchiveSheet('Ese recuerdo ya no está archivado.');
+          return;
+        }
+        // Sin `previous`: el "Deshacer" de memoria no se pisa por restaurar.
+        character = await saveCharacterLorebook(character.id, moved.entries, undefined, {
+          tombstones: removeTombstonesFor((fresh && fresh.lorebookTombstones) || [], moved.restored),
+          archive: moved.archive,
+        });
+        logEvent(TEL_EVENTS.MEMORY_RESTORED, { characterId: character.id });
+        maybeUpdateRelationship(); // MEM-014: restaurar aumenta el total; pudo cruzar de nivel
+        openLoreArchiveSheet('Recuerdo restaurado.');
+      } catch {
+        openLoreArchiveSheet('No se pudo restaurar.');
+      }
+    });
+    const purgeBtn = loreEl('button', 'btn btn--sm btn--ghost', 'Borrar para siempre');
+    purgeBtn.type = 'button';
+    purgeBtn.addEventListener('click', () => openLorePurgeConfirm(entry.id));
+    actions.append(restoreBtn, purgeBtn);
+    field.appendChild(actions);
+    wrap.appendChild(field);
+  });
+  const backBtn = loreEl('button', 'btn btn--ghost', 'Volver al lorebook');
+  backBtn.type = 'button';
+  backBtn.style.marginTop = 'var(--space-3, 12px)';
+  backBtn.addEventListener('click', () => openLorebookSheet());
+  wrap.appendChild(backBtn);
+  app.openSheet(wrap);
+}
+
+// MEM-016: borrado definitivo, solo desde archivados y con aviso fuerte (no se puede deshacer).
+function openLorePurgeConfirm(entryId) {
+  const entry = ((character && character.lorebookArchive) || []).find((e) => e.id === entryId);
+  if (!entry) {
+    openLoreArchiveSheet('Ese recuerdo ya no está archivado.');
+    return;
+  }
+  const preview = entry.content.length > 120 ? entry.content.slice(0, 120) + '…' : entry.content;
+  openLoreConfirm(
+    `¿Borrar PARA SIEMPRE este recuerdo? No se podrá recuperar ni deshacer. «${preview}»`,
+    'Borrar para siempre',
+    async () => {
+      const fresh = await getCharacter(character.id);
+      const current = (fresh && fresh.lorebook) || [];
+      character = await saveCharacterLorebook(character.id, current, undefined, {
+        archive: purgeArchivedEntry((fresh && fresh.lorebookArchive) || [], entryId),
       });
       logEvent(TEL_EVENTS.MEMORY_DELETED, { characterId: character.id });
-      maybeUpdateRelationship(); // MEM-014: borrar reduce el total; pudo cruzar de nivel
-      return 'Recuerdo borrado.';
+      return 'Recuerdo borrado para siempre.';
     },
-    true
+    true,
+    openLoreArchiveSheet
   );
 }
 

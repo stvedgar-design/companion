@@ -1001,6 +1001,64 @@ export function removeLoreEntry(entries, id) {
   return (Array.isArray(entries) ? entries : []).filter((e) => e && e.id !== id);
 }
 
+/* ---------- MEM-016: archivar recuerdos en vez de borrarlos (funciones puras) ---------- */
+
+/**
+ * Archiva un recuerdo: sale de `entries` (deja de ir al prompt y de contar para la relación) y pasa a `archive`
+ * con la fecha. Si el id no existe, no cambia nada. Pura.
+ * @param {LoreEntry[]} entries
+ * @param {(LoreEntry & { archivedAt: number })[]} archive
+ * @param {string} id
+ * @param {number} [now]
+ * @returns {{ entries: LoreEntry[], archive: (LoreEntry & { archivedAt: number })[], archived: LoreEntry|null }}
+ */
+export function archiveLoreEntry(entries, archive, id, now = Date.now()) {
+  const list = Array.isArray(entries) ? entries : [];
+  const found = list.find((e) => e && e.id === id) || null;
+  const prev = Array.isArray(archive) ? archive : [];
+  if (!found) return { entries: list, archive: prev, archived: null };
+  return {
+    entries: removeLoreEntry(list, id),
+    archive: [...prev.filter((e) => e && e.id !== id), { ...found, archivedAt: now }],
+    archived: found,
+  };
+}
+
+/**
+ * Restaura un recuerdo archivado a la lista activa (sin `archivedAt`, con `updated` = ahora para que cuente como
+ * reciente). Si el id no está archivado, no cambia nada. Pura.
+ */
+export function restoreLoreEntry(entries, archive, id, now = Date.now()) {
+  const list = Array.isArray(entries) ? entries : [];
+  const prev = Array.isArray(archive) ? archive : [];
+  const found = prev.find((e) => e && e.id === id) || null;
+  if (!found) return { entries: list, archive: prev, restored: null };
+  const { archivedAt: _at, ...entry } = found;
+  const restored = { ...entry, updated: now };
+  return {
+    entries: [...list.filter((e) => e && e.id !== id), restored],
+    archive: prev.filter((e) => e && e.id !== id),
+    restored,
+  };
+}
+
+/** Borrado DEFINITIVO de un recuerdo archivado (la única vía que de verdad elimina un recuerdo). Pura. */
+export function purgeArchivedEntry(archive, id) {
+  return (Array.isArray(archive) ? archive : []).filter((e) => e && e.id !== id);
+}
+
+/**
+ * Quita las lápidas de `entry` (mismo contenido): al restaurar un recuerdo, la extracción automática ya no debe
+ * tratarlo como "borrado". Pura.
+ * @param {LoreTombstone[]} tombstones
+ * @param {LoreEntry} entry
+ * @returns {LoreTombstone[]}
+ */
+export function removeTombstonesFor(tombstones, entry) {
+  const content = collapse(entry && entry.content);
+  return (Array.isArray(tombstones) ? tombstones : []).filter((t) => t && collapse(t.content) !== content);
+}
+
 /* ---------- actualizador: prioridad al chat, sin competir con él ---------- */
 
 function makeGenKey() {

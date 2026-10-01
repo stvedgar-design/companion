@@ -83,7 +83,10 @@ function characterSection(character, events) {
   lines.push(`- Recuerdos creados automáticamente: ${sumField(memCreated, 'count')} (en ${memCreated.length} actualizaciones de memoria).`);
   lines.push(`- Recuerdos fusionados: ${sumField(memMerged, 'count')} (en ${memMerged.length} actualizaciones o limpiezas).`);
   lines.push(`- Recuerdos editados a mano: ${memEdited}.`);
-  lines.push(`- Recuerdos borrados: ${memDeleted}.`);
+  const memArchived = mine.filter((e) => e.type === 'memory_archived').length;
+  const memRestored = mine.filter((e) => e.type === 'memory_restored').length;
+  lines.push(`- Recuerdos archivados: ${memArchived} (restaurados: ${memRestored}).`);
+  lines.push(`- Recuerdos borrados para siempre: ${memDeleted}.`);
 
   const levelChanges = mine.filter((e) => e.type === 'relationship_level_changed');
   if (levelChanges.length) {
@@ -207,6 +210,8 @@ export function buildUsageReport(raw) {
           memoryCreated: sumField(mine.filter((e) => e.type === 'memory_created'), 'count'),
           memoryMerged: sumField(mine.filter((e) => e.type === 'memory_merged'), 'count'),
           memoryEdited: mine.filter((e) => e.type === 'memory_edited').length,
+          memoryArchived: mine.filter((e) => e.type === 'memory_archived').length,
+          memoryRestored: mine.filter((e) => e.type === 'memory_restored').length,
           memoryDeleted: mine.filter((e) => e.type === 'memory_deleted').length,
           relationshipLevelChanges: mine.filter((e) => e.type === 'relationship_level_changed').length,
           continuityUpdated: countBy(mine.filter((e) => e.type === 'continuity_updated'), (e) => e.cause),
