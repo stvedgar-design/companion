@@ -62,6 +62,9 @@ anotar como hallazgo de alta prioridad si alguna pantalla forzaba la galería (`
 
 ## 2. Hallazgo prioritario: botón del nombre en la cabecera del chat, sin su propio estilo
 
+> **Corregido por UI-029 (2026-09-30).** `chat.js:83` ahora usa `chat-head__name` (la regla que ya
+> existía) en vez de `chat-head__namebtn`. El resto de esta sección queda como diagnóstico histórico.
+
 **Hecho — bug real, contradice `docs/DESIGN.md`.** El botón que abre la ficha del personaje
 (UI-027) existe en dos pantallas, con dos nombres de clase CSS que deberían ser equivalentes pero NO
 lo son:

@@ -80,7 +80,7 @@ export function init(rootEl, appApi) {
     <div class="topbar">
       <button class="ib" type="button" id="chat-back" aria-label="Volver">${ICON_BACK}</button>
       <div class="chat-head" id="chat-head">
-        <button class="chat-head__namebtn" type="button" id="chat-head-name" aria-label="Ver ficha del personaje"></button>
+        <button class="chat-head__name" type="button" id="chat-head-name" aria-label="Ver ficha del personaje"></button>
       </div>
       <button class="ib" type="button" id="chat-menu" aria-label="Más">${ICON_MENU}</button>
     </div>

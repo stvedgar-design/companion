@@ -2880,3 +2880,36 @@ reporte ("DEBERÍA medir o estimar"), no como criterio de aceptación estricto.
 
 **`git status` al terminar:** solo cambios dentro de `docs/` (`UX-BLUEPRINT.md` nuevo, `NOTES.md` y
 `HISTORIAL.md` editados), sin tocar `www/`, `tests/`, `.github/` ni `signing/`.
+
+## UI-029 (2026-09-30): corregir el botón de nombre en la cabecera del chat
+
+Primero de cuatro contratos de esta sesión (UI-029 a UI-032), todos derivados de los hallazgos y la
+propuesta de `docs/UX-BLUEPRINT.md` (ARQ-003).
+
+**Contexto y causa confirmada.** `UX-BLUEPRINT.md` sección 2 documentó, con cita, que el botón que
+abre la ficha del personaje dentro de un chat (`chat.js:83`) usaba la clase
+`chat-head__namebtn` ("chat" sin la "s"), sin ninguna regla CSS propia en todo el proyecto
+(confirmado de nuevo con `grep -rn "chat-head__name" www/css/ www/js/` antes de tocar nada: el único
+resultado en `www/js/` era esa misma línea). Su gemelo en la lista de chats (`chats.js:27`) usa
+`chats-head__namebtn` ("chats" con "s"), que sí tiene regla en `base.css:103-117`. La clase parecida
+`chat-head__name` (sin "btn") ya existía en `chat.css:14-36`, con `min-height: 44px` y la flecha "›"
+— exactamente el estilo que le faltaba al botón real, solo que con un nombre distinto.
+
+**Decisión.** De las dos opciones que permitía el contrato, se eligió (a): cambiar la clase del botón
+en `chat.js:83` de `chat-head__namebtn` a `chat-head__name`, en vez de (b) agregar una regla CSS
+nueva. Es el cambio de menor riesgo (una palabra, un archivo) y reutiliza la regla ya diseñada para
+este propósito exacto en vez de duplicarla.
+
+**Verificado en el navegador integrado (375×812, servidor estático local):** se sembró un personaje y
+un chat en IndexedDB a mano (`import('/js/state.js')` + `saveSettings`/`saveCharacter`/`createChat`/
+`saveChatMessages` desde la consola de la página, mismo patrón que sesiones anteriores). Con
+`javascript_tool` se leyó `getBoundingClientRect()` del botón real: `height: 44`, `className:
+"chat-head__name"`, texto "Mia" — y la flecha "›" visible en la captura de pantalla. Se confirmó que
+sigue abriendo la ficha del personaje (UI-027) sin cambios de comportamiento.
+
+**Tests.** `node --check www/js/ui/chat.js` limpio; `node --test tests/*.test.mjs` sigue en 630/630
+(ningún test dependía del nombre de esa clase). No se agregó ningún test nuevo: es un cambio de una
+sola clase CSS en una sola línea, ya cubierto por la verificación visual.
+
+**Fuera de alcance, sin tocar:** `chats.js`, `base.css` (solo lectura), el resto de la cabecera del
+chat (atrás, menú ⋮).
