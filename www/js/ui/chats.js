@@ -2,7 +2,8 @@
 // Lista de chats de un personaje (adenda "varios chats por personaje").
 // Mismo patrón init/show/hide que las demás vistas.
 
-import { getCharacter, listChats, createChat, deleteChat, renameChat } from '../state.js';
+import { getCharacter, listChats, createChat, deleteChat, renameChat, saveChatArchive, activeChats, archivedChats, isChatArchivePending } from '../state.js';
+import { relationshipAgeText } from '../api/relationship.js';
 import { openCharacterSheet } from './character-sheet.js';
 import { openLorebookFromOutside } from './chat.js';
 
@@ -15,7 +16,8 @@ const SCENARIO_MAX = 500;
 let app = null;
 let els = {};
 let character = null;
-let chats = [];
+let chats = []; // MEM-018: solo los episodios ACTIVOS (los archivados se ven en su propia hoja)
+let allChats = []; // todos, archivados incluidos
 
 export function init(root, appApi) {
   app = appApi;
@@ -74,6 +76,12 @@ function onOpenCharacterSheet() {
   });
 }
 
+// MEM-018: recarga las dos listas a la vez (activos para la pantalla, todos para saber si hay archivados).
+async function reloadChats() {
+  allChats = await listChats(character.id);
+  chats = activeChats(allChats);
+}
+
 export async function show({ characterId } = {}) {
   character = await getCharacter(characterId);
   if (!character) {
@@ -85,9 +93,11 @@ export async function show({ characterId } = {}) {
   els.headName.textContent = headTitle(character.name);
   setAvatar(els.headAv, character);
 
-  chats = await listChats(characterId);
+  await reloadChats();
 
-  if (!chats.length) {
+  // Solo se crea un episodio solo si el personaje NO tiene ninguno (ni siquiera archivado): con todos archivados se muestra la lista
+  // vacía, para que se pueda abrir «Episodios archivados» y restaurar.
+  if (!allChats.length) {
     // Caso normal: personaje recién creado o recién migrado, sin chats
     // todavía. Se crea uno solo y se entra directo, sin paso extra.
     try {
@@ -126,12 +136,89 @@ function renderList() {
   if (!chats.length) {
     const empty = document.createElement('div');
     empty.className = 'empty';
-    empty.innerHTML = 'Todavía no hay episodios.<br>Toca «+ Nuevo episodio» abajo para empezar uno.';
+    empty.innerHTML = archivedChats(allChats).length
+      ? 'No tienes episodios activos.<br>Toca «+ Nuevo episodio» abajo, o restaura uno archivado.'
+      : 'Todavía no hay episodios.<br>Toca «+ Nuevo episodio» abajo para empezar uno.';
     els.list.appendChild(empty);
-    return;
   }
 
   chats.forEach(renderRow);
+
+  // MEM-018: entrada a los episodios archivados (solo si hay alguno).
+  const archived = archivedChats(allChats);
+  if (archived.length) {
+    const archivedBtn = document.createElement('button');
+    archivedBtn.type = 'button';
+    archivedBtn.className = 'menu-item';
+    archivedBtn.textContent = `Episodios archivados (${archived.length})`;
+    archivedBtn.addEventListener('click', () => openArchivedSheet());
+    els.list.appendChild(archivedBtn);
+  }
+}
+
+// MEM-018: hoja de episodios archivados. Cada uno se puede ABRIR (solo lectura, con su transcripción completa) o RESTAURAR
+// (vuelve a la lista normal con todos sus mensajes; no se modifica nada del chat).
+function openArchivedSheet(note = '') {
+  const wrap = document.createElement('div');
+  const title = document.createElement('h3');
+  title.className = 'sheet__title';
+  title.textContent = `Episodios archivados de ${character.name}`;
+  wrap.appendChild(title);
+  if (note) {
+    const n = document.createElement('div');
+    n.className = 'field__label';
+    n.setAttribute('role', 'status');
+    n.textContent = note;
+    wrap.appendChild(n);
+  }
+  const archived = archivedChats(allChats);
+  if (!archived.length) {
+    const none = document.createElement('div');
+    none.className = 'field__hint';
+    none.textContent = 'No hay episodios archivados.';
+    wrap.appendChild(none);
+  }
+  archived.forEach((chat) => {
+    const field = document.createElement('div');
+    field.className = 'field';
+    const label = document.createElement('div');
+    label.className = 'field__label';
+    label.textContent = chat.title || formatDate(chat.created);
+    const last = document.createElement('div');
+    last.textContent = chat.last || 'Sin mensajes';
+    const hint = document.createElement('div');
+    hint.className = 'field__hint';
+    hint.textContent = `Archivado ${relationshipAgeText(chat.archivedAt)}`;
+    const actions = document.createElement('div');
+    actions.style.display = 'flex';
+    actions.style.gap = 'var(--space-2, 8px)';
+    actions.style.marginTop = 'var(--space-2, 8px)';
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.className = 'btn btn--sm btn--ghost';
+    open.textContent = 'Abrir (solo lectura)';
+    open.addEventListener('click', () => app.navigate('chat', { chatId: chat.id }));
+    const restore = document.createElement('button');
+    restore.type = 'button';
+    restore.className = 'btn btn--sm';
+    restore.textContent = 'Restaurar';
+    restore.addEventListener('click', async () => {
+      restore.disabled = true;
+      try {
+        await saveChatArchive(chat.id, { archivedAt: 0, archivePendingAt: 0 });
+        await reloadChats();
+        renderList();
+        openArchivedSheet('Episodio restaurado. Vuelve a estar en tu lista.');
+      } catch {
+        restore.disabled = false;
+        openArchivedSheet('No se pudo restaurar.');
+      }
+    });
+    actions.append(open, restore);
+    field.append(label, last, hint, actions);
+    wrap.appendChild(field);
+  });
+  app.openSheet(wrap);
 }
 
 function renderRow(chat) {
@@ -154,9 +241,19 @@ function renderRow(chat) {
   const sub = document.createElement('div');
   sub.className = 'list-row__sub';
   sub.textContent = chat.last || 'Sin mensajes';
+  let pendingNote = null;
+  if (isChatArchivePending(chat)) {
+    // MEM-018: pidió archivarse y falta terminar (servidor apagado); se completa solo cuando vuelva.
+    const pending = document.createElement('div');
+    pending.className = 'list-row__sub';
+    pending.textContent = 'Pendiente de archivar: se hará solo cuando el servidor esté encendido.';
+    pending.dataset.role = 'archive-pending';
+    pendingNote = pending;
+  }
 
   main.appendChild(title);
   main.appendChild(sub);
+  if (pendingNote) main.appendChild(pendingNote);
 
   const rename = document.createElement('button');
   rename.className = 'ib';
@@ -225,7 +322,7 @@ function onRename(chat) {
     try {
       await renameChat(chat.id, input.value.trim());
       app.closeSheet();
-      chats = await listChats(character.id);
+      await reloadChats();
       renderList();
     } catch (err) {
       app.toast('No se pudo renombrar el episodio.');
@@ -246,7 +343,7 @@ async function onDelete(chat) {
   if (!ok) return;
 
   await deleteChat(chat.id);
-  chats = await listChats(character.id);
+  await reloadChats();
   renderList();
 }
 

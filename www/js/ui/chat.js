@@ -1,7 +1,7 @@
 // www/js/ui/chat.js
 // Pantalla de chat: burbujas, streaming, avatar en 3 modos, composer, menú.
 
-import { getChat, getChatMessages, saveChatMessages, getCharacter, getSettings, saveSettings, markChatExported, saveCharacterLorebook, markChatLorebookProgress, saveChatContinuity, sanitizeContinuity, sanitizeMessage, saveCharacterRelationship } from '../state.js';
+import { getChat, getChatMessages, saveChatMessages, getCharacter, getSettings, saveSettings, markChatExported, saveCharacterLorebook, markChatLorebookProgress, saveChatContinuity, sanitizeContinuity, sanitizeMessage, saveCharacterRelationship, saveChatArchive, isChatArchived, isChatArchivePending } from '../state.js';
 import { generateReplyNonEmpty, completeOnce, completeChatOnce } from '../api/kobold.js';
 import { initialMessages, scenarioGreeting, estimateContextUsage } from '../api/prompt.js';
 import {
@@ -36,6 +36,7 @@ import { createFeelingUpdater, feelingDisplayText } from '../api/feeling.js';
 import { formatMessageTime, formatMessageFullTime } from '../msgtime.js';
 import { createContinuityUpdater, coveredCount, CONTINUITY_TOTAL_CHARS, CONTINUITY_ON_OPEN_DELAY_MS, cleanRecap, verifyRecap } from '../api/continuity.js';
 import { openCharacterSheet } from './character-sheet.js';
+import { archiveChat, archiveResultMessage, cancelBackgroundArchive } from './chat-archive.js';
 import { memoryDashboardModel, buildRelationshipHero, buildContinuityCard, buildMemoryCards } from './character-memory.js';
 import { logEvent, TEL_EVENTS } from '../telemetry.js';
 import { formatMessage } from './format.js';
@@ -93,6 +94,10 @@ export function init(rootEl, appApi) {
       <div class="scroll chat-messages" id="chat-messages"></div>
       <button class="chat-scrolldown" type="button" id="chat-scrolldown" aria-label="Ir al último mensaje" hidden>${ICON_DOWN}</button>
     </div>
+    <div class="chat-archivedbar" id="chat-archivedbar" hidden>
+      <span>Este episodio está archivado: solo se puede leer.</span>
+      <button class="btn btn--sm" type="button" id="chat-restore">Restaurar</button>
+    </div>
     <div class="chat-composer" id="chat-composer">
       <textarea class="inp chat-composer__input" id="chat-input" rows="1" placeholder="Escribe un mensaje" autocomplete="off" autocapitalize="sentences"></textarea>
       <button class="chat-send" type="button" id="chat-send" aria-label="Enviar">${ICON_SEND}</button>
@@ -108,6 +113,8 @@ export function init(rootEl, appApi) {
     messages: root.querySelector('#chat-messages'),
     scrollDown: root.querySelector('#chat-scrolldown'),
     composer: root.querySelector('#chat-composer'),
+    archivedBar: root.querySelector('#chat-archivedbar'),
+    restore: root.querySelector('#chat-restore'),
     input: root.querySelector('#chat-input'),
     send: root.querySelector('#chat-send'),
   };
@@ -120,6 +127,7 @@ export function init(rootEl, appApi) {
   els.input.addEventListener('focus', onInputFocus);
   els.input.addEventListener('blur', onInputBlur);
   els.send.addEventListener('click', onSendClick);
+  els.restore.addEventListener('click', onRestoreEpisode);
   els.messages.addEventListener('click', onMessagesClick);
   els.messages.addEventListener('scroll', onMessagesScroll, { passive: true });
   els.scrollDown.addEventListener('click', () => scrollToBottom(true));
@@ -168,6 +176,10 @@ async function updateGlassTint() {
 }
 
 export async function show({ chatId } = {}) {
+  // MEM-018: abrir un chat tiene prioridad sobre un archivado en segundo plano (latencia primero): se corta y el episodio
+  // sigue pendiente para la próxima vez que el hub vea el servidor encendido.
+  cancelBackgroundArchive();
+  archiving = false;
   chat = await getChat(chatId);
   if (!chat) {
     app.toast('No se encontró ese chat.');
@@ -209,6 +221,7 @@ export async function show({ chatId } = {}) {
   syncSendButton();
   applyChatBackground();
   updateGlassTint();
+  applyArchivedState();
   renderMessages();
 
   attachViewportListeners();
@@ -509,7 +522,7 @@ function buildVariantNav(m, i) {
 }
 
 async function onVariantStep(i, delta) {
-  if (busy) return;
+  if (busy || isReadOnlyChat()) return;
   const m = messages[i];
   if (!m) return;
   const next = selectVariant(m, activeVariantIndex(m) + delta);
@@ -617,7 +630,7 @@ function onMessagesClick(e) {
     else if (!metaBtn.disabled) onVariantStep(mi, Number(metaBtn.dataset.step));
     return;
   }
-  if (busy) return;
+  if (busy || isReadOnlyChat()) return;
   if (e.target.closest('.chat-row__actions') || e.target.closest('.chat-row__meta')) return;
   const row = e.target.closest('.chat-row');
   if (!row) {
@@ -780,6 +793,78 @@ function onInputBlur() {
   }, 60);
 }
 
+// MEM-018: un episodio archivado es SOLO LECTURA (decisión documentada en HISTORIAL.md): sin barra de escritura ni acciones
+// sobre los mensajes hasta restaurarlo con el botón «Restaurar». Mientras se archiva el episodio abierto también se bloquea.
+let archiving = false;
+
+function isReadOnlyChat() {
+  return archiving || isChatArchived(chat);
+}
+
+function applyArchivedState() {
+  const archived = isChatArchived(chat);
+  els.archivedBar.hidden = !archived;
+  els.composer.hidden = archived;
+  root.classList.toggle('chat--archived', archived);
+}
+
+async function onRestoreEpisode() {
+  if (!chat || !isChatArchived(chat)) return;
+  els.restore.disabled = true;
+  try {
+    chat = await saveChatArchive(chat.id, { archivedAt: 0, archivePendingAt: 0 });
+    applyArchivedState();
+    renderMessages();
+    app.toast('Episodio restaurado. Vuelve a estar en tu lista de episodios.');
+  } catch {
+    app.toast('No se pudo restaurar el episodio.');
+  } finally {
+    els.restore.disabled = false;
+  }
+}
+
+// MEM-018: "Archivar este episodio". Fuerza recuerdos y resumen (api/chat-archive.js) y, si salió bien, vuelve a la pantalla anterior; si
+// el servidor está apagado queda "pendiente de archivar" y se completa solo (hub). Nunca toca los mensajes.
+async function onArchiveEpisode() {
+  if (!character || !chat || archiving || busy || sendInFlight) return;
+  const ok = await app.confirmDialog(
+    `¿Archivar este episodio? ${character.name} guardará lo que aprendió y se hará un resumen (puede tardar un poco). ` +
+      'Después se oculta de tu lista, pero queda guardado entero y lo puedes restaurar cuando quieras.',
+    { confirmText: 'Archivar' }
+  );
+  if (!ok) return;
+  app.closeSheet(); // el diálogo ya se cerró y dejó el menú ⋮ restaurado debajo: se cierra también
+  archiving = true;
+  loreUpdater.abort();
+  continuityUpdater.abort();
+  relationshipUpdater.abort();
+  feelingUpdater.abort();
+  els.input.disabled = true;
+  const chatId = chat.id;
+  const characterId = character.id;
+  app.toast('Archivando… puede tardar unos segundos (si tu servidor está apagado, quedará pendiente).', { ms: 20000 });
+  let result;
+  try {
+    result = await archiveChat(chatId);
+  } catch {
+    result = { kind: 'error' };
+  }
+  archiving = false;
+  els.input.disabled = false;
+  if (!chat || chat.id !== chatId) return; // el usuario ya se fue a otro lado: el resultado igual quedó guardado
+  app.toast(archiveResultMessage(result), { ms: 6000 });
+  if (result.kind === 'archived') {
+    // Pequeña pausa: el diálogo de confirmación acaba de cerrarse y su entrada de historial todavía se está retirando.
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    app.back();
+    return;
+  }
+  // Pendiente o con error: el episodio sigue aquí; se recargan las copias en memoria porque la extracción pudo cambiar el lorebook.
+  chat = (await getChat(chatId)) || chat;
+  character = (await getCharacter(characterId)) || character;
+  applyArchivedState();
+}
+
 async function onSendClick() {
   if (busy) {
     cancelGeneration();
@@ -787,6 +872,15 @@ async function onSendClick() {
   }
   const text = els.input.value.trim();
   if (!text || !character || !chat) return;
+  if (isReadOnlyChat()) return;
+  // MEM-018: si el usuario retoma un episodio que estaba "pendiente de archivar", la intención ya no es esa: se cancela la marca.
+  if (isChatArchivePending(chat)) {
+    try {
+      chat = await saveChatArchive(chat.id, { archivePendingAt: 0 });
+    } catch {
+      // mejor esfuerzo: si falla, el reintento verá el chat con mensajes nuevos y lo archivará con ellos
+    }
+  }
 
   els.input.value = '';
   draftByChat.delete(chat.id);
@@ -826,7 +920,7 @@ async function onSendClick() {
 // `opts.previous` (UI-017): la respuesta que se está regenerando. Se conserva y la nueva se AGREGA como versión.
 async function generate(opts = {}) {
   const previous = (opts && opts.previous) || null;
-  if (busy || !character) return;
+  if (busy || !character || isReadOnlyChat()) return; // MEM-018: un episodio archivado no genera respuestas (ni "reintentar")
   loreUpdater.abort(); // también al regenerar: el chat tiene prioridad sobre la memoria
   continuityUpdater.abort();
   relationshipUpdater.abort();
@@ -2155,6 +2249,17 @@ function onMenu() {
   // UI-032: "Fondo del chat" se quitó por el mismo motivo — también vive en la ficha ahora.
   wrap.appendChild(menuSection('Personaje y memoria', characterItems));
 
+  // MEM-018: no tiene sentido archivar lo que ya está archivado.
+  if (!isChatArchived(chat)) {
+    wrap.appendChild(
+      menuSection('Este episodio', [
+        // Sin `closeSheet()` antes: cerrar y abrir otra hoja enseguida es la carrera con el historial ya conocida (ver `openLoreConfirm`);
+        // el diálogo se apila sobre el menú (UI-036) y `onArchiveEpisode` cierra el menú restaurado cuando el usuario confirma.
+        menuItem('Archivar este episodio', () => onArchiveEpisode()),
+      ])
+    );
+  }
+
   wrap.appendChild(
     menuSection('Datos', [
       menuItem('Exportar este episodio', () => {
@@ -2230,6 +2335,11 @@ async function maybeAutoBackup() {
 
 async function onImportChat() {
   if (!character || !chat) return;
+  if (isReadOnlyChat()) {
+    // MEM-018: importar REEMPLAZA los mensajes; un episodio archivado no se modifica hasta restaurarlo.
+    app.toast('Este episodio está archivado: restáuralo antes de importar encima.');
+    return;
+  }
   const files = await pickFiles();
   if (!files.length) return;
 

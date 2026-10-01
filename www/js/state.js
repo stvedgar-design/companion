@@ -102,6 +102,10 @@ import { sanitizeFeeling } from './api/feeling.js';
  *   breve de lo que pasó en ESTE chat y ya no cabe en el contexto. `coveredUntil` = `ts` del último mensaje ya
  *   resumido (por `ts` y no por posición: borrar o editar mensajes no lo desalinea); `updated` = ms de la última
  *   actualización. Por defecto `{ text: '', coveredUntil: 0, updated: 0 }` (chats anteriores cargan así).
+ * @property {number} archivedAt  // MEM-018: ms en que se archivó el episodio (0 = activo). Un episodio archivado sigue
+ *   guardado con TODOS sus mensajes; solo se oculta de la lista normal y se ve en "Episodios archivados".
+ * @property {number} archivePendingAt  // MEM-018: ms en que se pidió archivarlo sin que el proceso terminara (servidor
+ *   apagado, app cerrada a medias); 0 = nada pendiente. Se completa solo al volver el servidor.
  */
 
 /**
@@ -440,7 +444,32 @@ function sanitizeChat(raw) {
     lastExportAt: Number.isFinite(raw.lastExportAt) ? raw.lastExportAt : 0,
     lorebookMessageCount: Number.isFinite(raw.lorebookMessageCount) ? raw.lorebookMessageCount : 0,
     continuitySummary: sanitizeContinuity(raw.continuitySummary),
+    // MEM-018: 0 = episodio activo (también para todo registro guardado antes de este contrato).
+    archivedAt: Number.isFinite(raw.archivedAt) && raw.archivedAt > 0 ? raw.archivedAt : 0,
+    archivePendingAt: Number.isFinite(raw.archivePendingAt) && raw.archivePendingAt > 0 ? raw.archivePendingAt : 0,
   };
+}
+
+/** MEM-018: ¿el episodio está archivado (oculto de la lista normal, transcripción intacta)? */
+export function isChatArchived(chat) {
+  return !!chat && Number.isFinite(chat.archivedAt) && chat.archivedAt > 0;
+}
+
+/** MEM-018: ¿se pidió archivarlo pero falta terminar (p. ej. el servidor estaba apagado)? */
+export function isChatArchivePending(chat) {
+  return !!chat && !isChatArchived(chat) && Number.isFinite(chat.archivePendingAt) && chat.archivePendingAt > 0;
+}
+
+/** MEM-018: los episodios que van en la lista normal (los pendientes de archivar siguen ahí, con su indicador). */
+export function activeChats(chats) {
+  return (Array.isArray(chats) ? chats : []).filter((c) => c && !isChatArchived(c));
+}
+
+/** MEM-018: los episodios archivados, el más recién archivado primero. */
+export function archivedChats(chats) {
+  return (Array.isArray(chats) ? chats : [])
+    .filter(isChatArchived)
+    .sort((a, b) => (b.archivedAt || 0) - (a.archivedAt || 0));
 }
 
 function requestPersistence() {
@@ -708,6 +737,22 @@ export function createState(backend) {
     });
   }
 
+  // MEM-018: marca/desmarca un episodio como archivado o "pendiente de archivar". Solo cambia estos dos campos: no toca los
+  // mensajes ni `updated` (la lista no se reordena por esto). `patch`: `{ archivedAt?, archivePendingAt? }` (0 = quitar la marca).
+  // Serializada con las demás escrituras del chat. Restaurar = `{ archivedAt: 0, archivePendingAt: 0 }`.
+  async function saveChatArchive(chatId, patch) {
+    return withChatLock(chatId, async () => {
+      const chat = await getChat(chatId);
+      if (!chat) throw new Error('El chat no existe.');
+      const next = { ...chat };
+      if (patch && 'archivedAt' in patch) next.archivedAt = patch.archivedAt;
+      if (patch && 'archivePendingAt' in patch) next.archivePendingAt = patch.archivePendingAt;
+      const updated = sanitizeChat(next);
+      await backend.put('chatMeta', chatId, updated);
+      return updated;
+    });
+  }
+
   async function deleteChat(chatId) {
     return withChatLock(chatId, () =>
       backend.atomic([
@@ -885,6 +930,7 @@ export function createState(backend) {
     markChatExported,
     markChatLorebookProgress,
     saveChatContinuity,
+    saveChatArchive,
     deleteChat,
     migrateLegacyChats,
     exportBackup,
@@ -1021,6 +1067,7 @@ export const renameChat = (...args) => getDefaultInstance().renameChat(...args);
 export const markChatExported = (...args) => getDefaultInstance().markChatExported(...args);
 export const markChatLorebookProgress = (...args) => getDefaultInstance().markChatLorebookProgress(...args);
 export const saveChatContinuity = (...args) => getDefaultInstance().saveChatContinuity(...args);
+export const saveChatArchive = (...args) => getDefaultInstance().saveChatArchive(...args);
 export const deleteChat = (...args) => getDefaultInstance().deleteChat(...args);
 export const migrateLegacyChats = (...args) => getDefaultInstance().migrateLegacyChats(...args);
 export const exportBackup = (...args) => getDefaultInstance().exportBackup(...args);

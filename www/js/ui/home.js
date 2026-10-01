@@ -1,7 +1,8 @@
 // www/js/ui/home.js
 // Vista de lista de personajes: saludo según la hora con el estado de conexión, lista, búsqueda y carga de character cards.
 
-import { getSettings, listCharacters, listChats, deleteCharacter } from '../state.js';
+import { getSettings, listCharacters, listChats, deleteCharacter, activeChats } from '../state.js';
+import { retryPendingArchives } from './chat-archive.js';
 import { importCardFile } from '../cards/import.js';
 import { connect } from '../api/kobold.js';
 import { pickFiles } from '../platform.js';
@@ -152,7 +153,8 @@ async function buildLastPreviews(list) {
   const entries = await Promise.all(
     list.map(async (character) => {
       try {
-        const chats = await listChats(character.id);
+        // MEM-018: un episodio archivado no cuenta para "Continuar" ni para la vista previa de la tarjeta.
+        const chats = activeChats(await listChats(character.id));
         chatsByCharacter[character.id] = chats;
         return [character.id, chats.length ? chats[0].last : ''];
       } catch {
@@ -161,6 +163,12 @@ async function buildLastPreviews(list) {
     })
   );
   return Object.fromEntries(entries);
+}
+
+// MEM-018: recarga las vistas previas (un episodio recién archivado deja de ser el "último").
+async function refreshPreviews() {
+  lastByCharacter = await buildLastPreviews(characters);
+  renderList();
 }
 
 export function hide() {
@@ -309,6 +317,13 @@ async function checkConnection(myToken) {
     const { model } = await connect(settings.url);
     if (myToken !== viewToken) return;
     setStatus('ok', model);
+    // MEM-018: el servidor responde → se completan en segundo plano los episodios que quedaron "pendientes de archivar".
+    retryPendingArchives().then((r) => {
+      if (r && r.archived > 0 && myToken === viewToken) {
+        app.toast(r.archived === 1 ? 'Se terminó de archivar un episodio pendiente.' : `Se terminó de archivar ${r.archived} episodios pendientes.`);
+        refreshPreviews();
+      }
+    });
   } catch {
     if (myToken !== viewToken) return;
     setStatus('err');
