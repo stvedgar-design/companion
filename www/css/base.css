@@ -253,6 +253,10 @@ input[type=range]:focus-visible{
   gap: var(--space-1);
   margin-bottom: var(--space-4);
 }
+/* UI-035: sin esto, `hidden` no alcanza a esconder un `.field` — `display:flex` de arriba le gana a la
+   regla del navegador para `[hidden]` (misma especificidad, pero esta hoja de estilos manda sobre la
+   del navegador). Mismo motivo para `.menu-group[hidden]` más abajo. */
+.field[hidden]{ display: none; }
 .field__label{
   font-size: var(--fs-sm);
   color: var(--color-muted);
@@ -575,6 +579,7 @@ input[type=range]:focus-visible{
   text-transform: uppercase;
   color: var(--color-muted);
 }
+.menu-group[hidden]{ display: none; }
 /* UI-020: opción que despliega su contenido (p. ej. "Diagnóstico"); el contenido va en `.menu-fold__body`. */
 .menu-fold{ display: flex; align-items: center; justify-content: space-between; margin-top: var(--space-2); color: var(--color-muted); }
 .menu-fold__chevron{ font-size: 22px; line-height: 1; transition: transform var(--dur) ease; }

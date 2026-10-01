@@ -234,6 +234,16 @@
   margin-top: var(--space-2);
 }
 
+/* UI-035: buscador fijo en la parte superior de Ajustes (pegado al borde de la hoja al desplazar). */
+.settings-search {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding-top: var(--space-1);
+  padding-bottom: var(--space-1);
+  background: var(--sheet-surface, var(--color-surface));
+}
+
 /* ---------- appearance (hoja de apariencia: skin y fondo del chat) ----------
    Mismo patrón que "settings" de arriba: sin CSS propio, vive acá. */
 

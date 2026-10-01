@@ -229,7 +229,9 @@ sección 5). Sin jerga.
 
 ## 7. Inventario de controles — Ajustes, Apariencia global, Diagnóstico
 
-**Ajustes** ([settings.js](../www/js/ui/settings.js)), ya agrupado por `.menu-group` (UI-019/UI-025):
+**Ajustes** ([settings.js](../www/js/ui/settings.js)), ya agrupado por `.menu-group` (UI-019/UI-025) y
+con buscador fijo arriba desde UI-035 (2026-10-01, filtra por texto sin distinguir mayúsculas/tildes,
+esconde también el encabezado de un grupo si ninguno de sus controles matcheó):
 
 | Grupo | Controles | Línea | ¿Jerga / técnico? |
 |---|---|---|---|
@@ -357,7 +359,7 @@ explícito de no añadir pantallas, interruptores ni avisos de restricción.
 | 7 | ~~Duplicar personaje~~ — **hecho, UI-033 (2026-10-01)** | Pequeño–Mediano | Bajo | Ninguno |
 | 8 | ~~Memoria como "historia compartida": renombrar chats → episodios en la interfaz (sin tocar datos)~~ — **hecho, UI-034 (2026-10-01)** | Pequeño | Bajo | Ninguno |
 | 9 | Galería de fotos por personaje (pestaña "Fotos" en la ficha) | Grande | Alto (nuevo almacén de imágenes, posible migración de IndexedDB) | Depende de que exista contenido que mostrar ahí (hoy no hay generación de imágenes) |
-| 10 | Buscador dentro de Ajustes | Pequeño | Bajo | Ninguno — hoy Ajustes es una sola pantalla corta, prioridad baja hasta que crezca |
+| 10 | ~~Buscador dentro de Ajustes~~ — **hecho, UI-035 (2026-10-01)** | Pequeño | Bajo | Ninguno |
 
 ---
 

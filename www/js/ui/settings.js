@@ -23,6 +23,12 @@ export function openSettings(app) {
   node.innerHTML = `
     <h3 class="sheet__title">Ajustes</h3>
 
+    <div class="settings-search">
+      <input class="inp" id="settings-search" type="search" inputmode="search" autocomplete="off"
+             placeholder="Buscar en Ajustes" aria-label="Buscar en Ajustes">
+    </div>
+    <div class="field__hint" id="settings-search-empty" hidden>No encontré nada con ese nombre.</div>
+
     <div class="menu-group" aria-hidden="true">Conexión</div>
     <div class="field">
       <label class="field__label" for="settings-url">Servidor</label>
@@ -144,6 +150,8 @@ export function openSettings(app) {
     appearanceBtn: q('#settings-appearance'),
     exportBtn: q('#settings-export'),
     importBtn: q('#settings-import'),
+    search: q('#settings-search'),
+    searchEmpty: q('#settings-search-empty'),
     diag: q('#settings-diag'),
     fluency: q('#settings-fluency'),
     fluencyResult: q('#settings-fluency-result'),
@@ -334,5 +342,49 @@ export function openSettings(app) {
     }
   });
 
+  // UI-035: buscador de Ajustes. Solo cambia qué se VE (ningún control cambia de comportamiento): cada
+  // hijo directo de `node` entre un ".menu-group" y el siguiente es "su" contenido (un `.field` normal,
+  // o un texto suelto como `#settings-persist`); se oculta si su texto visible no matchea, sin distinguir
+  // mayúsculas ni acentos. El encabezado del grupo se oculta si NINGUNO de sus controles matcheó.
+  els.search.addEventListener('input', () => applySettingsFilter(els.search.value));
+
+  function applySettingsFilter(raw) {
+    const q = normalizeForSearch(raw).trim();
+    const searchWrap = els.search.closest('.settings-search');
+    let currentGroup = null;
+    let groupMatched = false;
+    let anyMatch = false;
+    const finishGroup = () => {
+      if (currentGroup) currentGroup.hidden = !groupMatched;
+    };
+    for (const child of Array.from(node.children)) {
+      if (child === searchWrap || child === els.searchEmpty) continue;
+      if (child.classList.contains('menu-group')) {
+        finishGroup();
+        currentGroup = child;
+        groupMatched = false;
+        continue;
+      }
+      if (child.classList.contains('settings-version')) {
+        child.hidden = false; // pie de página, no es un control: siempre visible
+        continue;
+      }
+      if (!currentGroup) continue; // el título "Ajustes" y el buscador van antes de cualquier grupo
+      const match = !q || normalizeForSearch(child.textContent).includes(q);
+      child.hidden = !match;
+      if (match) {
+        groupMatched = true;
+        anyMatch = true;
+      }
+    }
+    finishGroup();
+    els.searchEmpty.hidden = !q || anyMatch;
+  }
+
   app.openSheet(node);
+}
+
+/** Minúsculas y sin acentos, para que el buscador de Ajustes no distinga mayúsculas ni tildes. */
+export function normalizeForSearch(s) {
+  return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 }

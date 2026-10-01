@@ -3341,3 +3341,73 @@ comportamiento interno (`state.test.mjs`), no texto de interfaz. `node --test te
 ambiguo con el nombre de la app o con un término técnico que no deba traducirse — todas las decisiones
 de la auditoría fueron claras con el criterio de arriba (conversación real del usuario → episodio;
 función/pantalla técnica genérica → se queda "chat").
+
+## UI-035 (2026-10-01): buscador dentro de Ajustes
+
+Último contrato de la tanda. Alcance: `www/js/ui/settings.js`, `www/css/home.css`,
+`www/css/base.css` (dos reglas `[hidden]`, ver abajo) y `tests/settings.test.mjs` (nuevo). Ningún otro
+archivo ni la lógica de ningún control tocados.
+
+**Diseño: filtrar por bloque de contenido, no por "control" individual.** El HTML de Ajustes es un
+`<div class="settings">` con hijos DIRECTOS en secuencia: el título, luego pares
+`.menu-group` (encabezado de sección) seguidos de uno o más bloques de contenido (`.field` normales, y
+un caso suelto: `#settings-persist`, un `.field__hint` de estado que NO está envuelto en `.field`). La
+función `applySettingsFilter()` recorre `node.children` en orden, recordando el último `.menu-group`
+visto; cada hijo que no sea un grupo (ni el buscador, ni el pie de versión) se oculta si su
+`textContent` normalizado no contiene la búsqueda, y el grupo se oculta si NINGUNO de sus hijos quedó
+visible. Esto cubre tanto los `.field` como el `.field__hint` suelto, sin necesitar envolver nada de
+nuevo ni tocar la lógica de ningún control.
+- `normalizeForSearch()` (exportada, pura): minúsculas + `normalize('NFD')` + quitar diacríticos, para
+  que "diagnostico" encuentre "Diagnóstico" y "pin" encuentre "PIN".
+- `#settings-version` (pie "Companion vX.Y.Z") se excluye del filtro a propósito: no es un control que
+  buscar, es un dato de la app — queda siempre visible, igual que el propio campo de búsqueda.
+- Mensaje "No encontré nada con ese nombre." (`#settings-search-empty`) se muestra cuando hay texto de
+  búsqueda y NINGÚN bloque matcheó en toda la hoja.
+
+**Bug real encontrado al implementar (no visible hasta que se probó en el navegador): `hidden` no
+alcanza para esconder un `.field`.** `.field{ display:flex }` (ya existía, para alinear label/input/
+hint en columna) le gana a la regla del navegador `[hidden]{ display:none }` — mismo origen de
+autor contra UA: una regla de la propia hoja de estilos siempre le gana a la del navegador,
+sin importar la especificidad. Sin la corrección, el `.field` oculto seguía ocupando su lugar en la
+hoja aunque Ajustes lo marcara `hidden`. Se agregaron `.field[hidden]{ display:none; }` y
+`.menu-group[hidden]{ display:none; }` en `base.css` (la segunda no hacía falta estrictamente —
+`.menu-group` no declara `display` propio — pero se agregó por el mismo motivo de defensa que ya usaba
+el proyecto en `.menu-fold__body[hidden]` desde UI-020). Esta corrección es general (afecta a
+cualquier `.field`/`.menu-group` oculto en cualquier pantalla), no solo a Ajustes, y es estrictamente
+una mejora: antes, ocultar un `.field` con el atributo `hidden` simplemente no funcionaba en ningún
+lado del proyecto.
+
+**Buscador fijo arriba.** `.settings-search` usa `position: sticky; top: 0` dentro de `.sheet__card`
+(que ya scrollea, `overflow-y:auto`) con el mismo fondo que la hoja (`--sheet-surface`), así que se
+queda pegado al borde superior mientras el resto de Ajustes se desplaza debajo, sin tapar nada a los
+costados (mismo ancho con relleno que el resto del contenido). No hizo falta ninguna regla nueva de
+diseño: reutiliza los tokens existentes.
+
+**Verificado en el navegador integrado (375×812):**
+1. Escribir "pin" deja visible solo el grupo "Seguridad" con "Bloqueo con PIN" (confirmado también
+   leyendo `el.hidden` de cada `.menu-group` por JS: los otros cinco grupos quedan `hidden:true`).
+2. Borrar el texto (triple clic + Delete) restaura los seis grupos.
+3. Escribir "zzz" oculta TODOS los grupos y muestra "No encontré nada con ese nombre."; el pie
+   "Companion v1.1.0" se mantiene visible (a propósito, no es un control).
+4. Escribir "diagnostico" (sin tilde) encuentra "Diagnóstico y rendimiento" — confirma que no distingue
+   tildes ni mayúsculas.
+5. Ningún control cambió de comportamiento: se probó abrir "Probar" (conexión) y activar/desactivar un
+   interruptor con la búsqueda vacía, igual que antes de este contrato.
+
+**Tests.** `tests/settings.test.mjs` (nuevo): 2 tests para `normalizeForSearch` (minúsculas/acentos;
+nunca lanza con `undefined`/`null`/números). El filtrado en sí (recorrido del DOM) no tiene test
+automático — no existía ningún test de DOM para `settings.js` antes de este contrato (mismo patrón que
+`character-editor.js`); se verificó a mano en el navegador como arriba. `node --test tests/*.test.mjs`:
+639/639 (637 + 2).
+
+**No bloqueado por ninguna condición de parada:** Ajustes no tiene una estructura tan dispersa como
+para que filtrar en el cliente fuera más riesgoso de lo esperado — es una sola plantilla HTML plana,
+recorrible por `node.children` sin casos especiales más allá del `.field__hint` suelto de "Avanzado",
+ya cubierto por el mismo bucle.
+
+**Cierre de la tanda (CCC-002, UI-033, UI-034, UI-035).** Los cuatro contratos de esta sesión quedan
+hechos, cada uno en su propio commit, con `node --test tests/*.test.mjs` en verde después de cada uno
+(633 → 637 → 637 → 639 tests). Ninguno tocó el esquema de IndexedDB ni cambió el comportamiento de un
+control existente; los tres cambios de interfaz (CCC-002, UI-034, UI-035) y la función nueva (UI-033)
+se verificaron de punta a punta en el navegador integrado (375×812) contra datos sembrados a mano, no
+contra un APK real.
