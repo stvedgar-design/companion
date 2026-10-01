@@ -112,8 +112,8 @@ tamaño Pequeño, de la lista de contratos sugeridos (sección 9).
 | Ficha del personaje | [character-sheet.js](../www/js/ui/character-sheet.js) | Tocar el nombre del personaje (cabecera del chat o de la lista de chats) |
 | Apariencia del personaje | [character-look.js](../www/js/ui/character-look.js) | "Apariencia del personaje" en el menú ⋮ |
 | Fondo del chat | [chat-background.js](../www/js/ui/chat-background.js) | "Fondo del chat" en el menú ⋮ |
-| Lorebook ("Ver lorebook") + estado de la relación | [chat.js:1357](../www/js/ui/chat.js) (`openLorebookSheet`) | "Ver lorebook" en el menú ⋮ · "N recuerdos · Ver" en la ficha |
-| Resumen de este chat | [chat.js:1760](../www/js/ui/chat.js) (`openContinuitySheet`) | "Resumen de este chat" en el menú ⋮ |
+| Memoria de {Nombre} (antes "Ver lorebook"; **MEM-017**: relación + resumen + recuerdos como tarjetas + archivados) | [chat.js](../www/js/ui/chat.js) (`openLorebookSheet`) + [character-memory.js](../www/js/ui/character-memory.js) | "Memoria de {Nombre}" en el menú ⋮ · "Memoria de {Nombre} · N recuerdos" en la ficha |
+| Resumen de este episodio | [chat.js](../www/js/ui/chat.js) (`openContinuitySheet`) | **MEM-017:** ya no está en el menú ⋮; se abre desde la tarjeta "Resumen de este episodio" dentro de "Memoria de {Nombre}" (y desde el aviso de MEM-012) |
 | Elegir saludo | [chat.js:2245](../www/js/ui/chat.js) (`openGreetingSheet`) | "Cambiar saludo" en el menú ⋮ (solo si hay saludos alternativos y el chat sigue en el primer mensaje) |
 | Menú de un mensaje | [msgmenu.js](../www/js/ui/msgmenu.js) (lógica) + [chat.js](../www/js/ui/chat.js) (pantalla) | Tocar un mensaje |
 
@@ -375,3 +375,7 @@ explícito de no añadir pantallas, interruptores ni avisos de restricción.
 
 Ver también `docs/DESIGN.md` para las clases y tokens visuales que sustentan este documento, y
 `docs/NOTES.md` (Registro de contratos y hoja de ruta) para el estado de cada contrato nombrado aquí.
+
+---
+
+**Actualización MEM-017 (2026-10-01).** Las filas «Ver lorebook» / «Resumen de este chat» de las secciones 3 y 5 y la fila del menú ⋮ de la sección 9 describen el estado de ARQ-003; hoy el menú ⋮ trae UNA sola entrada de memoria, «Memoria de {Nombre}» (ficha: «Memoria de {Nombre} · N recuerdos»), que muestra la relación como protagonista, el resumen del episodio, los recuerdos como tarjetas por tandas (la advertencia de rendimiento de este documento se atendió con paginación de 10 por grupo y `content-visibility`) y los archivados. Ver «MEM-017» en `docs/HISTORIAL.md`. Estado: completado.

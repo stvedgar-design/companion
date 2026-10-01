@@ -63,6 +63,7 @@ export function duplicateCharacterData(character) {
     lorebookPreviousAt: 0,
     lorebookTombstones: [],
     lorebookTombstonesPrevious: [],
+    lorebookArchive: [],
     relationship: { text: '', level: 'early', updated: 0, source: 'auto' },
   };
 }
@@ -241,7 +242,8 @@ export function openCharacterSheet(app, character, opts = {}) {
     node.appendChild(bgBtn);
 
     // ---------- 7. recuerdos ----------
-    const memBtn = el('button', 'menu-item', `${m.memoriesCount} recuerdo${m.memoriesCount === 1 ? '' : 's'} · Ver`);
+    // MEM-017: la entrada única a "Memoria de {Nombre}" (relación + resumen + recuerdos + archivados).
+    const memBtn = el('button', 'menu-item', `Memoria de ${m.name} · ${m.memoriesCount} recuerdo${m.memoriesCount === 1 ? '' : 's'}`);
     memBtn.type = 'button';
     memBtn.addEventListener('click', () => {
       if (opts.openMemories) opts.openMemories();

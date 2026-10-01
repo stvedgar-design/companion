@@ -23,7 +23,6 @@ import {
   LOREBOOK_ALWAYS_CHAR_BUDGET,
 } from '../api/lorebook.js';
 import {
-  relationshipSummary,
   sanitizeRelationship,
   relationshipAgeText,
   relationshipDisplayText,
@@ -37,6 +36,7 @@ import { createFeelingUpdater, feelingDisplayText } from '../api/feeling.js';
 import { formatMessageTime, formatMessageFullTime } from '../msgtime.js';
 import { createContinuityUpdater, coveredCount, CONTINUITY_TOTAL_CHARS, CONTINUITY_ON_OPEN_DELAY_MS, cleanRecap, verifyRecap } from '../api/continuity.js';
 import { openCharacterSheet } from './character-sheet.js';
+import { memoryDashboardModel, buildRelationshipHero, buildContinuityCard, buildMemoryCards } from './character-memory.js';
 import { logEvent, TEL_EVENTS } from '../telemetry.js';
 import { formatMessage } from './format.js';
 import { variantCount, activeVariantIndex, addVariant, selectVariant, editActiveText } from '../variants.js';
@@ -1257,65 +1257,29 @@ async function freshLorebook() {
 // "growing" lo redacta el propio personaje a partir de sus recuerdos (ver api/relationship.js);
 // editable a mano y regenerable a pedido. El conteo de recuerdos y "siempre presentes" se arma
 // aparte, en el momento, sin servidor (relationshipSummary).
-function buildRelationshipBlock(character) {
-  const entries = (character && character.lorebook) || [];
-  const sum = relationshipSummary(entries);
-  const box = loreEl('div', 'field');
-  box.dataset.role = 'relationship';
-  box.appendChild(loreEl('h4', 'sheet__title', 'Estado de la relación'));
-  const phrase = loreEl('div', '', relationshipDisplayText(character));
-  phrase.style.fontWeight = '600';
-  box.appendChild(phrase);
-  if (sum.total) {
-    box.appendChild(
-      loreEl('div', 'field__hint', `${sum.total} recuerdo${sum.total === 1 ? '' : 's'} en total · ${sum.always.length} siempre presente${sum.always.length === 1 ? '' : 's'}.`)
-    );
-    if (sum.always.length) {
-      box.appendChild(loreEl('div', 'field__label', 'Siempre presentes'));
-      sum.always.forEach((a) => box.appendChild(loreEl('div', '', '• ' + a.content)));
-    }
-    const age = relationshipAgeText(sum.lastUpdated);
-    if (age) box.appendChild(loreEl('div', 'field__hint', `Última actualización de la memoria: ${age}.`));
-  }
-  if (sum.level === 'early') {
-    box.appendChild(loreEl('div', 'field__hint', 'Se están conociendo: hace falta más memoria compartida para que el personaje opine.'));
-  } else {
-    const relUpdatedAge = relationshipAgeText((character.relationship && character.relationship.updated) || 0);
-    box.appendChild(
-      loreEl(
-        'div',
-        'field__hint',
-        `Redactado por ${character.card.name}` + (relUpdatedAge ? ` · ${relUpdatedAge}` : '') +
-          (character.relationship && character.relationship.source === 'manual' ? ' · editado por ti' : '')
-      )
-    );
-    const actions = loreEl('div');
-    actions.style.display = 'flex';
-    actions.style.gap = 'var(--space-2, 8px)';
-    actions.style.marginTop = 'var(--space-2, 8px)';
-    const editBtn = loreEl('button', 'btn btn--sm btn--ghost', 'Editar');
-    editBtn.type = 'button';
-    editBtn.addEventListener('click', () => openRelationshipEdit());
-    const regenBtn = loreEl('button', 'btn btn--sm btn--ghost', 'Regenerar');
-    regenBtn.type = 'button';
-    regenBtn.disabled = relationshipUpdater.isRunning() || busy || sendInFlight;
-    regenBtn.addEventListener('click', async () => {
-      regenBtn.disabled = true;
-      const result = await relationshipUpdater.runNow();
-      openLorebookSheet(
-        result.kind === 'ok'
-          ? 'Relación regenerada.'
-          : result.kind === 'busy'
-            ? 'Hay una respuesta o una actualización en curso; espera a que termine.'
-            : 'No se pudo regenerar ahora mismo.'
-      );
-    });
-    actions.append(editBtn, regenBtn);
-    box.appendChild(actions);
-  }
-  box.appendChild(loreEl('div', 'field__hint', 'El conteo se arma solo con tus recuerdos guardados (los de abajo); no usa el servidor.'));
-  box.style.marginBottom = 'var(--space-3, 12px)';
-  return box;
+function buildRelationshipBlock(character, model) {
+  const rel = character.relationship || {};
+  const editable = model.level !== 'early';
+  return buildRelationshipHero(
+    model,
+    { name: character.card.name, redactedBy: character.card.name, source: rel.source, updatedAt: rel.updated || 0 },
+    editable
+      ? {
+          onEdit: () => openRelationshipEdit(),
+          regenerateDisabled: relationshipUpdater.isRunning() || busy || sendInFlight,
+          onRegenerate: async () => {
+            const result = await relationshipUpdater.runNow();
+            openLorebookSheet(
+              result.kind === 'ok'
+                ? 'Relación regenerada.'
+                : result.kind === 'busy'
+                  ? 'Hay una respuesta o una actualización en curso; espera a que termine.'
+                  : 'No se pudo regenerar ahora mismo.'
+            );
+          },
+        }
+      : {}
+  );
 }
 
 // MEM-014: edición manual del texto de relación (solo "growing"/"established": "early" es fijo).
@@ -1382,20 +1346,92 @@ function openLoreUsedSheet(message) {
   app.openSheet(wrap);
 }
 
+// MEM-017: "Memoria de {Nombre}" — la pantalla única de memoria (antes "Lorebook de …"). Orden: (1) estado de la
+// relación, (2) resumen de este episodio, (3) recuerdos como tarjetas (siempre presentes / por tema, por tandas),
+// (4) archivados (MEM-016) y (5) herramientas (actualizar, deshacer, limpiar, automático), plegadas al final.
+// Todo lo que hacen los botones es lo mismo de antes (mismas funciones, mismos datos); solo cambió dónde y cómo se ven.
 // Cada pantalla de la hoja reemplaza a la anterior con `app.openSheet` (sin
 // cerrar la hoja, así no se toca el historial: ver shell.js / main.js).
 function openLorebookSheet(note = '') {
   if (!character) return;
+  const model = memoryDashboardModel(character, chat);
   const wrap = loreEl('div');
-  wrap.appendChild(loreEl('h3', 'sheet__title', `Lorebook de ${character.name}`));
+  wrap.appendChild(loreEl('h3', 'sheet__title', `Memoria de ${character.name}`));
+  if (note) {
+    const noteEl = loreEl('div', 'field__label', note);
+    noteEl.setAttribute('role', 'status');
+    wrap.appendChild(noteEl);
+  }
 
-  const status = loreEl('div', 'field');
-  status.appendChild(loreEl('div', 'field__hint', loreStatusText()));
-  if (note) status.appendChild(loreEl('div', 'field__label', note));
-  wrap.appendChild(status);
-  wrap.appendChild(buildRelationshipBlock(character));
+  // (1) relación y (2) resumen
+  wrap.appendChild(buildRelationshipBlock(character, model));
+  wrap.appendChild(buildContinuityCard(model, { onOpen: () => openContinuitySheet() }));
 
+  // (3) recuerdos como tarjetas
+  const all = character.lorebook || [];
+  const preview = loreBudgetPreview(all);
+  const list = loreEl('section', 'mem-list');
+  list.appendChild(loreEl('h4', 'mem-section__title', `Recuerdos (${all.length})`));
+  if (!all.length) {
+    list.appendChild(
+      loreEl(
+        'div',
+        'field__hint',
+        'Todavía no hay recuerdos. Se crean al usar «Actualizar memoria ahora» (más abajo, con lo que hayas hablado en cualquiera de tus ' +
+          'episodios con este personaje), o solos si activas la actualización automática.'
+      )
+    );
+  }
+  const cardHooks = { onEdit: (id) => openLoreEdit(id), onArchive: (id) => openLoreDeleteConfirm(id) };
+  if (all.length) {
+    // MEM-004: "Siempre presentes" (van en cada respuesta, con tope) y "Por tema" (solo cuando sale una palabra clave).
+    list.appendChild(loreEl('h5', 'mem-group__title', 'Siempre presentes'));
+    const counter = loreEl(
+      'div',
+      'field__hint',
+      `${preview.alwaysSelection.requested} / ${LOREBOOK_ALWAYS_CHAR_BUDGET} caracteres · ${character.name} los tiene en mente en cada respuesta, sin palabras clave.`
+    );
+    counter.setAttribute('data-role', 'always-counter');
+    list.appendChild(counter);
+    if (preview.alwaysSelection.overflow) {
+      const hidden = preview.alwaysSelection.total - preview.alwaysSelection.sent;
+      const warn = loreEl(
+        'div',
+        'field__label',
+        (hidden === 1 ? 'No cabe todo: el último NO se envía. ' : `No cabe todo: los últimos ${hidden} NO se envían. `) +
+          'Acorta alguno o quita alguno.'
+      );
+      warn.setAttribute('role', 'alert');
+      list.appendChild(warn);
+    }
+    if (!model.always.length) {
+      list.appendChild(loreEl('div', 'field__hint', 'Ninguno todavía. Toca «Editar» en un recuerdo importante y activa «Siempre presente».'));
+    } else {
+      list.appendChild(buildMemoryCards(model.always, cardHooks));
+    }
+
+    list.appendChild(loreEl('h5', 'mem-group__title', 'Por tema'));
+    list.appendChild(
+      loreEl('div', 'field__hint', `Entran en la conversación solo cuando aparece una de sus palabras clave (hasta ${preview.topicBudget} caracteres por respuesta).`)
+    );
+    if (model.topic.length) list.appendChild(buildMemoryCards(model.topic, cardHooks));
+    else list.appendChild(loreEl('div', 'field__hint', 'Ninguno todavía.'));
+  }
+  wrap.appendChild(list);
+
+  // (4) archivados (MEM-016): la vista y sus acciones no cambian, solo su lugar en la pantalla.
+  const archiveBtn = loreEl('button', 'btn btn--ghost', `Recuerdos archivados (${model.archivedCount})`);
+  archiveBtn.type = 'button';
+  archiveBtn.style.marginTop = 'var(--space-3, 12px)';
+  archiveBtn.addEventListener('click', () => openLoreArchiveSheet());
+  wrap.appendChild(archiveBtn);
+
+  // (5) herramientas, plegadas: no son lo que se mira a diario.
   const inFlight = loreUpdater.isRunning() || busy || sendInFlight;
+  const tools = loreEl('details', 'mem-tools');
+  if (inFlight) tools.open = true;
+  tools.appendChild(loreEl('summary', '', 'Actualizar y ordenar la memoria'));
+  tools.appendChild(loreEl('div', 'field__hint', loreStatusText()));
   const progress = loreEl(
     'div',
     'field__hint',
@@ -1500,99 +1536,8 @@ function openLorebookSheet(note = '') {
     }
   });
 
-  wrap.append(autoRow, autoHint, progress, refreshBtn, costHint, undoBtn, cleanBtn, cleanHint);
-
-  // MEM-016: entrada a los recuerdos archivados (con su cantidad).
-  const archivedCount = (character.lorebookArchive || []).length;
-  const archiveBtn = loreEl('button', 'btn btn--ghost', `Recuerdos archivados (${archivedCount})`);
-  archiveBtn.type = 'button';
-  archiveBtn.style.marginTop = 'var(--space-2, 8px)';
-  archiveBtn.addEventListener('click', () => openLoreArchiveSheet());
-  wrap.appendChild(archiveBtn);
-
-  // MEM-004: "Siempre presentes" (van en cada respuesta, con tope) y "Por tema" (solo cuando sale una palabra clave).
-  const all = character.lorebook || [];
-  const alwaysEntries = all.filter((e) => e.always);
-  const topicEntries = all.filter((e) => !e.always).sort((a, b) => (b.updated || 0) - (a.updated || 0));
-  const preview = loreBudgetPreview(all);
-  const list = loreEl('div');
-  list.style.marginTop = 'var(--space-4, 16px)';
-  if (!all.length) {
-    list.appendChild(
-      loreEl(
-        'div',
-        'field__hint',
-        'Todavía no hay recuerdos. Se crean al usar el botón de arriba (con lo que hayas hablado en cualquiera de tus ' +
-          'episodios con este personaje), o solos si activas la actualización automática.'
-      )
-    );
-  }
-
-  const renderEntry = (entry) => {
-    const field = loreEl('div', 'field');
-    field.appendChild(loreEl('div', 'field__label', entry.content));
-    const origin = entry.source === 'manual' ? 'escrita o editada por ti' : 'automática';
-    field.appendChild(
-      loreEl('div', 'field__hint', entry.always ? origin : `${(entry.keys || []).join(', ')} · ${origin}`)
-    );
-
-    const actions = loreEl('div');
-    actions.style.display = 'flex';
-    actions.style.gap = 'var(--space-2, 8px)';
-    actions.style.marginTop = 'var(--space-2, 8px)';
-    const editBtn = loreEl('button', 'btn btn--sm btn--ghost', 'Editar');
-    editBtn.type = 'button';
-    editBtn.addEventListener('click', () => openLoreEdit(entry.id));
-    const delBtn = loreEl('button', 'btn btn--sm btn--ghost', 'Borrar');
-    delBtn.type = 'button';
-    delBtn.addEventListener('click', () => openLoreDeleteConfirm(entry.id));
-    actions.append(editBtn, delBtn);
-    field.appendChild(actions);
-    return field;
-  };
-
-  if (all.length) {
-    const alwaysTitle = loreEl('h4', 'sheet__title', 'Siempre presentes');
-    list.appendChild(alwaysTitle);
-    const counter = loreEl(
-      'div',
-      'field__hint',
-      `${preview.alwaysSelection.requested} / ${LOREBOOK_ALWAYS_CHAR_BUDGET} caracteres · Mia los tiene en mente en cada respuesta, sin palabras clave.`
-    );
-    counter.setAttribute('data-role', 'always-counter');
-    counter.style.marginBottom = 'var(--space-3, 12px)';
-    list.appendChild(counter);
-    if (preview.alwaysSelection.overflow) {
-      const hidden = preview.alwaysSelection.total - preview.alwaysSelection.sent;
-      const warn = loreEl(
-        'div',
-        'field__label',
-        (hidden === 1 ? 'No cabe todo: el último NO se envía. ' : `No cabe todo: los últimos ${hidden} NO se envían. `) +
-          'Acorta alguno o quita alguno.'
-      );
-      warn.setAttribute('role', 'alert');
-      list.appendChild(warn);
-    }
-    if (!alwaysEntries.length) {
-      const none = loreEl('div', 'field__hint', 'Ninguno todavía. Toca «Editar» en un recuerdo importante y activa «Siempre presente».');
-      none.style.marginBottom = 'var(--space-3, 12px)';
-      list.appendChild(none);
-    }
-    alwaysEntries.forEach((entry) => list.appendChild(renderEntry(entry)));
-
-    const topicTitle = loreEl('h4', 'sheet__title', 'Por tema');
-    topicTitle.style.marginTop = 'var(--space-4, 16px)';
-    list.appendChild(topicTitle);
-    const topicHint = loreEl(
-      'div',
-      'field__hint',
-      `Entran en la conversación solo cuando aparece una de sus palabras clave (hasta ${preview.topicBudget} caracteres por respuesta).`
-    );
-    topicHint.style.marginBottom = 'var(--space-3, 12px)';
-    list.appendChild(topicHint);
-    topicEntries.forEach((entry) => list.appendChild(renderEntry(entry)));
-  }
-  wrap.appendChild(list);
+  tools.append(autoRow, autoHint, progress, refreshBtn, costHint, undoBtn, cleanBtn, cleanHint);
+  wrap.appendChild(tools);
 
   app.openSheet(wrap);
 }
@@ -2023,7 +1968,12 @@ function openContinuitySheet(note = '') {
   );
   nowHint.style.marginTop = 'var(--space-1, 4px)';
 
-  wrap.append(error, saveBtn, saveHint, deleteBtn, autoRow, autoHint, progress, nowBtn, nowHint);
+  const backBtn = loreEl('button', 'btn btn--ghost', `Volver a la memoria de ${character.name}`);
+  backBtn.type = 'button';
+  backBtn.style.marginTop = 'var(--space-4, 16px)';
+  backBtn.addEventListener('click', () => openLorebookSheet());
+
+  wrap.append(error, saveBtn, saveHint, deleteBtn, autoRow, autoHint, progress, nowBtn, nowHint, backBtn);
   app.openSheet(wrap);
 }
 
@@ -2193,8 +2143,8 @@ function onMenu() {
   // cuando se llegó al chat DESDE esa lista o tocando el retrato en el hub (ver docs/HISTORIAL.md, "UI-026": desde
   // "Continuar" en el hub se entra directo al chat, así que atrás vuelve al hub, no a esta lista — límite conocido).
   const characterItems = [
-    menuItem(`Lo que recuerda ${character.name}`, () => openLorebookSheet()),
-    menuItem('Resumen de este episodio', () => openContinuitySheet()),
+    // MEM-017: una sola entrada; el resumen de este episodio y los recuerdos archivados viven DENTRO de esta pantalla.
+    menuItem(`Memoria de ${character.name}`, () => openLorebookSheet()),
   ];
   if (character && character.card.alternate_greetings && character.card.alternate_greetings.length && isOnlyGreeting()) {
     characterItems.push(menuItem('Cambiar saludo', () => openGreetingSheet()));
