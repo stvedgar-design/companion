@@ -280,6 +280,7 @@ personajes: segunda iteración visual"; auditoría de recuperabilidad →
 | UI-027 | Ficha del personaje | Autorizado — **implementado el 2026-09-30** (Tanda B); 605 tests (+11); verificado en el navegador (las dos entradas, editar, recuerdos, ciclo de avatar); G2 sin cambios (`home.js` no se tocó); **pendiente de probar en el teléfono** | `www/js/ui/character-sheet.js` (hoja, no vista nueva); `Character.avatarLarge` (1024px, `cards/avatar.js#makeAvatarSet`, sin migración: se sanea igual que `avatar`); `Character.created` ya existía, se reutiliza tal cual (sin campo nuevo). **Bug de navegación real encontrado y corregido:** abrir una hoja dentro de `show()` durante un `navigate()` deja el historial apuntando a la vista vieja; se resolvió esperando (`await app.navigate`) antes de abrir la hoja de recuerdos desde la entrada de `chats.js`. Ver "UI-027" (en `HISTORIAL.md`). |
 | UI-028 | Foto del personaje junto a la burbuja y cabecera limpia | Autorizado — **implementado el 2026-09-30** (Tanda B); 611 tests (+6); verificado en el navegador (racha de mensajes, menú, variantes, chat largo); rendimiento medido con control de ruido (dos corridas seguidas del mismo código ya variaban ±9-33%, números absolutos sin cambio real); **pendiente de probar en el teléfono** | Cabecera sin avatar propio (se quitaron `AVATAR_MODES`/`applyAvatarMode`/el retrato grande); avatar de 34px junto a la burbuja solo en el primer mensaje de cada racha (`chat-row__avatarspace` reserva el lugar en el resto); `max-width` de la burbuja del personaje = `calc(88% + 34px + 8px)`, ancho de texto sin pérdida apreciable (0,27 % medido). **Bug real corregido:** la burbuja en streaming se ubicaba por posición (`firstElementChild`) y con la fila nueva habría apuntado al avatar; ahora por `querySelector('.chat-bubble')`. `Character.avatarMode` queda archivado en el esquema (como `Settings.glassEffect`). Ver "UI-028" (en `HISTORIAL.md`). |
 | MEM-015 | El personaje expresa cómo se siente, en su voz, al usar 3+ recuerdos | Autorizado — **implementado el 2026-09-30** (Tanda B); Paso 0 contra el servidor real (20 escenas sintéticas, dos corridas; sin penalización de latencia); 630 tests (+19); verificado de punta a punta contra el servidor real; **apagado por defecto** (el Paso 0 no lo justificó con fuerza suficiente); **pendiente de probar en el teléfono** | `www/js/api/feeling.js` (lista cerrada de 28 palabras + alias, mismo patrón `createXUpdater` que MEM-007/014, un solo intento); `Message.feeling` sigue a la variante activa como `loreUsed`; `Settings.feelingsEnabled` (checkbox "Sentimientos del personaje" en Ajustes). **Bug real corregido:** `sendInFlight` bloqueaba el disparo en el camino normal de "enviar" (solo funcionaba al Regenerar); se agregó el mismo reintento que ya usan lorebook/continuidad. `DB_VERSION` sin cambios. Ver "MEM-015" (en `HISTORIAL.md`). |
+| ARQ-003 | Plano de navegación y ajustes: inventario y propuesta (sin tocar código) | Autorizado — **completado el 2026-09-30** (solo `docs/`, sin código de producción) | `docs/UX-BLUEPRINT.md` (nuevo): inventario completo con cita archivo/línea, dos hallazgos reales (el selector de imágenes YA llega a Google Drive en las 7 pantallas que eligen imagen; el botón del nombre en la cabecera del chat tiene una clase CSS sin regla propia, por debajo de 44px y sin la flechita que `DESIGN.md` dice que tiene), propuesta de estructura marcada mover/renombrar vs. cambia comportamiento, y 10 contratos sugeridos priorizados. Ver "ARQ-003" (en `HISTORIAL.md`). |
 | (previos) | `CONTRACT-LOREBOOK.md` (implementado, parcialmente superado), `CONTRACT-CHARACTER-CREATOR.md` (**ANULADO, reemplazado por CCC-001**), `CONTRACT-HANDOFF.md` (briefing) | — | Ver los avisos al inicio de cada uno. |
 
 
@@ -339,6 +340,7 @@ personajes: segunda iteración visual"; auditoría de recuperabilidad →
 - **MEM-011 (2026-09-26), timestamp y "sintiendo…".** Bajo cada mensaje con texto: la hora (o la fecha si es de un día anterior). Si la respuesta del personaje activó ≥3 recuerdos por tema y una tabla de palabras clave (sin modelo, cero latencia) reconoce una categoría clara, se añade `· sintiendo nostalgia` (cariño, ilusión, gratitud, preocupación, tristeza, alegría, orgullo, calma, asombro). Sin categoría clara, solo la hora: nunca se adivina. Límite conocido: fuera del vocabulario de la tabla se calla (cobertura ~50 % con otro fraseo).
 - **FMT-003 (2026-09-25), asteriscos en pantalla.** `formatMessage(text, {role:'char'})` repara solo en pantalla los `*` mal emparejados
   (`**`=`*`, apertura dentro de cursiva abierta, `*` suelto oculto); usuario y datos guardados intactos.
+- **ARQ-003 (2026-09-30), plano de navegación y ajustes.** Solo documentación: `docs/UX-BLUEPRINT.md` inventaría TODAS las pantallas/controles con cita archivo/línea y propone dónde debería vivir cada uno. Dos hallazgos reales: (1) las 7 pantallas que eligen una imagen (avatar, fondo, importar) ya usan `pickFiles()` sin filtro, así que **ya se puede elegir una foto desde Google Drive**, sin arreglo pendiente; (2) el botón que abre la ficha del personaje dentro de un chat tiene una clase CSS (`chat-head__namebtn`) sin ninguna regla que la defina, así que no llega a los 44px mínimos del proyecto y le falta la flechita "›" que `DESIGN.md` dice que tiene — contradice la propia documentación, no corregido (fuera de alcance de este contrato). Corrige también un supuesto equivocado del encargo: "Fondo del chat" y "Cambiar avatar" son datos de **Personaje**, no de "Chat/episodio" como asumía el Contexto.
 - **CCC-001 (2026-09-27, rama remota) / CCC-003 (2026-09-30, portado a `main`), creador y editor de personajes propios.** El hub separa "Cargar character card" en un botón grande "Crear personaje" y un ícono chico de importar (sin cambios). Una sola pantalla (`character-editor.js`) crea y edita: nombre, personalidad por pills (hasta 6, de una lista curada de 24 en inglés, `personality-tags.js`) o texto libre si la card no trae etiquetas (nunca se adivina; "Convertir a etiquetas" es una acción explícita y empieza vacía), descripción/escenario/primer mensaje/ejemplo con contador de caracteres y apariencia (MEM-009, reutilizada tal cual). Todo se ensambla en una Card normal (`cards/build.js`) y se guarda con `saveCharacter()`, igual que una card importada. Campos nuevos `Character.formatStyle` (`'nomi'` por defecto) y `Character.personalityTags` (`[]` por defecto): ningún personaje ya guardado cambia de comportamiento. **Diferencia CCC-003 vs. la rama original:** en la rama, `formatStyle` conectaba con `formatAssist`/`format.js` (un personaje "Libre" no recibía el arranque forzado en `*`, cerrando un bug latente de FMT-002 con personajes sin asteriscos como Ani); CCC-003 NO trajo esa conexión (el contrato lo prohibió explícitamente) y ocultó el selector "Nomi/Libre" en la pantalla — el campo se guarda pero no hace nada todavía, decisión de producto pendiente del arquitecto. Reemplaza y anula la propuesta `CONTRACT-CHARACTER-CREATOR.md`.
 
 ## Hoja de ruta acordada (propuesta, NO autorizada)
@@ -360,6 +362,49 @@ implementan sin un contrato del arquitecto. Sin datos personales del usuario.
    la memoria sin tocar el código.
 8. ~~Creador de personajes dentro de la app~~ (hecho el 2026-09-27, CCC-001: crear y editar, con exportación como
    `chara_card_v2` de siempre; falta, si algún día hace falta, exportar directamente a PNG).
+9. **Imágenes generadas de los personajes (manual y contextual), con galería — PROPUESTA NO
+   AUTORIZADA, prioridad baja (ARQ-003, 2026-09-30).** Depende de hardware que el usuario no tiene
+   hoy ("future-proofing"): su PC no puede mantener a la vez el modelo de texto y el de imágenes, se
+   alternan a mano. Registrado acá para que las instancias futuras conozcan las decisiones ya
+   tomadas, no para construir nada todavía.
+   - **Objetivo:** generar imágenes del personaje desde la app (a pedido o según el contexto del
+     chat), con galería y la opción de usarlas como foto de perfil o fondo de chat.
+   - **Hechos aportados por el usuario (Hecho, no verificado por el proyecto):** genera hoy con
+     `stable-diffusion.cpp` mediante un programa llamado Neural Pixel, modelo WAI-Illustrious
+     (SDXL), que no quiere cambiar; una imagen tarda ~2 min 45 s. **Supuesto a verificar:** si
+     Neural Pixel expone una interfaz que la app pueda usar. **Alternativa a verificar:** KoboldCpp
+     con un modelo de imágenes (mismo motor que ya usa la app) y accesos directos para alternar
+     entre modo texto y modo imagen.
+   - **Diseño tentativo (sin construir):** cola de "fotos por revelar" — un pedido guardado
+     (apariencia fija del personaje + ropa actual + escena) que se procesa por lote al encender el
+     motor de imágenes, con la pantalla encendida durante el lote, progreso visible, guardado
+     inmediato de cada foto y reanudación si se interrumpe. Las imágenes vivirían en un almacén
+     separado de los registros de personajes (implica subir la versión de IndexedDB, con migración y
+     copia de seguridad previa — ver principio 8 de `docs/PRINCIPIOS-DE-INGENIERIA.md`), excluidas
+     de las copias de seguridad por defecto, guardadas en una versión reducida (~1024 px) para no
+     inflar el almacenamiento del teléfono.
+   - **Material reutilizable de una herramienta externa del usuario ("DiffusionSeek", armador de
+     prompts, no genera imágenes):** una biblioteca de tags con perfiles `wai_illustrious` y
+     `photoreal_sdxl`, escenas predefinidas, y el orden/recorte del prompt. Su interfaz no se
+     reutilizaría; la biblioteca de tags solo se cargaría al entrar a la sección de imágenes (no en
+     el arranque de la app).
+   - **Rasgos fijos de apariencia por opciones tocables:** la idea es que el wizard del creador
+     (pendiente, ver sección "Ubicación tentativa" de `docs/UX-BLUEPRINT.md`) ofrezca pelo/ojos/
+     complexión como opciones tocables más un campo libre, y que esas mismas elecciones produzcan a
+     la vez el texto del personaje (como hoy, en `character-appearance.js`) y los tags de imagen.
+   - **Regla de diseño de seguridad (sin interfaz, sin interruptor, para cuando se construya el
+     módulo de generación):** un módulo pequeño y aislado (un solo archivo, un único punto de
+     llamada, sin dependencias desde otros módulos de la app) evaluaría el prompt de imagen COMPLETO
+     antes de enviarlo al motor y bloquearía solo la combinación, en el MISMO prompt/imagen, de una
+     referencia a un menor con contenido sexual o explícito. **No es una lista de palabras
+     prohibidas sueltas:** términos como "children"/"niño"/"hija" en un prompt SIN contenido sexual
+     no deben bloquearse (caso de uso real del usuario: escenas familiares con hijos imaginarios del
+     roleplay). Una figura adulta con contenido explícito y una figura infantil no sexual pueden
+     coexistir en la misma escena familiar sin bloqueo — el bloqueo es solo cuando ambos elementos
+     (menor + explícito) aparecen juntos en el mismo prompt. No se restringe ningún contenido entre
+     adultos. El día que se construya, iría documentado en el lugar estándar de módulos de la app
+     (`docs/CONTRACTS.md`, junto a los demás módulos de `www/js/api/`), sin ningún trato especial de
+     ocultamiento.
 
 ## Mapa de la historia (`docs/HISTORIAL.md`, una línea por sección)
 
@@ -391,3 +436,4 @@ implementan sin un contrato del arquitecto. Sin datos personales del usuario.
 - **FMT-002** — validador V1–V4, tablas A/B/C/D (2 rondas + texto simple), decisión, opciones descartadas. **FMT-003** — reglas de normalización visual y casos.
 - **VER-005** — informe de búsqueda por significado: viabilidad en KoboldCpp 1.121, tabla de sinónimos vs difusa (juego ciego), `--smartcache`. **MEM-007** — Paso 0 (3 técnicas × 3 regímenes), afinación de la instrucción, colocación cabecera/final, reserva fija. **Hallazgo LAT-001** — causas medidas de las pausas de ~1 min y propuesta de arreglo. **LAT-001 (a)** — implementación del frente estable y su medición (1 pausa en frío en 24 pasos, antes 9). **MEM-008** — frases, colocación y costo de latencia medido por cambio de nivel. **UI-024** — archivo de skins y fuentes, migración de `Settings.theme`, cambios en pruebas y diagnóstico. **UI-025** — mapa de dónde vive cada ajuste, y el desvío del "Diagnóstico" por chat. **QOL-002** — módulo `persist.js` y dónde se ve el resultado. **MEM-009** — colocación de la ficha en el prompt, tope, hoja de edición y compatibilidad con copias. **MEM-010** — umbral de ausencia, qué se mide y por qué, y cómo cede al usuario. **MEM-011** — Paso 0 (casos, aciertos, cobertura), decisiones de diseño y límites.
 - **CCC-001** — decisiones de diseño (por qué pills con tope 6, por qué "Convertir a etiquetas" nunca adivina, por qué `formatStyle` por personaje y no un ajuste global), verificación en el navegador paso a paso y el bug de FMT-002 que queda cerrado de paso.
+- **ARQ-003** — cómo se armó el inventario (qué se leyó, archivo por archivo), el detalle de los dos hallazgos reales (selector de imágenes, botón de la ficha sin estilo) y la lista completa de contratos sugeridos; documento de referencia principal: `docs/UX-BLUEPRINT.md`.

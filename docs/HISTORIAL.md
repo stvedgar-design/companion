@@ -2797,3 +2797,86 @@ Segunda corrida (con las correcciones): 19/20 parsearon una palabra válida (el 
 **Verificado (tests).** 630 tests en total (611 antes de este contrato + 17 en `tests/feeling.test.mjs`: la lista, el umbral compartido con MEM-011, `feelingApplies`, `sanitizeFeeling`, `parseFeelingWord` con sus alias, `feelingInstruction`/`buildFeelingRequest` en los dos modos, y `createFeelingUpdater` completo con un servidor de prueba inyectado — ocupado/pocos recuerdos/ya tiene sentimiento/ajuste apagado, éxito con un solo intento, palabra fuera de lista, mensaje cambiado mientras corría, `abort()` — + 2 en `tests/variants.test.mjs` (round-trip de `feeling` con `sanitizeMessage`/`normalizeVariants`) + 1 actualizado en `tests/state.test.mjs` (valores por defecto) + 1 actualizado en `tests/mood.test.mjs` (la línea de `chat.js` que arma el texto de "sintiendo…" ahora antepone `feelingDisplayText`). `node --check` en los 4 archivos de código tocados/creados.
 
 **No probado:** en un APK real (nada de este contrato llama a plugins nativos, pero SÍ llama al modelo — el riesgo real, ya cubierto por el Paso 0 contra el servidor real de esta sesión, es de calidad/costo, no de plataforma). El "abortar apenas el usuario escribe" se verificó por código (mismo mecanismo de `AbortController` que MEM-007/MEM-014, con un test que confirma que `abort()` cancela sin guardar) pero no se pudo cronometrar una carrera real tecla-contra-red en este entorno.
+
+## ARQ-003: plano de navegación y ajustes — inventario y propuesta (2026-09-30)
+
+**Qué se pidió.** Después de entregar los contratos uno a uno, el usuario reporta que la app "se
+siente como un laboratorio": opciones cotidianas escondidas en lugares inesperados (el tamaño de
+texto estaba en Ajustes generales y lo buscó en el menú del chat — UI-026 tuvo que corregirse),
+ámbitos de app/personaje/chat mezclados, y jerga técnica junto a controles de uso diario. Se encargó
+un informe de investigación UX externo (no disponible para esta instancia; sus conclusiones se dieron
+como dirección, no como evidencia verificada). El encargo: inventariar TODO lo que existe hoy leyendo
+el código real (nunca inventar), con cita de archivo y línea; proponer una estructura; priorizar
+contratos de implementación sugeridos. Sin tocar `www/`, sin cambiar comportamiento.
+
+**Método.** Lectura directa de `www/index.html`, `www/js/nav.js`, los 17 módulos de `www/js/ui/*.js`
+(incluidos los dos archivos de 2270 y 995 líneas, `chat.js` y `state.js`, leídos por tramos) y las
+reglas de CSS relevantes en `www/css/base.css`/`chat.css`/`home.css`/`tokens.css`. No se usó el
+navegador integrado: este contrato es de lectura de código, no de comportamiento visual en vivo (no
+hace falta correr la app para citar una línea). Cada afirmación del documento final lleva su cita.
+
+**Hallazgo 1 — el selector de imágenes YA llega a Google Drive; no hay ningún arreglo pendiente.**
+El dato que trajo el usuario (el explorador nativo de Android sí navega a Google Drive sin bajar la
+imagen antes; un `accept="image/*"` que fuerza la galería, no) se verificó contra las SIETE pantallas
+que eligen un archivo de imagen (crear/editar personaje, "Cambiar foto" de la ficha, "Cambiar avatar"
+y "Fondo del chat" del menú ⋮, importar copia, importar character card, importar chat). Las siete
+pasan por una única función, `pickFiles()` (`www/js/platform.js:17-70`), que a propósito NO pone
+`accept` — el propio comentario del archivo explica por qué (evitar que Android abra la galería y
+excluya los `.json` de las copias). Conclusión: el "arreglo pequeño" que el Contexto de este
+contrato daba por posible no hace falta — ya está así desde que existe `platform.js`.
+
+**Hallazgo 2 — bug real: el botón del nombre en la cabecera del chat no tiene su propio estilo.**
+Comparando los dos lugares donde se abre la ficha del personaje (UI-027): en la lista de chats
+(`www/js/ui/chats.js:27`) la clase es `chats-head__namebtn` (con "chat**s**"), con una regla real en
+`www/css/base.css:103-117` (min-height 44px, flechita "›"). Dentro de un chat
+(`www/js/ui/chat.js:83`) la clase es `chat-head__namebtn` (sin la "s") — **no existe ninguna regla
+CSS con ese nombre exacto en todo el proyecto** (confirmado con `grep -rn` sobre `www/css/`). La
+regla más parecida, `.chat-head__name` (sin "btn", `www/css/chat.css:14-36`), define el mismo
+`min-height: 44px` y la misma flechita, pero no aplica porque el botón real no tiene esa clase. Por
+el reset global (`button{padding:0;border:0}`, `www/css/base.css:36-44`), el botón cae al alto de
+una línea de texto, bien por debajo de los 44px que exige el propio principio 9 de
+`docs/PRINCIPIOS-DE-INGENIERIA.md`, y sin la flechita "›" que `docs/DESIGN.md:198` describe como ya
+existente ("con una flechita '›' como indicio discreto") — la documentación describe una pantalla
+que el código no entrega. Es, con alta probabilidad, un error de tipeo de UI-027/UI-028 (sobró
+"btn" en el nombre de la clase, o faltó agregar la regla equivalente). No se corrigió en este
+contrato (es solo documentación); queda como el primer ítem, tamaño Pequeño, de la lista de
+contratos sugeridos.
+
+**Hallazgo 3 — el Contexto de este mismo contrato se equivoca en el ámbito de "fondo" y "avatar".**
+El punto 2 de su Contexto proponía el ámbito "Chat/episodio" para "fondo, tamaño de texto rápido,
+resumen, exportar, borrar". Verificado contra el código: `chat-background.js:1-5` dice explícitamente
+que el fondo es "por PERSONAJE … nunca desde Ajustes", se guarda en `Character.chatBackground`
+(compartido entre todos los chats de ese personaje) — coincide con la decisión de proyecto ya
+documentada en `docs/NOTES.md` ("Fondo de chat por personaje"), no con el ámbito que proponía el
+encargo. Lo mismo pasa con "Cambiar avatar" (menú ⋮, `chat.js:2066`): guarda `Character.avatar`, no
+algo del chat. Y "tamaño de texto rápido por chat" directamente no existe: el tamaño de los mensajes
+(UI-026) es un ajuste GLOBAL en Ajustes (`Settings.messageFontSize`). El documento final corrige
+estos tres puntos en su propuesta de estructura en vez de repetir el supuesto original.
+
+**Hallazgo 4 — "Ver personaje" del menú ⋮ no abre la ficha, abre el editor directo.** El menú ⋮ del
+chat (`chat.js:2080-2090`) llama a `openCharacterEditor` directamente, sin pasar por
+`openCharacterSheet` (la ficha de UI-027). Hoy hay dos caminos al editor: tocar el nombre → ficha →
+"Editar", o menú ⋮ → "Ver personaje" directo — exactamente el tipo de mezcla que el usuario reporta
+como confusa. Documentado como propuesta de unificación (sección 9 del documento), no implementado:
+cambia una ruta de navegación conocida, necesita autorización aparte.
+
+**Entregable.** `docs/UX-BLUEPRINT.md` (nuevo): inventario de las 18 pantallas reales de la app, con
+tablas de controles por pantalla (texto literal, archivo:línea, ámbito real, uso inferido, si usa
+jerga), tabla de tamaño táctil medido por CSS contra las 44px del principio 9 (un control roto, tres
+familias de botones secundarios por debajo de 44px pero sobre el mínimo absoluto de 24px), propuesta
+de estructura "hoy → propuesto → nombre", cada fila marcada "solo mover/renombrar" o "cambia
+comportamiento", sección "Avanzado" definida (sin pantallas ni interruptores nuevos), ubicación
+tentativa de las funciones pendientes del Contexto (wizard, duplicar, memoria como historia
+compartida, perfil, disponibilidad, buzón, hora local, pestaña de Fotos) y 10 contratos sugeridos
+priorizados. `docs/NOTES.md`: fila nueva en el Registro de contratos, resumen de una línea en
+"Resumen de contratos recientes", punto 9 de la hoja de ruta con las decisiones de imágenes
+(objetivo, restricción de hardware, hechos de Neural Pixel/WAI-Illustrious, diseño tentativo de la
+cola de fotos, material reutilizable de DiffusionSeek, y la regla de contaminación menor+explícito
+descrita en detalle, no como lista de palabras) marcadas PROPUESTA NO AUTORIZADA de baja prioridad.
+
+**Qué no se pudo verificar.** El tamaño táctil se midió leyendo las reglas CSS, no con una regla
+física sobre un teléfono real — no bloquea el contrato porque el punto 4 del Contexto lo pedía como
+reporte ("DEBERÍA medir o estimar"), no como criterio de aceptación estricto.
+
+**`git status` al terminar:** solo cambios dentro de `docs/` (`UX-BLUEPRINT.md` nuevo, `NOTES.md` y
+`HISTORIAL.md` editados), sin tocar `www/`, `tests/`, `.github/` ni `signing/`.
