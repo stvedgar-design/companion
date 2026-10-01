@@ -1959,11 +1959,20 @@ function buildUsageInfo() {
       { continuity: chat && chat.continuitySummary ? chat.continuitySummary.text : '', relationship: relationshipForPrompt(character), appearance: appearanceOf(character) }
     );
     const pct = Math.round(Math.min(ratio, 1) * 100);
+    // UI-030: la palabra "tokens" no aparece en el texto principal (lenguaje de "memoria", no de programación);
+    // el detalle numérico queda en una segunda línea, igual de discreta, para quien quiera verlo.
     hint.textContent = ratio >= 1
-      ? `Contexto lleno (≈${approxTokens} de ${budgetTokens} tokens aprox.): los mensajes más viejos ya se están recortando.`
-      : `Contexto usado: ~${pct}% (≈${approxTokens} de ${budgetTokens} tokens aprox.)`;
+      ? 'Memoria inmediata llena: los mensajes más viejos ya se están recortando.'
+      : `Memoria inmediata usada: ~${pct}%`;
+    field.appendChild(hint);
+
+    const detail = document.createElement('div');
+    detail.className = 'field__hint';
+    detail.textContent = `Detalle técnico: ≈${approxTokens} de ${budgetTokens} tokens aprox.`;
+    field.appendChild(detail);
+  } else {
+    field.appendChild(hint);
   }
-  field.appendChild(hint);
 
   return field;
 }
@@ -2017,7 +2026,7 @@ function buildDiagnostics() {
   toggle.className = 'menu-item menu-fold';
   toggle.setAttribute('aria-expanded', 'false');
   const label = document.createElement('span');
-  label.textContent = 'Diagnóstico';
+  label.textContent = 'Avanzado';
   const chevron = document.createElement('span');
   chevron.className = 'menu-fold__chevron';
   chevron.setAttribute('aria-hidden', 'true');
@@ -2056,7 +2065,7 @@ function onMenu() {
   // "Continuar" en el hub se entra directo al chat, así que atrás vuelve al hub, no a esta lista — límite conocido).
   const characterItems = [
     menuItem('Fondo del chat', () => openChatBackground(app, character)),
-    menuItem('Ver lorebook', () => openLorebookSheet()),
+    menuItem(`Lo que recuerda ${character.name}`, () => openLorebookSheet()),
     menuItem('Resumen de este chat', () => openContinuitySheet()),
   ];
   if (character && character.card.alternate_greetings && character.card.alternate_greetings.length && isOnlyGreeting()) {

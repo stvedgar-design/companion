@@ -282,6 +282,7 @@ personajes: segunda iteración visual"; auditoría de recuperabilidad →
 | MEM-015 | El personaje expresa cómo se siente, en su voz, al usar 3+ recuerdos | Autorizado — **implementado el 2026-09-30** (Tanda B); Paso 0 contra el servidor real (20 escenas sintéticas, dos corridas; sin penalización de latencia); 630 tests (+19); verificado de punta a punta contra el servidor real; **apagado por defecto** (el Paso 0 no lo justificó con fuerza suficiente); **pendiente de probar en el teléfono** | `www/js/api/feeling.js` (lista cerrada de 28 palabras + alias, mismo patrón `createXUpdater` que MEM-007/014, un solo intento); `Message.feeling` sigue a la variante activa como `loreUsed`; `Settings.feelingsEnabled` (checkbox "Sentimientos del personaje" en Ajustes). **Bug real corregido:** `sendInFlight` bloqueaba el disparo en el camino normal de "enviar" (solo funcionaba al Regenerar); se agregó el mismo reintento que ya usan lorebook/continuidad. `DB_VERSION` sin cambios. Ver "MEM-015" (en `HISTORIAL.md`). |
 | ARQ-003 | Plano de navegación y ajustes: inventario y propuesta (sin tocar código) | Autorizado — **completado el 2026-09-30** (solo `docs/`, sin código de producción) | `docs/UX-BLUEPRINT.md` (nuevo): inventario completo con cita archivo/línea, dos hallazgos reales (el selector de imágenes YA llega a Google Drive en las 7 pantallas que eligen imagen; el botón del nombre en la cabecera del chat tiene una clase CSS sin regla propia, por debajo de 44px y sin la flechita que `DESIGN.md` dice que tiene), propuesta de estructura marcada mover/renombrar vs. cambia comportamiento, y 10 contratos sugeridos priorizados. Ver "ARQ-003" (en `HISTORIAL.md`). |
 | UI-029 | Corregir el botón de nombre en la cabecera del chat (clase CSS sin estilo) | Autorizado — **implementado el 2026-09-30** (sesión S1); 630 tests; verificado en el navegador (44px de alto, flecha "›", sigue abriendo la ficha); **pendiente de probar en el teléfono** | `chat.js:83`: `chat-head__namebtn` → `chat-head__name` (la regla ya existía, sin usar). Cierra el hallazgo de la sección 2 de `UX-BLUEPRINT.md`. |
+| UI-030 | Renombrar rótulos técnicos a lenguaje de usuario (sin mover nada, sin cambiar comportamiento) | Autorizado — **implementado el 2026-09-30** (sesión S1); 630 tests; verificado en el navegador (menú ⋮ y Ajustes) | "Ver lorebook" → "Lo que recuerda {Nombre}"; sección plegada "Diagnóstico" del menú ⋮ → "Avanzado"; sección "Diagnóstico" de Ajustes → "Avanzado" (el botón interno "Diagnóstico y rendimiento" no cambia); "Contexto usado: ~X% (≈N de M tokens aprox.)" → "Memoria inmediata usada: ~X%" con el detalle en tokens en una segunda línea. Solo texto, cero lógica tocada. |
 | (previos) | `CONTRACT-LOREBOOK.md` (implementado, parcialmente superado), `CONTRACT-CHARACTER-CREATOR.md` (**ANULADO, reemplazado por CCC-001**), `CONTRACT-HANDOFF.md` (briefing) | — | Ver los avisos al inicio de cada uno. |
 
 
@@ -347,6 +348,13 @@ personajes: segunda iteración visual"; auditoría de recuperabilidad →
   sección 2: `chat.js:83` usaba la clase `chat-head__namebtn` (sin ninguna regla CSS propia) en vez de
   `chat-head__name` (la regla que ya existía, con `min-height: 44px` y la flecha "›"). Un solo cambio de
   nombre de clase; sin tocar `chats.js`/`base.css` ni el resto de la cabecera.
+- **UI-030 (2026-09-30), rótulos técnicos → lenguaje de usuario.** "Ver lorebook" (menú ⋮) pasa a
+  "Lo que recuerda {Nombre real}" (mismo patrón de interpolación que ya usaba `openLorebookSheet` para el
+  título de esa hoja). Las dos secciones "Diagnóstico" (menú ⋮ del chat y Ajustes) pasan a "Avanzado";
+  el botón interno "Diagnóstico y rendimiento" de Ajustes conserva su nombre (es la pantalla técnica en
+  sí). "Contexto usado: ~X% (≈N de M tokens aprox.)" pasa a "Memoria inmediata usada: ~X%", sin la
+  palabra "tokens" en la línea principal; el detalle en tokens queda en una segunda línea `field__hint`
+  aparte, dentro de la misma sección plegada ("Avanzado"). Cero cambios de lógica, cálculo o navegación.
 
 ## Hoja de ruta acordada (propuesta, NO autorizada)
 

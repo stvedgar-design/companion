@@ -104,7 +104,7 @@ export function openSettings(app) {
       </div>
     </div>
 
-    <div class="menu-group" aria-hidden="true">Diagnóstico</div>
+    <div class="menu-group" aria-hidden="true">Avanzado</div>
     <div class="field__hint" id="settings-persist">${describePersistence(getPersistenceResult())}</div>
     <div class="field">
       <label class="field__label">Prueba de fluidez</label>

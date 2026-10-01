@@ -2913,3 +2913,36 @@ sola clase CSS en una sola línea, ya cubierto por la verificación visual.
 
 **Fuera de alcance, sin tocar:** `chats.js`, `base.css` (solo lectura), el resto de la cabecera del
 chat (atrás, menú ⋮).
+
+## UI-030 (2026-09-30): renombrar rótulos técnicos a lenguaje de usuario
+
+Segundo de los cuatro contratos de esta sesión. Cuatro cambios de TEXTO, sin tocar lógica ni mover
+ningún control, siguiendo `docs/UX-BLUEPRINT.md` secciones 5 y 7.
+
+1. **"Ver lorebook" → "Lo que recuerda {Nombre}".** Se buscó primero cómo el proyecto ya interpola el
+   nombre del personaje en un rótulo dinámico existente: `openLorebookSheet()` (más abajo en el mismo
+   archivo) ya arma el título de esa misma hoja como `` `Lorebook de ${character.name}` ``. Se usó el
+   mismo patrón (`character.name` ya está en scope dentro de `onMenu()`, que solo se llama con un chat
+   cargado) para el texto del ítem de menú: `` `Lo que recuerda ${character.name}` ``.
+2. **Sección plegada "Diagnóstico" del menú ⋮ → "Avanzado".** Un cambio de una línea
+   (`label.textContent`) en `buildDiagnostics()`. El aviso "Información técnica. No hace falta
+   entenderla para usar la app." que ya tenía adentro se conserva tal cual.
+3. **Sección "Diagnóstico" de Ajustes → "Avanzado".** Solo el `<div class="menu-group">` que agrupa la
+   sección cambia; el botón interno "Diagnóstico y rendimiento" (que abre `diagnostics.js`) conserva su
+   nombre a propósito, como pedía el contrato (esa pantalla sí es inherentemente técnica).
+4. **"Contexto usado" sin la palabra "tokens" en el texto principal.** `buildUsageInfo()` ahora arma
+   dos líneas en vez de una: la primera ("Memoria inmediata usada: ~X%" o, si está lleno, "Memoria
+   inmediata llena: …") sin mencionar tokens; la segunda, un `field__hint` nuevo ("Detalle técnico: ≈N
+   de M tokens aprox."), igual de discreta que la primera y dentro de la misma sección plegada
+   "Avanzado" — ya está "detrás de una interacción adicional" (desplegar la sección), que es una de las
+   dos opciones que daba el contrato. No se tocó el cálculo (`estimateContextUsage`), solo el texto.
+
+**Verificado en el navegador integrado**, reutilizando la siembra de IndexedDB de UI-029 (mismo
+personaje/chat): el menú ⋮ mostró "Lo que recuerda Mia" y "Avanzado"; al desplegar "Avanzado" se leyó
+"Memoria inmediata usada: ~5%" seguido de "Detalle técnico: ≈182 de 3876 tokens aprox." en una línea
+aparte. Ajustes → se verificó por lectura de código (el grupo "Avanzado" ya usa la misma plantilla
+`.menu-group` que las demás secciones, visualmente idéntica a las otras).
+
+**Tests.** Se revisó `grep -rln "Contexto usado\|tokens aprox\|Ver lorebook\|Diagnóstico"` sobre
+`tests/`: las únicas coincidencias eran comentarios de test (no aserciones sobre el texto literal), así
+que no hizo falta tocar ningún test. `node --test tests/*.test.mjs`: 630/630, sin cambios en el total.
