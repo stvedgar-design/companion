@@ -18,8 +18,18 @@ function el(id) {
 let toastTimer = null;
 
 // Callback interno usado solo por confirmDialog para resolver su promesa
-// cuando la hoja se cierra por cualquier motivo (tocar fuera, atrás, botón).
+// cuando SU capa de la hoja se cierra por cualquier motivo (tocar fuera,
+// atrás, botón).
 let sheetCloseCallback = null;
+
+// UI-036: pila de capas debajo de la que está visible ahora mismo. Cada vez
+// que confirmDialog se abre con una hoja YA abierta debajo (p. ej. el editor
+// de personaje), su contenido y su sheetCloseCallback se guardan aquí en vez
+// de perderse; closeSheet() los restaura si hay algo que restaurar, y solo
+// cierra la hoja entera de verdad cuando la pila queda vacía. openSheet()
+// (reemplazo top-level, no anidado) vacía la pila: ese contenido guardado ya
+// no tiene sentido si se navega a una hoja totalmente distinta.
+let sheetStack = [];
 
 function fitViewport() {
   const vv = window.visualViewport;
@@ -146,13 +156,41 @@ export function openSheet(node) {
 
   const wasOpen = sheet.classList.contains('is-open');
   if (wasOpen) {
-    // Reemplazo: cualquier confirmDialog pendiente en la hoja anterior se
-    // cancela, pero no tocamos el historial (sigue siendo "una hoja abierta").
+    // Reemplazo top-level (no un confirmDialog anidado): cualquier capa
+    // guardada para restaurar después deja de tener sentido, y el
+    // confirmDialog pendiente (si lo había) se cancela — pero no tocamos el
+    // historial (sigue siendo "una hoja abierta").
+    sheetStack = [];
     const cb = sheetCloseCallback;
     sheetCloseCallback = null;
     if (cb) cb();
   }
 
+  card.replaceChildren(node);
+  sheet.classList.add('is-open');
+
+  if (!wasOpen) {
+    document.dispatchEvent(new CustomEvent('shell:sheetopen'));
+  }
+}
+
+// UI-036: variante de openSheet() para confirmDialog. Si ya había una hoja
+// abierta, guarda su contenido actual (y el sheetCloseCallback que tuviera)
+// en sheetStack en vez de descartarlo, para que closeSheet() pueda
+// restaurarlo cuando esta capa se cierre.
+function pushSheetLayer(node, onDismiss) {
+  const sheet = el('sheet');
+  const card = el('sheet-card');
+  if (!sheet || !card) {
+    onDismiss();
+    return;
+  }
+
+  const wasOpen = sheet.classList.contains('is-open');
+  if (wasOpen) {
+    sheetStack.push({ node: card.firstChild, callback: sheetCloseCallback });
+  }
+  sheetCloseCallback = onDismiss;
   card.replaceChildren(node);
   sheet.classList.add('is-open');
 
@@ -170,12 +208,25 @@ export function closeSheet() {
   const sheet = el('sheet');
   if (!sheet || !sheet.classList.contains('is-open')) return;
 
+  const cb = sheetCloseCallback;
+  sheetCloseCallback = null;
+
+  if (sheetStack.length > 0) {
+    // Esta capa (p. ej. un confirmDialog) estaba anidada sobre una hoja que
+    // ya estaba abierta: se restaura su contenido en vez de cerrar todo. La
+    // hoja sigue abierta de principio a fin, así que no hay evento ni
+    // historial que tocar.
+    const prev = sheetStack.pop();
+    const card = el('sheet-card');
+    if (card && prev.node) card.replaceChildren(prev.node);
+    sheetCloseCallback = prev.callback;
+    if (cb) cb();
+    return;
+  }
+
   sheet.classList.remove('is-open');
   const card = el('sheet-card');
   if (card) card.replaceChildren();
-
-  const cb = sheetCloseCallback;
-  sheetCloseCallback = null;
 
   document.dispatchEvent(new CustomEvent('shell:sheetclose'));
   if (cb) cb();
@@ -230,10 +281,11 @@ export function confirmDialog(message, opts = {}) {
     actions.appendChild(okBtn);
     wrap.appendChild(actions);
 
-    // Cubre cierre por toque fuera de la tarjeta y por "atrás" (que en
-    // main.js termina llamando a closeSheet()).
-    sheetCloseCallback = () => settle(false);
-
-    openSheet(wrap);
+    // pushSheetLayer cubre tanto el caso normal (confirmDialog es la única
+    // hoja) como el anidado (p. ej. sobre el editor de personaje, UI-036):
+    // en ambos, cierre por botón, por tocar fuera o por "atrás" (que en
+    // main.js termina llamando a closeSheet()) resuelve la promesa con
+    // settle(false) salvo que ya se haya resuelto por un botón.
+    pushSheetLayer(wrap, () => settle(false));
   });
 }
