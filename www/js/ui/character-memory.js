@@ -9,6 +9,7 @@
 // ("Mostrar más"), agrupadas en "Siempre presentes" y "Por tema", y cada una lleva `content-visibility: auto`.
 // Un personaje con 300 recuerdos abre con 20 tarjetas, no con 300.
 
+import { sanitizeIdentity, IDENTITY_MIN_MEMORIES } from '../api/identity-synthesis.js';
 import { relationshipSummary, relationshipDisplayText, relationshipAgeText, RELATIONSHIP_GROWING_MIN, RELATIONSHIP_ESTABLISHED_MIN } from '../api/relationship.js';
 
 /** Tarjetas que se dibujan de una vez por grupo; "Mostrar más" agrega otra tanda. */
@@ -53,6 +54,19 @@ export function memoryPage(list, shown, size = MEMORY_PAGE_SIZE) {
   return { items, remaining: Math.max(0, all.length - start - items.length) };
 }
 
+// MEM-019: lo que la tarjeta de identidad necesita. `proposal` espera respuesta del usuario; `text` es la aceptada (la única que viaja al prompt).
+function identityModel(character, total) {
+  const id = sanitizeIdentity(character && character.identity);
+  return {
+    text: id.text,
+    acceptedAt: id.acceptedAt,
+    proposal: id.proposal,
+    history: id.history,
+    total,
+    minMemories: IDENTITY_MIN_MEMORIES,
+  };
+}
+
 /**
  * Qué muestra la pantalla, a partir del personaje y del episodio (función pura, sin DOM, para probarla).
  * Los recuerdos son los ACTIVOS (`lorebook`); los archivados solo se cuentan (viven en `lorebookArchive`, MEM-016).
@@ -80,6 +94,7 @@ export function memoryDashboardModel(character, chat) {
     progress,
     always,
     topic,
+    identity: identityModel(character, sum.total),
     archivedCount: character && Array.isArray(character.lorebookArchive) ? character.lorebookArchive.length : 0,
     continuity: {
       text: summaryText,
@@ -144,6 +159,86 @@ export function buildRelationshipHero(model, info, hooks = {}) {
       }
       box.appendChild(actions);
     }
+  }
+  return box;
+}
+
+/**
+ * MEM-019: «Cómo ha cambiado {Nombre}». Una PROPUESTA (con «Aceptar» / «Descartar») o, si no hay propuesta, lo ya aceptado (con «Quitar»
+ * y las versiones anteriores plegadas). Se ve al entrar a la pantalla de memoria: nunca interrumpe un chat. Sin nada que mostrar, una línea
+ * que explica cuándo aparecerá. No lee ni escribe datos: las acciones llegan como funciones desde chat.js.
+ * @param {ReturnType<typeof memoryDashboardModel>} model
+ * @param {{ name: string }} info
+ * @param {{ onAccept: () => void, onDiscard: () => void, onRevert: () => void }} hooks
+ */
+export function buildIdentityCard(model, info, hooks) {
+  const idn = model.identity;
+  const box = el('section', 'mem-identity');
+  box.dataset.role = 'identity';
+  box.appendChild(el('h4', 'mem-section__title', `Cómo ha cambiado ${info.name}`));
+  if (idn.proposal) {
+    box.dataset.state = 'proposal';
+    box.appendChild(el('div', 'mem-continuity__text', idn.proposal.text));
+    box.appendChild(
+      el(
+        'div',
+        'field__hint',
+        `Propuesta nueva, escrita a partir de sus recuerdos. No cambia nada hasta que la aceptes; su personalidad original no se toca. ` +
+          `Si la aceptas, la próxima respuesta puede tardar un poco más.`
+      )
+    );
+    const actions = el('div', 'mem-actions');
+    const accept = el('button', 'btn btn--sm', 'Aceptar');
+    accept.type = 'button';
+    const discard = el('button', 'btn btn--sm btn--ghost', 'Descartar');
+    discard.type = 'button';
+    accept.addEventListener('click', () => {
+      accept.disabled = discard.disabled = true;
+      hooks.onAccept();
+    });
+    discard.addEventListener('click', () => {
+      accept.disabled = discard.disabled = true;
+      hooks.onDiscard();
+    });
+    actions.append(accept, discard);
+    box.appendChild(actions);
+    return box;
+  }
+  if (idn.text) {
+    box.dataset.state = 'accepted';
+    box.appendChild(el('div', 'mem-continuity__text', idn.text));
+    const age = relationshipAgeText(idn.acceptedAt);
+    box.appendChild(el('div', 'field__hint', `Aceptada${age ? ' ' + age : ''}. Se suma a su personalidad original en cada respuesta.`));
+    const actions = el('div', 'mem-actions');
+    const revert = el('button', 'btn btn--sm btn--ghost', idn.history.length ? 'Volver a la anterior' : 'Quitar');
+    revert.type = 'button';
+    revert.addEventListener('click', () => {
+      revert.disabled = true;
+      hooks.onRevert();
+    });
+    actions.appendChild(revert);
+    box.appendChild(actions);
+  } else {
+    box.dataset.state = 'empty';
+    box.appendChild(
+      el(
+        'div',
+        'field__hint',
+        idn.total < idn.minMemories
+          ? `Cuando ${info.name} tenga unos ${idn.minMemories} recuerdos, te propondrá cómo ha cambiado. Tú decides si lo aceptas.`
+          : `Más adelante, con recuerdos nuevos, ${info.name} te propondrá cómo ha cambiado. Tú decides si lo aceptas.`
+      )
+    );
+  }
+  if (idn.history.length) {
+    const details = el('details', 'mem-tools');
+    details.appendChild(el('summary', '', `Versiones anteriores (${idn.history.length})`));
+    for (const v of idn.history) {
+      details.appendChild(el('div', 'mem-continuity__text', v.text));
+      const when = relationshipAgeText(v.acceptedAt);
+      details.appendChild(el('div', 'field__hint', when ? `Aceptada ${when}.` : 'Aceptada antes.'));
+    }
+    box.appendChild(details);
   }
   return box;
 }

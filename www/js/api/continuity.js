@@ -14,6 +14,7 @@ import { historyStartIndex, continuityBlockChars, buildChatMessages, buildPlainP
 import { loreBudgetPreview } from './lorebook.js';
 import { relationshipForPrompt } from './relationship.js';
 import { appearanceOf } from '../character-appearance.js';
+import { identityForPrompt } from './identity-synthesis.js';
 
 /** Tope de caracteres de CADA recuento nuevo (lo que se pide y lo que se conserva de la respuesta). */
 export const CONTINUITY_RECAP_CHARS = 400;
@@ -272,9 +273,9 @@ export function planForContext(ctx, opts = {}) {
   const scenario = (chat && chat.scenario) || '';
   const relationship = relationshipForPrompt(character);
   const appearance = appearanceOf(character);
-  const windowStart = historyStartIndex(character.card, messages, settings, scenario, preview.alwaysBlock, endChars, 0, relationship, appearance, true);
+  const windowStart = historyStartIndex(character.card, messages, settings, scenario, preview.alwaysBlock, endChars, 0, relationship, appearance, true, identityForPrompt(character));
   const look = CONTINUITY_LOOKAHEAD_CHARS * (opts.manual ? CONTINUITY_MANUAL_LOOKAHEAD_FACTOR : 1);
-  const triggerStart = historyStartIndex(character.card, messages, settings, scenario, preview.alwaysBlock, endChars, look, relationship, appearance, true);
+  const triggerStart = historyStartIndex(character.card, messages, settings, scenario, preview.alwaysBlock, endChars, look, relationship, appearance, true, identityForPrompt(character));
   return planContinuityUpdate({ messages, coveredUntil: summary.coveredUntil, windowStart, triggerStart });
 }
 
@@ -346,7 +347,9 @@ export function buildContinuationRequest(ctx, instruction) {
   const relationship = relationshipForPrompt(character);
   // MEM-009: solo los rasgos FIJOS (cabecera): la petición de resumen no lleva el bloque final, pero su cabecera debe ser idéntica a la del chat.
   const appearance = appearanceOf(character);
-  const extras = { relationship, ...(appearance && appearance.fixed ? { appearance: { fixed: appearance.fixed } } : {}) };
+  // MEM-019: la cabecera lleva la identidad aceptada, igual que en el chat normal (así sigue siendo continuación del prefijo).
+  const identity = identityForPrompt(character);
+  const extras = { relationship, ...(appearance && appearance.fixed ? { appearance: { fixed: appearance.fixed } } : {}), ...(identity ? { identity } : {}) };
   if (settings && settings.mode === 'chat') {
     const built = buildChatMessages(card, messages, settings, scenario, always, '', '', false, extras);
     return {

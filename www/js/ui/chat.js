@@ -1,7 +1,7 @@
 // www/js/ui/chat.js
 // Pantalla de chat: burbujas, streaming, avatar en 3 modos, composer, menú.
 
-import { getChat, getChatMessages, saveChatMessages, getCharacter, getSettings, saveSettings, markChatExported, saveCharacterLorebook, markChatLorebookProgress, saveChatContinuity, sanitizeContinuity, sanitizeMessage, saveCharacterRelationship, saveChatArchive, isChatArchived, isChatArchivePending } from '../state.js';
+import { getChat, getChatMessages, saveChatMessages, getCharacter, getSettings, saveSettings, markChatExported, saveCharacterLorebook, markChatLorebookProgress, saveChatContinuity, sanitizeContinuity, sanitizeMessage, saveCharacterRelationship, saveCharacterIdentity, saveChatArchive, isChatArchived, isChatArchivePending } from '../state.js';
 import { generateReplyNonEmpty, completeOnce, completeChatOnce } from '../api/kobold.js';
 import { initialMessages, scenarioGreeting, estimateContextUsage } from '../api/prompt.js';
 import {
@@ -31,13 +31,16 @@ import {
   RELATIONSHIP_TEXT_MAX_CHARS,
 } from '../api/relationship.js';
 import { appearanceOf } from '../character-appearance.js';
+import { identityForPrompt } from '../api/identity-synthesis.js';
 import { moodText } from '../api/mood.js';
 import { createFeelingUpdater, feelingDisplayText } from '../api/feeling.js';
 import { formatMessageTime, formatMessageFullTime } from '../msgtime.js';
 import { createContinuityUpdater, coveredCount, CONTINUITY_TOTAL_CHARS, CONTINUITY_ON_OPEN_DELAY_MS, cleanRecap, verifyRecap } from '../api/continuity.js';
 import { openCharacterSheet } from './character-sheet.js';
 import { archiveChat, archiveResultMessage, cancelBackgroundArchive } from './chat-archive.js';
-import { memoryDashboardModel, buildRelationshipHero, buildContinuityCard, buildMemoryCards } from './character-memory.js';
+import { cancelBackgroundIdentity } from './identity.js';
+import { memoryDashboardModel, buildRelationshipHero, buildContinuityCard, buildMemoryCards, buildIdentityCard } from './character-memory.js';
+import { acceptProposal, discardProposal, revertIdentity } from '../api/identity-synthesis.js';
 import { logEvent, TEL_EVENTS } from '../telemetry.js';
 import { formatMessage } from './format.js';
 import { variantCount, activeVariantIndex, addVariant, selectVariant, editActiveText } from '../variants.js';
@@ -179,6 +182,7 @@ export async function show({ chatId } = {}) {
   // MEM-018: abrir un chat tiene prioridad sobre un archivado en segundo plano (latencia primero): se corta y el episodio
   // sigue pendiente para la próxima vez que el hub vea el servidor encendido.
   cancelBackgroundArchive();
+  cancelBackgroundIdentity(); // MEM-019: si el hub dejó una síntesis de identidad corriendo, se corta (se reintenta en el próximo chequeo)
   archiving = false;
   chat = await getChat(chatId);
   if (!chat) {
@@ -1446,6 +1450,18 @@ function openLoreUsedSheet(message) {
 // Todo lo que hacen los botones es lo mismo de antes (mismas funciones, mismos datos); solo cambió dónde y cómo se ven.
 // Cada pantalla de la hoja reemplaza a la anterior con `app.openSheet` (sin
 // cerrar la hoja, así no se toca el historial: ver shell.js / main.js).
+// MEM-019: aplica aceptar/descartar/quitar sobre el registro recién leído y refresca la pantalla. El `character` en memoria se renueva
+// para que la PRÓXIMA respuesta ya use (o deje de usar) la identidad; nada más del personaje se toca.
+async function changeIdentity(transform, doneNote) {
+  try {
+    const updated = await saveCharacterIdentity(character.id, (identity) => transform(identity, Date.now()));
+    character = updated;
+    openLorebookSheet(doneNote);
+  } catch {
+    openLorebookSheet('No se pudo guardar. No se cambió nada.');
+  }
+}
+
 function openLorebookSheet(note = '') {
   if (!character) return;
   const model = memoryDashboardModel(character, chat);
@@ -1459,6 +1475,13 @@ function openLorebookSheet(note = '') {
 
   // (1) relación y (2) resumen
   wrap.appendChild(buildRelationshipBlock(character, model));
+  wrap.appendChild(
+    buildIdentityCard(model, { name: character.name }, {
+      onAccept: () => changeIdentity(acceptProposal, 'Listo: a partir de ahora esto se suma a cómo se presenta ' + character.name + '.'),
+      onDiscard: () => changeIdentity(discardProposal, 'Propuesta descartada. Nada cambió.'),
+      onRevert: () => changeIdentity(revertIdentity, 'Hecho. Volvió a como estaba antes.'),
+    })
+  );
   wrap.appendChild(buildContinuityCard(model, { onOpen: () => openContinuitySheet() }));
 
   // (3) recuerdos como tarjetas
@@ -2129,7 +2152,7 @@ function buildUsageInfo() {
     const lore = loreBudgetPreview(character.lorebook || []);
     const { approxTokens, budgetTokens, ratio } = estimateContextUsage(
       character.card, messages, settings, chat ? chat.scenario : '', lore.alwaysBlock, lore.topicReserve,
-      { continuity: chat && chat.continuitySummary ? chat.continuitySummary.text : '', relationship: relationshipForPrompt(character), appearance: appearanceOf(character) }
+      { continuity: chat && chat.continuitySummary ? chat.continuitySummary.text : '', relationship: relationshipForPrompt(character), appearance: appearanceOf(character), identity: identityForPrompt(character) }
     );
     const pct = Math.round(Math.min(ratio, 1) * 100);
     // UI-030: la palabra "tokens" no aparece en el texto principal (lenguaje de "memoria", no de programación);

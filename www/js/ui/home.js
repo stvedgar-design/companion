@@ -3,6 +3,7 @@
 
 import { getSettings, listCharacters, listChats, deleteCharacter, activeChats } from '../state.js';
 import { retryPendingArchives } from './chat-archive.js';
+import { maybeSynthesizeIdentities } from './identity.js';
 import { importCardFile } from '../cards/import.js';
 import { connect } from '../api/kobold.js';
 import { pickFiles } from '../platform.js';
@@ -318,12 +319,15 @@ async function checkConnection(myToken) {
     if (myToken !== viewToken) return;
     setStatus('ok', model);
     // MEM-018: el servidor responde → se completan en segundo plano los episodios que quedaron "pendientes de archivar".
-    retryPendingArchives().then((r) => {
-      if (r && r.archived > 0 && myToken === viewToken) {
-        app.toast(r.archived === 1 ? 'Se terminó de archivar un episodio pendiente.' : `Se terminó de archivar ${r.archived} episodios pendientes.`);
-        refreshPreviews();
-      }
-    });
+    retryPendingArchives()
+      .then((r) => {
+        if (r && r.archived > 0 && myToken === viewToken) {
+          app.toast(r.archived === 1 ? 'Se terminó de archivar un episodio pendiente.' : `Se terminó de archivar ${r.archived} episodios pendientes.`);
+          refreshPreviews();
+        }
+      })
+      // MEM-019: una por una, después de lo anterior (el servidor atiende de a una petición). Sin aviso: la propuesta se ve al entrar a «Memoria de {Nombre}».
+      .then(() => maybeSynthesizeIdentities());
   } catch {
     if (myToken !== viewToken) return;
     setStatus('err');

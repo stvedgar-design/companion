@@ -16,6 +16,7 @@ import { buildChatMessages, buildPlainPrompt } from './prompt.js';
 import { loreBudgetPreview } from './lorebook.js';
 import { relationshipForPrompt } from './relationship.js';
 import { appearanceOf } from '../character-appearance.js';
+import { identityForPrompt } from './identity-synthesis.js';
 import { MOOD_MIN_ACTIVATED } from './mood.js';
 
 /**
@@ -189,7 +190,9 @@ export function buildFeelingRequest(ctx, instruction) {
   const always = loreBudgetPreview((character && character.lorebook) || []).alwaysBlock;
   const relationship = relationshipForPrompt(character);
   const appearance = appearanceOf(character);
-  const extras = { relationship, ...(appearance && appearance.fixed ? { appearance: { fixed: appearance.fixed } } : {}) };
+  // MEM-019: la cabecera lleva la identidad aceptada, igual que en el chat normal (así sigue siendo continuación del prefijo).
+  const identity = identityForPrompt(character);
+  const extras = { relationship, ...(appearance && appearance.fixed ? { appearance: { fixed: appearance.fixed } } : {}), ...(identity ? { identity } : {}) };
   if (settings && settings.mode === 'chat') {
     const built = buildChatMessages(card, messages, settings, scenario, always, '', '', false, extras);
     return {

@@ -5,6 +5,7 @@
 
 import { buildPlainPrompt, buildChatMessages, cleanReply, trimPartial, FORMAT_PREFILL } from './prompt.js';
 import { timeOfDayNote } from './timeofday.js';
+import { identityForPrompt } from './identity-synthesis.js';
 import { buildLoreBlocks } from './lorebook.js';
 import { relationshipForPrompt } from './relationship.js';
 import { appearanceOf } from '../character-appearance.js';
@@ -381,7 +382,9 @@ export async function generateReply({ character, chat, messages, settings, signa
   const appearance = appearanceOf(character);
   // TIME-001: referencia temporal gruesa (hora local del dispositivo) como ÚLTIMA línea del bloque final; `now` es inyectable para tests.
   const timeOfDay = timeOfDayNote(now);
-  const extras = { ...(continuity ? { continuity } : {}), relationship, ...(appearance ? { appearance } : {}), ...(timeOfDay ? { timeOfDay } : {}) };
+  // MEM-019: síntesis de identidad ACEPTADA (la propuesta pendiente nunca viaja); '' = no se envía nada.
+  const identity = identityForPrompt(character);
+  const extras = { ...(continuity ? { continuity } : {}), relationship, ...(appearance ? { appearance } : {}), ...(timeOfDay ? { timeOfDay } : {}), ...(identity ? { identity } : {}) };
   const genkey = makeGenKey();
   const mode = settings.mode === 'chat' ? 'chat' : 'plain';
   const maxLen = settings.maxLen || 220;

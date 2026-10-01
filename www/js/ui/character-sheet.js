@@ -8,6 +8,7 @@
 
 import { saveCharacter } from '../state.js';
 import { relationshipDisplayText, relationshipSummary } from '../api/relationship.js';
+import { defaultIdentity, sanitizeIdentity } from '../api/identity-synthesis.js';
 import { sanitizeAppearance } from '../character-appearance.js';
 import { PERSONALITY_TAGS } from '../personality-tags.js';
 import { formatDateOnly } from '../msgtime.js';
@@ -65,6 +66,7 @@ export function duplicateCharacterData(character) {
     lorebookTombstonesPrevious: [],
     lorebookArchive: [],
     relationship: { text: '', level: 'early', updated: 0, source: 'auto' },
+    identity: defaultIdentity(), // MEM-019: la síntesis nace de SUS recuerdos; el duplicado no tiene ninguno
   };
 }
 
@@ -110,6 +112,7 @@ export function characterSheetModel(character) {
     description,
     appearance,
     memoriesCount,
+    identityProposal: !!sanitizeIdentity(character && character.identity).proposal, // MEM-019: hay una propuesta esperando respuesta
   };
 }
 
@@ -243,7 +246,7 @@ export function openCharacterSheet(app, character, opts = {}) {
 
     // ---------- 7. recuerdos ----------
     // MEM-017: la entrada única a "Memoria de {Nombre}" (relación + resumen + recuerdos + archivados).
-    const memBtn = el('button', 'menu-item', `Memoria de ${m.name} · ${m.memoriesCount} recuerdo${m.memoriesCount === 1 ? '' : 's'}`);
+    const memBtn = el('button', 'menu-item', `Memoria de ${m.name} · ${m.memoriesCount} recuerdo${m.memoriesCount === 1 ? '' : 's'}${m.identityProposal ? ' · propuesta nueva' : ''}`);
     memBtn.type = 'button';
     memBtn.addEventListener('click', () => {
       if (opts.openMemories) opts.openMemories();

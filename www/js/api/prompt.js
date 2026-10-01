@@ -192,6 +192,10 @@ export function formatAppearanceCurrent(text, charName, userName) {
   return t ? `${charName}'s look right now: ${t}` : '';
 }
 
+// MEM-019: etiqueta de la línea de identidad en la cabecera ("Mia has grown so far: Over time, Mia …"). Va en la cabecera: solo cambia al
+// aceptar una síntesis nueva (rara vez), con el costo de UNA respuesta lenta, como la relación (MEM-014) y la apariencia fija (MEM-009).
+export const IDENTITY_HEAD_LABEL = 'has grown so far';
+
 // Bloque de cabecera común a ambos formatos de prompt: system_prompt de la
 // card (si existe), una instrucción breve de rol, y los campos de la card
 // con las macros ya resueltas. `chatScenario` es el escenario escrito a
@@ -202,7 +206,7 @@ export function formatAppearanceCurrent(text, charName, userName) {
 // '' si ninguna matcheó o el chat todavía no tiene lorebook. `relationship` = `{level, text}` de
 // MEM-014 (`relationshipForPrompt()`, api/relationship.js); ausente o sin `level` reconocido no
 // añade nada.
-function headBlock(card, settings, chatScenario, loreBlock, relationship = null, appearanceFixed = '') {
+function headBlock(card, settings, chatScenario, loreBlock, relationship = null, appearanceFixed = '', identity = '') {
   const N = card.name;
   const U = (settings && settings.user) || 'User';
   const sub = (s) => subMacros(s, N, U);
@@ -217,6 +221,9 @@ function headBlock(card, settings, chatScenario, loreBlock, relationship = null,
 
   if (card.description) parts.push(`${N}'s description:\n${sub(card.description)}`);
   if (card.personality) parts.push(`${N}'s personality: ${sub(card.personality)}`);
+  // MEM-019: síntesis de identidad ACEPTADA por el usuario; se suma a la personalidad escrita, nunca la reemplaza. Vacía = nada.
+  const identityText = String(identity || '').replace(/\s+/g, ' ').trim();
+  if (identityText) parts.push(`${N} ${IDENTITY_HEAD_LABEL}: ${identityText}`);
 
   const scenarioLines = [];
   if (card.scenario) scenarioLines.push(sub(card.scenario));
@@ -372,7 +379,7 @@ export function buildPlainPrompt(card, messages, settings, chatScenario = '', lo
   const N = card.name;
   const U = (settings && settings.user) || 'User';
 
-  const head = headBlock(card, settings, chatScenario, loreBlock, extras && extras.relationship, extras && extras.appearance && extras.appearance.fixed) + '\n\n[Start of chat]';
+  const head = headBlock(card, settings, chatScenario, loreBlock, extras && extras.relationship, extras && extras.appearance && extras.appearance.fixed, extras && extras.identity) + '\n\n[Start of chat]';
   const post = card.post_history_instructions
     ? `\n[${subMacros(card.post_history_instructions, N, U)}]`
     : '';
@@ -417,7 +424,7 @@ export function buildPlainPrompt(card, messages, settings, chatScenario = '', lo
  * @param {string} [varietyNote] FMT-004: nota de variedad; va junto al bloque "por tema". Ver `buildPlainPrompt`.
  * @param {boolean} [prefill] FMT-002: si es true, se añade al final un mensaje `assistant` con `FORMAT_PREFILL`
  *   (la respuesta arranca dentro de una acción). Solo en la copia enviada; los mensajes guardados no se tocan.
- * @param {{ continuity?: string, timeOfDay?: string }} [extras] MEM-007: ver `buildPlainPrompt`. TIME-001: `timeOfDay` = frase de la hora (api/timeofday.js), siempre lo último del bloque final. Va junto al bloque "por tema", en el último
+ * @param {{ continuity?: string, timeOfDay?: string, identity?: string }} [extras] MEM-019: `identity` = síntesis aceptada (cabecera, tras la personalidad). MEM-007: ver `buildPlainPrompt`. TIME-001: `timeOfDay` = frase de la hora (api/timeofday.js), siempre lo último del bloque final. Va junto al bloque "por tema", en el último
  *   mensaje del usuario de la copia enviada.
  * @returns {{ messages: {role:'system'|'user'|'assistant', content:string}[], stop: string[] }}
  */
@@ -425,7 +432,7 @@ export function buildChatMessages(card, messages, settings, chatScenario = '', l
   const N = card.name;
   const U = (settings && settings.user) || 'User';
 
-  let head = headBlock(card, settings, chatScenario, loreBlock, extras && extras.relationship, extras && extras.appearance && extras.appearance.fixed);
+  let head = headBlock(card, settings, chatScenario, loreBlock, extras && extras.relationship, extras && extras.appearance && extras.appearance.fixed, extras && extras.identity);
   if (card.post_history_instructions) {
     head += '\n\n' + subMacros(card.post_history_instructions, N, U);
   }
@@ -483,7 +490,7 @@ export function buildChatMessages(card, messages, settings, chatScenario = '', l
 export function estimateContextUsage(card, messages, settings, chatScenario = '', loreBlock = '', topicReserveChars = 0, extras = {}) {
   const ctx = (settings && settings.ctx) || 4096;
   const maxLen = (settings && settings.maxLen) || 220;
-  const head = headBlock(card, settings, chatScenario, loreBlock, extras && extras.relationship, extras && extras.appearance && extras.appearance.fixed);
+  const head = headBlock(card, settings, chatScenario, loreBlock, extras && extras.relationship, extras && extras.appearance && extras.appearance.fixed, extras && extras.identity);
   const historyChars = messages.reduce((sum, m) => sum + String(m.text || '').length + LINE_OVERHEAD, 0);
   const approxTokens = Math.ceil((head.length + historyChars + Math.max(0, topicReserveChars || 0) + continuityBlockChars(extras && extras.continuity) + appearanceEndChars(extras && extras.appearance, card.name, (settings && settings.user) || 'User')) / CHARS_PER_TOKEN);
   const budgetTokens = Math.max(1, ctx - maxLen);
@@ -505,20 +512,21 @@ export function estimateContextUsage(card, messages, settings, chatScenario = ''
  * @param {{level?: string, text?: string}} [relationship] MEM-014: estado de la relación (la línea de la cabecera ocupa presupuesto).
  * @param {{ fixed?: string, current?: string }|null} [appearance] MEM-009: ficha de apariencia (los rasgos fijos van en la cabecera; la ropa/estado actual, en el bloque final).
  * @param {boolean} [withTime] TIME-001: true si la respuesta real llevará la frase de la hora (reserva fija `TIME_RESERVE_CHARS` en el bloque final).
+ * @param {string} [identity] MEM-019: texto de identidad aceptado (la línea de la cabecera ocupa presupuesto).
  * @returns {number} 0 si todo cabe; `messages.length - 1` como mucho (siempre queda al menos 1 mensaje).
  */
-export function historyStartIndex(card, messages, settings, chatScenario = '', loreBlock = '', endChars = 0, extraChars = 0, relationship = null, appearance = null, withTime = false) {
+export function historyStartIndex(card, messages, settings, chatScenario = '', loreBlock = '', endChars = 0, extraChars = 0, relationship = null, appearance = null, withTime = false, identity = '') {
   const N = card.name;
   const U = (settings && settings.user) || 'User';
   const end = Math.max(0, endChars || 0) + Math.max(0, extraChars || 0) + appearanceEndChars(appearance, N, U) + (withTime ? TIME_RESERVE_CHARS : 0);
   const fixed = appearance && appearance.fixed;
   if (settings && settings.mode === 'chat') {
-    let head = headBlock(card, settings, chatScenario, loreBlock, relationship, fixed);
+    let head = headBlock(card, settings, chatScenario, loreBlock, relationship, fixed, identity);
     if (card.post_history_instructions) head += '\n\n' + subMacros(card.post_history_instructions, N, U);
     const kept = stableFront(pickHistory(messages, historyBudgetChars(settings, head.length, end), (m) => m.text.length), messages.length);
     return messages.length - kept.length;
   }
-  const head = headBlock(card, settings, chatScenario, loreBlock, relationship, fixed) + '\n\n[Start of chat]';
+  const head = headBlock(card, settings, chatScenario, loreBlock, relationship, fixed, identity) + '\n\n[Start of chat]';
   const post = card.post_history_instructions ? `\n[${subMacros(card.post_history_instructions, N, U)}]` : '';
   const cue = `\n${N}:`;
   const lines = messages.map((m) => `${m.role === 'user' ? U : N}: ${m.text}`);

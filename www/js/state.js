@@ -8,6 +8,7 @@ import { sanitizeMeta } from './perf.js';
 import { parseBackupText, normalizeBackup, analyzeBackup, planImport } from './backup.js';
 import { sanitizeAppearance } from './character-appearance.js';
 import { sanitizeRelationship } from './api/relationship.js';
+import { sanitizeIdentity } from './api/identity-synthesis.js';
 import { sanitizePersonalityTags } from './personality-tags.js';
 import { sanitizeFeeling } from './api/feeling.js';
 
@@ -70,6 +71,9 @@ import { sanitizeFeeling } from './api/feeling.js';
  *   `fixed` (rasgos fijos, ≤200 car.) va a la cabecera del prompt, `current` (ropa/estado, ≤100) al final. Vacía por defecto; ver character-appearance.js
  * @property {{ text: string, level: 'early'|'growing'|'established', updated: number, source: 'auto'|'manual' }} relationship  // MEM-014: estado
  *   de la relación escrito por el personaje a partir de sus recuerdos; `{text:'', level:'early', updated:0, source:'auto'}` por defecto; ver api/relationship.js
+ * @property {{ text: string, acceptedAt: number, history: object[], proposal: object|null, basis: object, attemptedAt: number }} identity  // MEM-019: síntesis de
+ *   "cómo ha cambiado" el personaje a partir de sus recuerdos. `text` = la ACEPTADA (la única que entra al prompt; '' = ninguna, el personaje se comporta como siempre);
+ *   `proposal` = la pendiente de aprobación; `history` = aceptadas anteriores (tope 5). Se SUMA a la card, nunca la reemplaza; ver api/identity-synthesis.js
  * @property {string} chatBackground           // data URL JPEG del fondo de SUS chats, '' si no hay
  * @property {number} chatBackgroundBrightness // 20 a 180 (%), 100 = sin cambios
  * @property {boolean} chatBackgroundFade      // fundido a negro en la mitad inferior de la imagen
@@ -400,6 +404,7 @@ function sanitizeCharacterExtras(raw) {
     lorebookArchive,
     appearance: sanitizeAppearance(raw.appearance),
     relationship: sanitizeRelationship(raw.relationship),
+    identity: sanitizeIdentity(raw.identity),
     ...sanitizeCharacterBackground(raw),
     formatStyle,
     personalityTags,
@@ -620,6 +625,17 @@ export function createState(backend) {
     const changed = next.text !== before.text || next.level !== before.level || next.source !== before.source;
     const relationship = changed ? { ...next, updated: next.text ? Date.now() : 0 } : before;
     const updated = { ...character, relationship };
+    await backend.put('characters', characterId, updated);
+    return updated;
+  }
+
+  // MEM-019: aplica `mutator(identity) → identity` sobre el registro RECIÉN leído (nunca sobre una copia vieja en pantalla), así
+  // aceptar/descartar/proponer no pisa nada más del personaje ni se pisa con otra escritura de fondo.
+  async function saveCharacterIdentity(characterId, mutator) {
+    const character = await getCharacter(characterId);
+    if (!character) throw new Error('El personaje no existe.');
+    const identity = sanitizeIdentity(mutator(character.identity));
+    const updated = { ...character, identity };
     await backend.put('characters', characterId, updated);
     return updated;
   }
@@ -920,6 +936,7 @@ export function createState(backend) {
     saveCharacterBackground,
     saveCharacterAppearance,
     saveCharacterRelationship,
+    saveCharacterIdentity,
     deleteCharacter,
     listChats,
     getChat,
@@ -1057,6 +1074,7 @@ export const saveCharacterLorebook = (...args) => getDefaultInstance().saveChara
 export const saveCharacterBackground = (...args) => getDefaultInstance().saveCharacterBackground(...args);
 export const saveCharacterAppearance = (...args) => getDefaultInstance().saveCharacterAppearance(...args);
 export const saveCharacterRelationship = (...args) => getDefaultInstance().saveCharacterRelationship(...args);
+export const saveCharacterIdentity = (...args) => getDefaultInstance().saveCharacterIdentity(...args);
 export const deleteCharacter = (...args) => getDefaultInstance().deleteCharacter(...args);
 export const listChats = (...args) => getDefaultInstance().listChats(...args);
 export const getChat = (...args) => getDefaultInstance().getChat(...args);
