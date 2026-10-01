@@ -5,6 +5,7 @@
 import { getCharacter, listChats, createChat, deleteChat, renameChat, saveChatArchive, activeChats, archivedChats, isChatArchivePending } from '../state.js';
 import { relationshipAgeText } from '../api/relationship.js';
 import { openCharacterSheet } from './character-sheet.js';
+import { touchInteraction } from './mailbox.js';
 import { openLorebookFromOutside } from './chat.js';
 
 const ICON_BACK = '<svg viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>';
@@ -92,6 +93,7 @@ export async function show({ characterId } = {}) {
 
   els.headName.textContent = headTitle(character.name);
   setAvatar(els.headAv, character);
+  touchInteraction(character.id); // PROACT-001: el usuario estuvo con este personaje
 
   await reloadChats();
 

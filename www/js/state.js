@@ -9,6 +9,7 @@ import { parseBackupText, normalizeBackup, analyzeBackup, planImport } from './b
 import { sanitizeAppearance } from './character-appearance.js';
 import { sanitizeRelationship } from './api/relationship.js';
 import { sanitizeIdentity } from './api/identity-synthesis.js';
+import { sanitizeMailbox, withInteraction, MAILBOX_TOUCH_THROTTLE_MS } from './api/mailbox.js';
 import { sanitizePersonalityTags } from './personality-tags.js';
 import { sanitizeFeeling } from './api/feeling.js';
 
@@ -74,6 +75,9 @@ import { sanitizeFeeling } from './api/feeling.js';
  * @property {{ text: string, acceptedAt: number, history: object[], proposal: object|null, basis: object, attemptedAt: number }} identity  // MEM-019: síntesis de
  *   "cómo ha cambiado" el personaje a partir de sus recuerdos. `text` = la ACEPTADA (la única que entra al prompt; '' = ninguna, el personaje se comporta como siempre);
  *   `proposal` = la pendiente de aprobación; `history` = aceptadas anteriores (tope 5). Se SUMA a la card, nunca la reemplaza; ver api/identity-synthesis.js
+ * @property {{ lastInteractionAt: number, lastNoteFor: number, attemptedAt: number, notes: object[] }} mailbox  // PROACT-001: buzón del personaje. `lastInteractionAt` =
+ *   última vez que el usuario abrió su chat/episodios/ficha (la actividad de mensajes se lee de las fechas de sus chats); `notes` = notas que el personaje dejó
+ *   (`new|read|answered|dismissed`, tope 10), escritas SOLO desde su identidad y recuerdos, nunca desde un episodio; vacío por defecto. Ver api/mailbox.js
  * @property {string} chatBackground           // data URL JPEG del fondo de SUS chats, '' si no hay
  * @property {number} chatBackgroundBrightness // 20 a 180 (%), 100 = sin cambios
  * @property {boolean} chatBackgroundFade      // fundido a negro en la mitad inferior de la imagen
@@ -405,6 +409,7 @@ function sanitizeCharacterExtras(raw) {
     appearance: sanitizeAppearance(raw.appearance),
     relationship: sanitizeRelationship(raw.relationship),
     identity: sanitizeIdentity(raw.identity),
+    mailbox: sanitizeMailbox(raw.mailbox),
     ...sanitizeCharacterBackground(raw),
     formatStyle,
     personalityTags,
@@ -522,6 +527,9 @@ export function createState(backend) {
     return run;
   }
 
+  // Mismo candado para las escrituras que LEEN el personaje y lo vuelven a escribir (lorebook, apariencia, relación, identidad, buzón,
+  // marca de interacción): sin él, dos que se cruzan (p. ej. la marca de «abrió el chat» y una actualización de memoria) podrían pisarse y
+  // perder la más lenta lo que la otra guardó. Misma cola en memoria que usan los chats (clave distinta: 'char:<id>').
   function newId() {
     return 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
   }
@@ -562,6 +570,9 @@ export function createState(backend) {
   // `tombstonesPatch.archive` (opcional, MEM-016): array = reemplaza la lista de recuerdos archivados; ausente = no
   // la toca. Va en el mismo objeto porque archivar/restaurar cambia lorebook, lápidas y archivo a la vez, en un solo guardado.
   async function saveCharacterLorebook(characterId, lorebook, previous, tombstonesPatch) {
+    return withChatLock('char:' + characterId, () => saveCharacterLorebookUnlocked(characterId, lorebook, previous, tombstonesPatch));
+  }
+  async function saveCharacterLorebookUnlocked(characterId, lorebook, previous, tombstonesPatch) {
     const character = await getCharacter(characterId);
     if (!character) throw new Error('El personaje no existe.');
     const patch = { lorebook };
@@ -603,6 +614,9 @@ export function createState(backend) {
   // MEM-009: persiste la ficha de apariencia de un personaje. Relee el personaje y cambia SOLO `appearance` (no pisa lorebook, fondo ni
   // avatar cambiados mientras tanto). `patch` = { fixed?, current? }; `updated` se pone al guardar si algo cambió.
   async function saveCharacterAppearance(characterId, patch) {
+    return withChatLock('char:' + characterId, () => saveCharacterAppearanceUnlocked(characterId, patch));
+  }
+  async function saveCharacterAppearanceUnlocked(characterId, patch) {
     const character = await getCharacter(characterId);
     if (!character) throw new Error('El personaje no existe.');
     const before = character.appearance;
@@ -618,6 +632,9 @@ export function createState(backend) {
   // tanto el actualizador automático (`patch` completo: `{text, level, source:'auto'}`) como una edición manual desde
   // "Ver lorebook" (`patch` parcial: `{text, source:'manual'}`, conserva el `level` que ya tenía).
   async function saveCharacterRelationship(characterId, patch) {
+    return withChatLock('char:' + characterId, () => saveCharacterRelationshipUnlocked(characterId, patch));
+  }
+  async function saveCharacterRelationshipUnlocked(characterId, patch) {
     const character = await getCharacter(characterId);
     if (!character) throw new Error('El personaje no existe.');
     const before = character.relationship;
@@ -632,10 +649,40 @@ export function createState(backend) {
   // MEM-019: aplica `mutator(identity) → identity` sobre el registro RECIÉN leído (nunca sobre una copia vieja en pantalla), así
   // aceptar/descartar/proponer no pisa nada más del personaje ni se pisa con otra escritura de fondo.
   async function saveCharacterIdentity(characterId, mutator) {
+    return withChatLock('char:' + characterId, () => saveCharacterIdentityUnlocked(characterId, mutator));
+  }
+  async function saveCharacterIdentityUnlocked(characterId, mutator) {
     const character = await getCharacter(characterId);
     if (!character) throw new Error('El personaje no existe.');
     const identity = sanitizeIdentity(mutator(character.identity));
     const updated = { ...character, identity };
+    await backend.put('characters', characterId, updated);
+    return updated;
+  }
+
+  // PROACT-001: igual que `saveCharacterIdentity` (transformación sobre el registro recién leído).
+  async function saveCharacterMailbox(characterId, mutator) {
+    return withChatLock('char:' + characterId, () => saveCharacterMailboxUnlocked(characterId, mutator));
+  }
+  async function saveCharacterMailboxUnlocked(characterId, mutator) {
+    const character = await getCharacter(characterId);
+    if (!character) throw new Error('El personaje no existe.');
+    const mailbox = sanitizeMailbox(mutator(character.mailbox));
+    const updated = { ...character, mailbox };
+    await backend.put('characters', characterId, updated);
+    return updated;
+  }
+
+  // PROACT-001: «el usuario estuvo con este personaje» (abrir su chat, episodios o ficha). Escribe el registro como mucho una vez cada
+  // MAILBOX_TOUCH_THROTTLE_MS (lleva imágenes: escribirlo en cada apertura sería caro); enviar mensajes ya queda reflejado en las fechas de sus chats.
+  async function touchCharacterInteraction(characterId, now = Date.now()) {
+    return withChatLock('char:' + characterId, () => touchCharacterInteractionUnlocked(characterId, now));
+  }
+  async function touchCharacterInteractionUnlocked(characterId, now) {
+    const character = await getCharacter(characterId);
+    if (!character) return null;
+    if (now - character.mailbox.lastInteractionAt < MAILBOX_TOUCH_THROTTLE_MS) return character;
+    const updated = { ...character, mailbox: withInteraction(character.mailbox, now) };
     await backend.put('characters', characterId, updated);
     return updated;
   }
@@ -937,6 +984,8 @@ export function createState(backend) {
     saveCharacterAppearance,
     saveCharacterRelationship,
     saveCharacterIdentity,
+    saveCharacterMailbox,
+    touchCharacterInteraction,
     deleteCharacter,
     listChats,
     getChat,
@@ -1075,6 +1124,8 @@ export const saveCharacterBackground = (...args) => getDefaultInstance().saveCha
 export const saveCharacterAppearance = (...args) => getDefaultInstance().saveCharacterAppearance(...args);
 export const saveCharacterRelationship = (...args) => getDefaultInstance().saveCharacterRelationship(...args);
 export const saveCharacterIdentity = (...args) => getDefaultInstance().saveCharacterIdentity(...args);
+export const saveCharacterMailbox = (...args) => getDefaultInstance().saveCharacterMailbox(...args);
+export const touchCharacterInteraction = (...args) => getDefaultInstance().touchCharacterInteraction(...args);
 export const deleteCharacter = (...args) => getDefaultInstance().deleteCharacter(...args);
 export const listChats = (...args) => getDefaultInstance().listChats(...args);
 export const getChat = (...args) => getDefaultInstance().getChat(...args);

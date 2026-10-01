@@ -39,6 +39,7 @@ import { createContinuityUpdater, coveredCount, CONTINUITY_TOTAL_CHARS, CONTINUI
 import { openCharacterSheet } from './character-sheet.js';
 import { archiveChat, archiveResultMessage, cancelBackgroundArchive } from './chat-archive.js';
 import { cancelBackgroundIdentity } from './identity.js';
+import { cancelBackgroundMailbox, touchInteraction } from './mailbox.js';
 import { memoryDashboardModel, buildRelationshipHero, buildContinuityCard, buildMemoryCards, buildIdentityCard } from './character-memory.js';
 import { acceptProposal, discardProposal, revertIdentity } from '../api/identity-synthesis.js';
 import { logEvent, TEL_EVENTS } from '../telemetry.js';
@@ -182,6 +183,7 @@ export async function show({ chatId } = {}) {
   // MEM-018: abrir un chat tiene prioridad sobre un archivado en segundo plano (latencia primero): se corta y el episodio
   // sigue pendiente para la próxima vez que el hub vea el servidor encendido.
   cancelBackgroundArchive();
+  cancelBackgroundMailbox(); // PROACT-001: igual que lo anterior
   cancelBackgroundIdentity(); // MEM-019: si el hub dejó una síntesis de identidad corriendo, se corta (se reintenta en el próximo chequeo)
   archiving = false;
   chat = await getChat(chatId);
@@ -199,6 +201,7 @@ export async function show({ chatId } = {}) {
   }
 
   settings = await getSettings();
+  touchInteraction(character.id); // PROACT-001: el usuario estuvo con este personaje (para saber cuánto estuvo ausente)
 
   let loaded = await getChatMessages(chat.id);
   if (!loaded) {

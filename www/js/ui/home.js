@@ -4,6 +4,7 @@
 import { getSettings, listCharacters, listChats, deleteCharacter, activeChats } from '../state.js';
 import { retryPendingArchives } from './chat-archive.js';
 import { maybeSynthesizeIdentities } from './identity.js';
+import { maybeWriteMailboxNotes, openMailbox, unreadCount } from './mailbox.js';
 import { importCardFile } from '../cards/import.js';
 import { connect } from '../api/kobold.js';
 import { pickFiles } from '../platform.js';
@@ -267,6 +268,27 @@ function renderRow(character) {
   scrim.appendChild(sub);
   avatar.appendChild(scrim);
 
+  // PROACT-001: indicador de nota nueva en el buzón. Es un botón propio (no dispara «Continuar» ni la lista de episodios): abre el buzón.
+  // Sin notificaciones del sistema: la nota se descubre aquí, al abrir la app.
+  if (unreadCount(character) > 0) {
+    const mail = document.createElement('button');
+    mail.type = 'button';
+    mail.className = 'home-card__mail';
+    mail.dataset.role = 'mailbox-badge';
+    mail.setAttribute('aria-label', `Nota nueva de ${character.name}: abrir el buzón`);
+    mail.innerHTML = '<span class="home-card__mail-dot" aria-hidden="true"></span>';
+    for (const ev of ['pointerdown', 'pointerup', 'click']) mail.addEventListener(ev, (e) => e.stopPropagation());
+    mail.addEventListener('click', () => {
+      openMailbox(app, character, {
+        onChanged: async () => {
+          characters = await listCharacters();
+          renderList();
+        },
+      });
+    });
+    avatar.appendChild(mail);
+  }
+
   avatar.addEventListener('click', (e) => {
     e.stopPropagation(); // no dispara el "Continuar" de la tarjeta
     if (longPress.consumeClick()) return;
@@ -327,7 +349,15 @@ async function checkConnection(myToken) {
         }
       })
       // MEM-019: una por una, después de lo anterior (el servidor atiende de a una petición). Sin aviso: la propuesta se ve al entrar a «Memoria de {Nombre}».
-      .then(() => maybeSynthesizeIdentities());
+      .then(() => maybeSynthesizeIdentities())
+      // PROACT-001: notas del buzón para quien estuvo ausente un buen rato; sin aviso emergente ni notificación: se descubren por el indicador de la tarjeta.
+      .then(() => maybeWriteMailboxNotes())
+      .then(async (r) => {
+        if (r && r.written.length && myToken === viewToken) {
+          characters = await listCharacters();
+          renderList();
+        }
+      });
   } catch {
     if (myToken !== viewToken) return;
     setStatus('err');

@@ -198,6 +198,30 @@
   text-overflow: ellipsis;
 }
 
+/* PROACT-001: indicador de nota nueva (zona táctil de 44px, punto visible chico). Solo tokens. */
+.home-card__mail {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.home-card__mail-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-pill);
+  background: #fff;
+  box-shadow: 0 0 0 3px var(--color-accent), 0 1px 6px rgba(0, 0, 0, 0.45); /* legible sobre cualquier foto */
+}
+.home-card__mail:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -4px; }
+
 .home-card__row {
   display: flex;
   align-items: center;

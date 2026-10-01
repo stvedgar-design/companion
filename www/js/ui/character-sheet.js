@@ -6,9 +6,11 @@
 // personaje en la cabecera del chat (chat.js) o de la lista de chats (chats.js) — ver esos dos archivos
 // para las entradas. Pura lectura de memoria/relación: no cambia lorebook ni relationship.js.
 
-import { saveCharacter } from '../state.js';
+import { saveCharacter, getCharacter } from '../state.js';
 import { relationshipDisplayText, relationshipSummary } from '../api/relationship.js';
 import { defaultIdentity, sanitizeIdentity } from '../api/identity-synthesis.js';
+import { defaultMailbox, unreadCount, sanitizeMailbox } from '../api/mailbox.js';
+import { openMailbox, touchInteraction } from './mailbox.js';
 import { sanitizeAppearance } from '../character-appearance.js';
 import { PERSONALITY_TAGS } from '../personality-tags.js';
 import { formatDateOnly } from '../msgtime.js';
@@ -66,6 +68,7 @@ export function duplicateCharacterData(character) {
     lorebookTombstonesPrevious: [],
     lorebookArchive: [],
     relationship: { text: '', level: 'early', updated: 0, source: 'auto' },
+    mailbox: defaultMailbox(), // PROACT-001: el buzón y la marca de interacción son de ESE personaje
     identity: defaultIdentity(), // MEM-019: la síntesis nace de SUS recuerdos; el duplicado no tiene ninguno
   };
 }
@@ -113,6 +116,8 @@ export function characterSheetModel(character) {
     appearance,
     memoriesCount,
     identityProposal: !!sanitizeIdentity(character && character.identity).proposal, // MEM-019: hay una propuesta esperando respuesta
+    mailboxUnread: unreadCount(character), // PROACT-001: notas del buzón sin abrir
+    mailboxCount: sanitizeMailbox(character && character.mailbox).notes.filter((n) => n.status !== 'dismissed').length,
   };
 }
 
@@ -133,6 +138,7 @@ function field(label, contentNode) {
  */
 export function openCharacterSheet(app, character, opts = {}) {
   let current = character;
+  touchInteraction(character && character.id); // PROACT-001: visitó la ficha
 
   function render() {
     const m = characterSheetModel(current);
@@ -243,6 +249,23 @@ export function openCharacterSheet(app, character, opts = {}) {
     bgBtn.type = 'button';
     bgBtn.addEventListener('click', () => openChatBackground(app, current));
     node.appendChild(bgBtn);
+
+    // ---------- 6d. buzón (PROACT-001): solo si hay notas; el indicador «nueva(s)» se apaga al abrirlo ----------
+    if (m.mailboxCount > 0) {
+      const mailBtn = el('button', 'menu-item', `Buzón de ${m.name}${m.mailboxUnread ? ` · ${m.mailboxUnread} nueva${m.mailboxUnread === 1 ? '' : 's'}` : ''}`);
+      mailBtn.type = 'button';
+      mailBtn.dataset.role = 'mailbox';
+      mailBtn.addEventListener('click', () => {
+        openMailbox(app, current, {
+          onBack: async () => {
+            const fresh = await getCharacter(current.id);
+            if (fresh) current = fresh;
+            render();
+          },
+        });
+      });
+      node.appendChild(mailBtn);
+    }
 
     // ---------- 7. recuerdos ----------
     // MEM-017: la entrada única a "Memoria de {Nombre}" (relación + resumen + recuerdos + archivados).
