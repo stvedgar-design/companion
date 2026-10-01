@@ -103,6 +103,9 @@ function createFakeServer(opts = {}) {
   return { server, state };
 }
 
+// TIME-001: fecha inválida = sin línea de hora; estos tests miran la petición exacta de otras funciones.
+const NO_CLOCK = new Date(NaN);
+
 async function listen(server) {
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const { port } = server.address();
@@ -911,9 +914,9 @@ test('MEM-007 (plantilla): generateReply pone el resumen del chat al principio d
   try {
     const messages = [{ role: 'char', text: 'Hola', ts: 1 }, { role: 'user', text: 'Buenas', ts: 2 }];
     const settings = makeSettings(base, { mode: 'chat' });
-    await generateReply({ character: makeCharacter(), chat: { scenario: '', continuitySummary: SUMMARY }, messages, settings });
-    await generateReply({ character: makeCharacter(), chat: { scenario: '', continuitySummary: { text: '', coveredUntil: 0, updated: 0 } }, messages, settings });
-    await generateReply({ character: makeCharacter(), chat: { scenario: '' }, messages, settings });
+    await generateReply({ character: makeCharacter(), chat: { scenario: '', continuitySummary: SUMMARY }, messages, settings, now: NO_CLOCK });
+    await generateReply({ character: makeCharacter(), chat: { scenario: '', continuitySummary: { text: '', coveredUntil: 0, updated: 0 } }, messages, settings, now: NO_CLOCK });
+    await generateReply({ character: makeCharacter(), chat: { scenario: '' }, messages, settings, now: NO_CLOCK });
     const lastUser = (b) => b.messages.filter((m) => m.role === 'user').pop().content;
     assert.ok(lastUser(bodies[0]).startsWith('[Earlier in this conversation: Sam told Mia about the bakery job on Elm Street.]'));
     assert.ok(lastUser(bodies[0]).endsWith('Buenas'));
@@ -941,7 +944,7 @@ test('MEM-007 (texto simple y respaldo sin streaming): el resumen también viaja
   const fallbackBase = await listen(fallback.server);
   try {
     const messages = [{ role: 'user', text: 'Buenas', ts: 2 }];
-    await generateReply({ character: makeCharacter(), chat: { scenario: '', continuitySummary: SUMMARY }, messages, settings: makeSettings(base) });
+    await generateReply({ character: makeCharacter(), chat: { scenario: '', continuitySummary: SUMMARY }, messages, settings: makeSettings(base), now: NO_CLOCK });
     assert.match(prompts[0], /\[Earlier in this conversation: Sam told Mia about the bakery job on Elm Street\.\]\nEdgar: Buenas/);
     // Respaldo (el streaming responde 404): el mismo armador de prompt, con el mismo resumen.
     const seen = [];
@@ -951,7 +954,7 @@ test('MEM-007 (texto simple y respaldo sin streaming): el resumen también viaja
       return origFetch(url, init);
     };
     try {
-      await generateReply({ character: makeCharacter(), chat: { scenario: '', continuitySummary: SUMMARY }, messages, settings: makeSettings(fallbackBase) });
+      await generateReply({ character: makeCharacter(), chat: { scenario: '', continuitySummary: SUMMARY }, messages, settings: makeSettings(fallbackBase), now: NO_CLOCK });
     } finally {
       globalThis.fetch = origFetch;
     }
@@ -1029,9 +1032,9 @@ test('MEM-009: generateReply envía la apariencia del personaje (fijos → cabec
     const messages = [{ role: 'char', text: 'Hola', ts: 1 }, { role: 'user', text: 'Buenas', ts: 2 }];
     const settings = makeSettings(base, { mode: 'chat' });
     const withApp = makeCharacter({ appearance: { fixed: 'short and slim, pink hair', current: 'a white hoodie', updated: 5 } });
-    await generateReply({ character: withApp, chat: { scenario: '' }, messages, settings });
-    await generateReply({ character: makeCharacter(), chat: { scenario: '' }, messages, settings });
-    await generateReply({ character: makeCharacter({ appearance: { fixed: '', current: '', updated: 0 } }), chat: { scenario: '' }, messages, settings });
+    await generateReply({ character: withApp, chat: { scenario: '' }, messages, settings, now: NO_CLOCK });
+    await generateReply({ character: makeCharacter(), chat: { scenario: '' }, messages, settings, now: NO_CLOCK });
+    await generateReply({ character: makeCharacter({ appearance: { fixed: '', current: '', updated: 0 } }), chat: { scenario: '' }, messages, settings, now: NO_CLOCK });
     const lastUser = (b) => b.messages.filter((m) => m.role === 'user').pop().content;
     assert.ok(bodies[0].messages[0].content.includes("Luna's appearance: short and slim, pink hair"));
     assert.ok(!bodies[0].messages[0].content.includes('hoodie'));

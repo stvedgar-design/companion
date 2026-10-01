@@ -4,6 +4,7 @@
 // respuestas en streaming. No guarda nada en localStorage/IndexedDB.
 
 import { buildPlainPrompt, buildChatMessages, cleanReply, trimPartial, FORMAT_PREFILL } from './prompt.js';
+import { timeOfDayNote } from './timeofday.js';
 import { buildLoreBlocks } from './lorebook.js';
 import { relationshipForPrompt } from './relationship.js';
 import { appearanceOf } from '../character-appearance.js';
@@ -343,12 +344,13 @@ function makeGenKey() {
  *   messages: import('./prompt.js').Message[],
  *   settings: import('./prompt.js').Settings,
  *   signal?: AbortSignal,
- *   onToken?: (chunk: string) => void
+ *   onToken?: (chunk: string) => void,
+ *   now?: Date
  * }} opts
  * @returns {Promise<{ text: string, truncated: boolean, aborted: boolean, loreUsed: import('./lorebook.js').LoreUsed[] }>}
  *   `loreUsed`: recuerdos que viajaron en ESTE prompt (UI-010), para guardarlos en el mensaje.
  */
-export async function generateReply({ character, chat, messages, settings, signal, onToken }) {
+export async function generateReply({ character, chat, messages, settings, signal, onToken, now = new Date() }) {
   const base = normUrl(settings && settings.url);
   if (!base) throw makeError(INVALID_URL_MSG, 'INVALID_URL');
 
@@ -377,7 +379,9 @@ export async function generateReply({ character, chat, messages, settings, signa
   const relationship = relationshipForPrompt(character);
   // MEM-009: ficha de apariencia del personaje (rasgos fijos → cabecera; ropa/estado actual → final). Sin nada escrito, no se pasa nada.
   const appearance = appearanceOf(character);
-  const extras = { ...(continuity ? { continuity } : {}), relationship, ...(appearance ? { appearance } : {}) };
+  // TIME-001: referencia temporal gruesa (hora local del dispositivo) como ÚLTIMA línea del bloque final; `now` es inyectable para tests.
+  const timeOfDay = timeOfDayNote(now);
+  const extras = { ...(continuity ? { continuity } : {}), relationship, ...(appearance ? { appearance } : {}), ...(timeOfDay ? { timeOfDay } : {}) };
   const genkey = makeGenKey();
   const mode = settings.mode === 'chat' ? 'chat' : 'plain';
   const maxLen = settings.maxLen || 220;

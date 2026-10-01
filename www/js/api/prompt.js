@@ -292,14 +292,26 @@ function continuityPadding(continuity) {
   return continuity ? Math.max(0, CONTINUITY_RESERVE_CHARS - formatTopicBlock(continuity).length) : 0;
 }
 
-// Todo lo que va al FINAL del prompt (MEM-007 continuidad + MEM-009 apariencia actual + MEM-004 "por tema" + FMT-004 nota de variedad), en este
-// orden. '' si no hay nada: sin ninguno, el prompt es idéntico al de antes.
-function endBlock(topicBlock, varietyNote, continuity = '', current = '') {
+// TIME-001: referencia temporal gruesa ("It is a Tuesday morning."), siempre la ÚLTIMA línea del bloque final. Su largo cambia según
+// la franja/día, y un bloque final más corto o más largo movería la ventana del historial (ver CONTINUITY_RESERVE_CHARS): por eso
+// se reserva un espacio fijo, tenga la frase el largo que tenga (la más larga posible ronda los 30 caracteres con corchetes).
+export const TIME_RESERVE_CHARS = 48;
+
+// Relleno que completa la reserva fija de la hora; 0 si no hay frase.
+function timePadding(timeNote) {
+  const t = String(timeNote || '').trim();
+  return t ? Math.max(0, TIME_RESERVE_CHARS - (formatTopicBlock(t).length + 1)) : 0;
+}
+
+// Todo lo que va al FINAL del prompt (MEM-007 continuidad + MEM-009 apariencia actual + MEM-004 "por tema" + FMT-004 nota de variedad
+// + TIME-001 hora aproximada), en este orden. '' si no hay nada: sin ninguno, el prompt es idéntico al de antes.
+function endBlock(topicBlock, varietyNote, continuity = '', current = '', timeNote = '') {
   return [
     continuity ? formatTopicBlock(continuity) : '',
     current ? formatTopicBlock(current) : '', // MEM-009: ropa/estado actual (estable entre turnos: antes del "por tema", que sí cambia cada turno)
     topicBlock ? formatTopicBlock(topicBlock) : '',
     varietyNote ? formatTopicBlock(varietyNote) : '',
+    timeNote ? formatTopicBlock(timeNote) : '', // TIME-001: siempre al final del todo
   ]
     .filter(Boolean)
     .join('\n');
@@ -367,8 +379,9 @@ export function buildPlainPrompt(card, messages, settings, chatScenario = '', lo
   const cue = `\n${N}:`;
 
   const continuity = formatContinuityBlock(extras && extras.continuity);
-  const topic = endBlock(topicBlock, varietyNote, continuity, formatAppearanceCurrent(extras && extras.appearance && extras.appearance.current, N, U));
-  const budget = historyBudgetChars(settings, head.length, post.length, cue.length, topic.length + continuityPadding(continuity));
+  const timeNote = String((extras && extras.timeOfDay) || '').trim();
+  const topic = endBlock(topicBlock, varietyNote, continuity, formatAppearanceCurrent(extras && extras.appearance && extras.appearance.current, N, U), timeNote);
+  const budget = historyBudgetChars(settings, head.length, post.length, cue.length, topic.length + continuityPadding(continuity) + timePadding(timeNote));
 
   const lines = messages.map((m) => `${m.role === 'user' ? U : N}: ${m.text}`);
   const kept = pickHistory(lines, budget, (line) => line.length);
@@ -404,7 +417,7 @@ export function buildPlainPrompt(card, messages, settings, chatScenario = '', lo
  * @param {string} [varietyNote] FMT-004: nota de variedad; va junto al bloque "por tema". Ver `buildPlainPrompt`.
  * @param {boolean} [prefill] FMT-002: si es true, se añade al final un mensaje `assistant` con `FORMAT_PREFILL`
  *   (la respuesta arranca dentro de una acción). Solo en la copia enviada; los mensajes guardados no se tocan.
- * @param {{ continuity?: string }} [extras] MEM-007: ver `buildPlainPrompt`. Va junto al bloque "por tema", en el último
+ * @param {{ continuity?: string, timeOfDay?: string }} [extras] MEM-007: ver `buildPlainPrompt`. TIME-001: `timeOfDay` = frase de la hora (api/timeofday.js), siempre lo último del bloque final. Va junto al bloque "por tema", en el último
  *   mensaje del usuario de la copia enviada.
  * @returns {{ messages: {role:'system'|'user'|'assistant', content:string}[], stop: string[] }}
  */
@@ -418,8 +431,9 @@ export function buildChatMessages(card, messages, settings, chatScenario = '', l
   }
 
   const continuity = formatContinuityBlock(extras && extras.continuity);
-  const topic = endBlock(topicBlock, varietyNote, continuity, formatAppearanceCurrent(extras && extras.appearance && extras.appearance.current, N, U));
-  const budget = historyBudgetChars(settings, head.length, topic.length + continuityPadding(continuity));
+  const timeNote = String((extras && extras.timeOfDay) || '').trim();
+  const topic = endBlock(topicBlock, varietyNote, continuity, formatAppearanceCurrent(extras && extras.appearance && extras.appearance.current, N, U), timeNote);
+  const budget = historyBudgetChars(settings, head.length, topic.length + continuityPadding(continuity) + timePadding(timeNote));
   const kept = stableFront(pickHistory(messages, budget, (m) => m.text.length), messages.length);
 
   const out = [{ role: 'system', content: head }];
@@ -490,12 +504,13 @@ export function estimateContextUsage(card, messages, settings, chatScenario = ''
  * @param {number} [extraChars] Reserva adicional hipotética.
  * @param {{level?: string, text?: string}} [relationship] MEM-014: estado de la relación (la línea de la cabecera ocupa presupuesto).
  * @param {{ fixed?: string, current?: string }|null} [appearance] MEM-009: ficha de apariencia (los rasgos fijos van en la cabecera; la ropa/estado actual, en el bloque final).
+ * @param {boolean} [withTime] TIME-001: true si la respuesta real llevará la frase de la hora (reserva fija `TIME_RESERVE_CHARS` en el bloque final).
  * @returns {number} 0 si todo cabe; `messages.length - 1` como mucho (siempre queda al menos 1 mensaje).
  */
-export function historyStartIndex(card, messages, settings, chatScenario = '', loreBlock = '', endChars = 0, extraChars = 0, relationship = null, appearance = null) {
+export function historyStartIndex(card, messages, settings, chatScenario = '', loreBlock = '', endChars = 0, extraChars = 0, relationship = null, appearance = null, withTime = false) {
   const N = card.name;
   const U = (settings && settings.user) || 'User';
-  const end = Math.max(0, endChars || 0) + Math.max(0, extraChars || 0) + appearanceEndChars(appearance, N, U);
+  const end = Math.max(0, endChars || 0) + Math.max(0, extraChars || 0) + appearanceEndChars(appearance, N, U) + (withTime ? TIME_RESERVE_CHARS : 0);
   const fixed = appearance && appearance.fixed;
   if (settings && settings.mode === 'chat') {
     let head = headBlock(card, settings, chatScenario, loreBlock, relationship, fixed);
