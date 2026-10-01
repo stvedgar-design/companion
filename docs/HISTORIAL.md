@@ -3232,3 +3232,112 @@ en su lugar).
 **Pendiente de probar en el teléfono** (no se puede verificar fuera de un APK real): el resto es
 idéntico a cualquier otra operación de `saveCharacter()` ya probada en el teléfono anteriormente, así
 que no se espera comportamiento distinto, pero no se verificó ahí en esta sesión.
+
+## UI-034 (2026-10-01): vocabulario "Episodios" — renombrar la lista de chats de un personaje
+
+Solo texto: ningún identificador interno, nombre de función, variable, clase CSS ni clave de
+IndexedDB cambió. Alcance final: `www/js/ui/chats.js`, `www/js/ui/chat.js`, `www/js/ui/home.js`,
+`www/js/ui/character-look.js`, `www/js/persist.js`, `www/js/ui/diagnostics.js`,
+`www/js/ui/settings.js` (un aviso) y `www/js/ui/appearance.js` (corrección de texto obsoleto, ver
+abajo) — más allá de `chats.js`/`chat.js` que pedía el contrato, se auditó TODO `www/js/ui/*.js` y
+`www/js/*.js` buscando la palabra "chat" visible al usuario, como pedía el punto 4 del Requisitos.
+
+**Hallazgo real sobre el título pedido.** El contrato pedía cambiar "el título de la pantalla" a
+"Episodios con {Nombre}", asumiendo que existía un texto de título separado del nombre del personaje.
+Leyendo `chats.js` no es así: la cabecera de esa pantalla es un solo botón (`#chats-head-name`) cuyo
+`textContent` ES el nombre del personaje (y que, al tocarlo, abre su ficha — no hay ningún otro título
+visible arriba). Se decidió el cambio más fiel al pedido sin añadir ningún elemento nuevo ni romper esa
+función: el texto del propio botón pasa de `"{Nombre}"` a `"Episodios con {Nombre}"` (función
+`headTitle()`, dos puntos donde se asigna: `show()` y el `onUpdated` que llega al editar desde la
+ficha). El botón sigue abriendo la ficha igual que antes; `.topbar__title` ya tenía
+`text-overflow: ellipsis`, así que un nombre largo se corta con "…" en vez de romper el layout
+(verificado en el navegador, 375px).
+
+**Cambios explícitos del contrato (todos en `chat.js`/`chats.js`):**
+- Título de la lista de chats → "Episodios con {Nombre}" (como arriba).
+- Menú ⋮: "Resumen de este chat" → "Resumen de este episodio"; "Exportar este chat" → "Exportar este
+  episodio"; "Importar chat" → "Importar episodio".
+- Botón "+ Nuevo chat en este escenario" → "+ Nuevo episodio en este escenario".
+- Dentro de la hoja "Resumen de este episodio" (antes "de este chat"): título, `aria-label` del
+  textarea, "es solo de ESTE episodio", "¿Borrar el resumen de este episodio?", "cuando el episodio se
+  hace muy largo" y las dos menciones de "en episodios largos" (costo de latencia).
+- Toasts de la pantalla de episodios/menú ⋮: "No se pudo crear/renombrar el episodio.", "¿Borrar el
+  episodio…?", "Nuevo episodio"/"Renombrar episodio" (títulos de hoja), `aria-label`
+  "Renombrar episodio"/"Borrar episodio", "Todavía no hay episodios…", "para un episodio normal."
+  (hint del escenario de un episodio nuevo), "Episodio guardado…", "No se pudo exportar el episodio.",
+  "Ese archivo no es un log de episodio válido…", "¿Reemplazar el episodio actual…?", "Episodio
+  importado."
+- Hint de "Lo que recuerda {Nombre}" (lorebook vacío): "...en cualquiera de tus chats con este
+  personaje)..." → "...en cualquiera de tus episodios con este personaje)...".
+
+**Auditoría del resto de la app — decisiones documentadas (punto 4 del Requisitos), con el mismo
+criterio en los dos sentidos: "Chat" como nombre genérico de la función o de una pantalla técnica
+queda igual; "tus chats"/"tus episodios" referido a LAS CONVERSACIONES REALES del usuario con un
+personaje pasa a "episodio(s)":**
+- **Cambiado** — `home.js`: `aria-label` del retrato de la tarjeta "Chats de {Nombre}" → "Episodios de
+  {Nombre}" (abre exactamente la pantalla recién renombrada); confirmación al borrar un personaje
+  "...y todos sus chats?" → "...y todos sus episodios?".
+- **Cambiado** — `character-look.js` (hoja "Apariencia del personaje"): "Es solo de este personaje
+  (todos sus chats)..." → "...(todos sus episodios)...".
+- **Cambiado** — `persist.js` (frase de Ajustes → Avanzado sobre el almacenamiento persistente): "no
+  debería borrar tus chats..." y "Tus chats siguen guardados..." → "tus episodios"/"Tus episodios" (es
+  exactamente el caso "mensaje que tranquiliza sobre tus propias conversaciones" que el contrato da
+  como ejemplo de "si cambiar").
+- **Cambiado** — `settings.js` (aviso al activar el PIN): "...perder los personajes/chats..." →
+  "...personajes/episodios..." (mismo criterio: datos reales del usuario en riesgo).
+- **Cambiado** — `diagnostics.js` (intro de "Medir fluidez"): "...no toca ni muestra tus chats..." →
+  "tus episodios" (misma razón; la otra mitad de esa misma frase, "Usa chats... INVENTADOS", se dejó
+  igual: ahí "chats" son datos sintéticos de prueba, no conversaciones reales del usuario).
+- **Dejado igual, documentado** — `character-sheet.js` ("Fondo de chat", botón de la ficha) y
+  `settings.js`/`appearance.js` ("el fondo de chat/del chat", "dentro de cada/un chat"): es el nombre de
+  una FUNCIÓN de la app (el fondo visual detrás de la pantalla de chat), no una referencia a una
+  conversación puntual — mismo criterio que "'Chat' como nombre genérico... probablemente deba quedar
+  igual" del propio contrato. Cambiarlo también habría creado una tercera variante de redacción
+  ("Fondo de episodios") sin que el usuario lo haya pedido.
+- **Dejado igual, documentado** — `character-editor.js` (hint nuevo de CCC-002, "situación actual"):
+  "...justo antes de este chat." No se tocó: describe la escena de partida de un personaje que
+  TODAVÍA no tiene ningún episodio creado (se escribe en el creador, antes de que exista ninguna
+  conversación) — es un uso genérico ("vas a chatear con este personaje"), no una referencia a un
+  episodio concreto.
+- **Dejado igual, documentado** — `diagnostics.js`/`diagnostics/*.js` (banco de pruebas de rendimiento:
+  "Chats largos", "Dibujar un chat de 1.000 mensajes", etc.) y `www/js/backup.js`
+  (`describeAnalysis`/`describeResult`/`replaceWarning`, el informe en lenguaje llano de importar una
+  copia de seguridad, con conteos como "3 chats", "Chat restaurado", etc.): en ambos casos "chat"
+  nombra un concepto TÉCNICO (un hilo de mensajes sintético para medir velocidad; un registro crudo de
+  la base de datos al analizar un archivo de copia), no la idea narrativa de "episodio" que persigue
+  este contrato — cambiarlo ahí habría mezclado vocabulario de usuario con vocabulario de diagnóstico/
+  recuperación de datos, y `backup.js` tiene varios tests que comparan estas frases letra por letra
+  (`tests/backup.test.mjs`), así que tocarlas sin necesidad real subía el riesgo de esta entrega
+  "Pequeña" sin ningún beneficio para el usuario (son pantallas técnicas, ya marcadas como tales desde
+  UI-030).
+- **Dejado igual** — nombres de archivo exportados (`companion-chat-{slug}-{fecha}.json`) y la clave
+  interna `kind: 'chat-log'`: son convenciones de nombrado/formato, no prosa — cambiarlas rompería la
+  detección de "este archivo es un chat-log, no una copia completa" en `backup.js` (`CHAT_LOG_MESSAGE`)
+  sin que el contrato lo pidiera.
+
+**Corrección encontrada de paso (fuera del pedido literal de vocabulario, pero descubierta durante la
+auditoría de "chat"): `appearance.js` tenía una instrucción OBSOLETA.** Decía "el fondo de chat...se
+edita desde el menú ⋮ dentro de cada chat" — cierto antes de UI-032, falso después (UI-032 lo movió a
+la ficha del personaje; `settings.js` ya tenía el texto corregido, pero esta hoja hermana —
+"Apariencia global" dentro de Ajustes— se quedó con el texto viejo). Se corrigió para que diga lo mismo
+que `settings.js` ("se edita desde su ficha, toca el nombre del personaje dentro de un chat"), además
+del comentario de cabecera del archivo. No es un cambio de vocabulario episodio/chat: es una corrección
+de exactitud encontrada por casualidad, de una sola línea y sin riesgo, documentada para que quede
+claro que fue intencional.
+
+**Verificado en el navegador integrado (375×812)** contra el personaje sembrado en sesiones anteriores
+(2 episodios, 1 recuerdo): título "Episodios con Prueba CCC-002" (cortado con "…" por el ancho, sin
+romper el layout), botón "+ Nuevo episodio en este escenario", menú ⋮ con "Resumen de este episodio" /
+"Exportar este episodio" / "Importar episodio", hoja de resumen con todo el texto en "episodio".
+
+**Tests.** No hizo falta tocar ningún test: se grepeó `tests/*.test.mjs` por cada cadena literal antes
+de cambiarla (`Nuevo chat`, `Renombrar chat`, `Borrar chat`, `chat actual`, `chats largos`, `tus
+chats`, `personajes/chats`, `Chats de $`, etc.) y ninguno la comparaba — los únicos tests que mencionan
+"chat(s)" son de `backup.js`/`diagnostics.js` (dejados sin tocar a propósito, ver arriba) o describen
+comportamiento interno (`state.test.mjs`), no texto de interfaz. `node --test tests/*.test.mjs`:
+637/637 (mismo total que UI-033; cero tests nuevos, como anticipaba el criterio de aceptación).
+
+**No bloqueado por ninguna condición de parada:** no se encontró ningún lugar donde "chat" sea
+ambiguo con el nombre de la app o con un término técnico que no deba traducirse — todas las decisiones
+de la auditoría fueron claras con el criterio de arriba (conversación real del usuario → episodio;
+función/pantalla técnica genérica → se queda "chat").

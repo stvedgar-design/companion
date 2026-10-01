@@ -49,9 +49,9 @@ export function describePersistence(result) {
   if (!result) return 'Protección de datos del sistema: todavía no comprobada.';
   switch (result.status) {
     case 'granted':
-      return 'Protección de datos del sistema: activa (Android no debería borrar tus chats si falta espacio).';
+      return 'Protección de datos del sistema: activa (Android no debería borrar tus episodios si falta espacio).';
     case 'denied':
-      return 'Protección de datos del sistema: no concedida por Android. Tus chats siguen guardados, pero conviene hacer copias de seguridad.';
+      return 'Protección de datos del sistema: no concedida por Android. Tus episodios siguen guardados, pero conviene hacer copias de seguridad.';
     case 'unsupported':
       return 'Protección de datos del sistema: no disponible en este dispositivo.';
     default:

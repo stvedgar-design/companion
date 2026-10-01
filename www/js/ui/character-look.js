@@ -44,7 +44,7 @@ export function openCharacterAppearance(app, character, onSaved) {
     el(
       'div',
       'field__hint',
-      'Así se ve el personaje, para que no se contradiga ni tengas que describirlo cada vez. Es solo de este personaje (todos sus chats) y no forma parte de su card. ' +
+      'Así se ve el personaje, para que no se contradiga ni tengas que describirlo cada vez. Es solo de este personaje (todos sus episodios) y no forma parte de su card. ' +
         'Escríbelo en el idioma de la conversación (normalmente inglés) y en una línea.'
     )
   );

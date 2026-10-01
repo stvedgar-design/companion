@@ -30,7 +30,7 @@ export function init(root, appApi) {
       <div id="chats-list"></div>
     </div>
     <div class="footbar">
-      <button class="btn" id="chats-add" type="button">+ Nuevo chat en este escenario</button>
+      <button class="btn" id="chats-add" type="button">+ Nuevo episodio en este escenario</button>
     </div>
   `;
 
@@ -47,6 +47,12 @@ export function init(root, appApi) {
   els.add.addEventListener('click', onAddClick);
 }
 
+// UI-034: título de esta pantalla ("memoria como historia compartida" — docs/UX-BLUEPRINT.md, sección 9).
+// Solo vocabulario: no cambia ningún dato ni identificador, el botón sigue abriendo la ficha igual que antes.
+function headTitle(name) {
+  return `Episodios con ${name}`;
+}
+
 // UI-027: tocar el nombre abre la ficha. "Ver recuerdos" desde acá (sin chat activo todavía) entra al
 // chat más reciente y abre ahí la pantalla de memoria existente (misma que desde el menú ⋮ del chat).
 function onOpenCharacterSheet() {
@@ -54,7 +60,7 @@ function onOpenCharacterSheet() {
   openCharacterSheet(app, character, {
     onUpdated: (updated) => {
       character = updated;
-      els.headName.textContent = character.name;
+      els.headName.textContent = headTitle(character.name);
       setAvatar(els.headAv, character);
       renderList();
     },
@@ -76,7 +82,7 @@ export async function show({ characterId } = {}) {
     return;
   }
 
-  els.headName.textContent = character.name;
+  els.headName.textContent = headTitle(character.name);
   setAvatar(els.headAv, character);
 
   chats = await listChats(characterId);
@@ -88,7 +94,7 @@ export async function show({ characterId } = {}) {
       const chat = await createChat(characterId, {});
       app.navigate('chat', { chatId: chat.id }, { replace: true });
     } catch (err) {
-      app.toast('No se pudo crear el chat.');
+      app.toast('No se pudo crear el episodio.');
     }
     return;
   }
@@ -120,7 +126,7 @@ function renderList() {
   if (!chats.length) {
     const empty = document.createElement('div');
     empty.className = 'empty';
-    empty.innerHTML = 'Todavía no hay chats.<br>Toca «+ Nuevo chat» abajo para empezar uno.';
+    empty.innerHTML = 'Todavía no hay episodios.<br>Toca «+ Nuevo episodio» abajo para empezar uno.';
     els.list.appendChild(empty);
     return;
   }
@@ -155,7 +161,7 @@ function renderRow(chat) {
   const rename = document.createElement('button');
   rename.className = 'ib';
   rename.type = 'button';
-  rename.setAttribute('aria-label', 'Renombrar chat');
+  rename.setAttribute('aria-label', 'Renombrar episodio');
   rename.innerHTML = ICON_EDIT;
   rename.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -165,7 +171,7 @@ function renderRow(chat) {
   const del = document.createElement('button');
   del.className = 'ib';
   del.type = 'button';
-  del.setAttribute('aria-label', 'Borrar chat');
+  del.setAttribute('aria-label', 'Borrar episodio');
   del.innerHTML = ICON_TRASH;
   del.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -194,7 +200,7 @@ function onRename(chat) {
 
   const title = document.createElement('h3');
   title.className = 'sheet__title';
-  title.textContent = 'Renombrar chat';
+  title.textContent = 'Renombrar episodio';
   wrap.appendChild(title);
 
   const field = document.createElement('div');
@@ -222,7 +228,7 @@ function onRename(chat) {
       chats = await listChats(character.id);
       renderList();
     } catch (err) {
-      app.toast('No se pudo renombrar el chat.');
+      app.toast('No se pudo renombrar el episodio.');
       saveBtn.disabled = false;
     }
   });
@@ -233,7 +239,7 @@ function onRename(chat) {
 
 async function onDelete(chat) {
   const label = chat.title || formatDate(chat.created);
-  const ok = await app.confirmDialog(`¿Borrar el chat "${label}"?`, {
+  const ok = await app.confirmDialog(`¿Borrar el episodio "${label}"?`, {
     danger: true,
     confirmText: 'Borrar',
   });
@@ -249,7 +255,7 @@ async function onAddClick() {
 
   const title = document.createElement('h3');
   title.className = 'sheet__title';
-  title.textContent = 'Nuevo chat';
+  title.textContent = 'Nuevo episodio';
   wrap.appendChild(title);
 
   const titleField = document.createElement('div');
@@ -267,7 +273,7 @@ async function onAddClick() {
     <textarea class="inp" id="newchat-scenario" rows="4" maxlength="${SCENARIO_MAX}"
       placeholder="Ej: Meet at a rainy train station at midnight. Escríbelo en inglés: el modelo entiende mejor ese idioma."></textarea>
     <div class="field__hint">
-      Se suma al escenario del personaje, no lo reemplaza. Puedes dejarlo vacío para un chat normal.
+      Se suma al escenario del personaje, no lo reemplaza. Puedes dejarlo vacío para un episodio normal.
       Mejor en inglés (el modelo responde mejor) y corto, para no gastar de más el contexto.
       <span id="newchat-scenario-count">0/${SCENARIO_MAX}</span>
     </div>
@@ -298,7 +304,7 @@ async function onAddClick() {
       app.closeSheet();
       app.navigate('chat', { chatId: chat.id });
     } catch (err) {
-      app.toast('No se pudo crear el chat.');
+      app.toast('No se pudo crear el episodio.');
       createBtn.disabled = false;
     }
   });

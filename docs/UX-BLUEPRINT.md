@@ -301,7 +301,7 @@ del usuario aparte, porque mueve dónde vive un dato o cambia una interacción).
 | Menú ⋮ → "Diagnóstico" (plegado) | Se mantiene plegado, pero bajo el rótulo "Avanzado" en vez de "Diagnóstico" a secas, y "Contexto usado: X tokens" → "Memoria inmediata usada: X%" (sin el número de tokens, o con el número solo si se despliega un detalle técnico aparte) | "Avanzado" | Solo renombrar el texto; sacar "tokens" de la vista normal es solo texto, no dato nuevo |
 | Ajustes → Conversación → "Sentimientos del personaje", lorebook/resumen automáticos (hoy en sus propias hojas, no en Ajustes) | Sin cambio de ubicación; posible rótulo de sección "Avanzado" alrededor de los interruptores experimentales | — | Solo renombrar/agrupar visualmente |
 | Ajustes → Diagnóstico (prueba de fluidez, banco de estrés) | Ya está en App, correcto. PROPUESTA: subtítulo "Avanzado" | "Salud del sistema" (opcional) | Solo renombrar |
-| Lista de chats de un personaje | Sin cambios de fondo; es la pantalla natural para "episodios" si se adopta esa palabra | "Episodios con {Nombre}" (opcional) | Solo renombrar el título de la pantalla |
+| Lista de chats de un personaje | **Hecho, UI-034 (2026-10-01)** | "Episodios con {Nombre}" | Solo renombrar — el texto del botón-nombre de la cabecera (no había un título separado) |
 
 **Qué NO propongo tocar:** Ajustes → Conexión/Seguridad/Apariencia/Datos ya están bien ubicados
 (ámbito App, correcto desde UI-025). La ficha (UI-027) ya sigue el patrón "lectura primero" pedido.
@@ -335,7 +335,7 @@ explícito de no añadir pantallas, interruptores ni avisos de restricción.
 |---|---|---|
 | Wizard del creador (con plantillas) | Reemplazaría la pantalla única de `character-editor.js` al CREAR (no al editar); entrada desde "Crear personaje" en el hub | Depende de que CCC-002 (guías/ejemplos) se resuelva primero o en conjunto |
 | ~~Duplicar personaje~~ | **Hecho, UI-033 (2026-10-01)** — Ficha del personaje, junto a "Editar" | — |
-| Memoria como "historia compartida" (chats = episodios) | Renombrar la pantalla de "lista de chats" (`chats.js`) sin cambiar su lógica; "episodio" pasaría a usarse en los rótulos de exportar/resumen | Es un cambio de vocabulario primero, de estructura de datos después (si se quiere "resumen de identidad" periódico, eso sí es un contrato aparte, ya anotado como pendiente en `docs/NOTES.md`) |
+| ~~Memoria como "historia compartida" (chats = episodios)~~ | **Hecho, UI-034 (2026-10-01)** | Cambio de vocabulario únicamente, sin tocar datos; si se quiere "resumen de identidad" periódico, eso sigue siendo un contrato aparte, anotado como pendiente en `docs/NOTES.md` |
 | Perfil del usuario ("Mi perfil") | Ajustes → Conexión (junto a "Tu nombre en el chat"), como pantalla propia si crece (foto para el avatar del usuario, horario) | Hoy "Tu nombre" ya vive ahí; un campo de foto sería la primera pieza |
 | Disponible/Ausente | Ajustes → nueva sección "Presencia" (ámbito App: es un interruptor global, no por personaje, según la decisión ya tomada en `docs/NOTES.md`) | Pendiente de diseño de cola/segundo plano, fuera de este documento |
 | Buzón de mensajes proactivos | Ícono propio en la cabecera del hub (junto a Buscar/Ajustes), o una pestaña — a decidir cuando se diseñe | Hoy no hay ningún lugar reservado; necesita su propio contrato de diseño |
@@ -355,7 +355,7 @@ explícito de no añadir pantallas, interruptores ni avisos de restricción.
 | 5 | ~~CCC-002 reformulado sobre CCC-003 (guías por campo, botón "Ejemplo", plantilla `<START>`/`{{user}}`/`{{char}}`, campo "Instrucciones")~~ — **hecho, CCC-002 (2026-09-30)** | Mediano | Medio | Ninguno |
 | 6 | Wizard del creador de personajes con plantillas y ejemplos | Grande | Medio | #5 (comparten pantalla) |
 | 7 | ~~Duplicar personaje~~ — **hecho, UI-033 (2026-10-01)** | Pequeño–Mediano | Bajo | Ninguno |
-| 8 | Memoria como "historia compartida": renombrar chats → episodios en la interfaz (sin tocar datos) | Pequeño | Bajo | Decisión de vocabulario del usuario |
+| 8 | ~~Memoria como "historia compartida": renombrar chats → episodios en la interfaz (sin tocar datos)~~ — **hecho, UI-034 (2026-10-01)** | Pequeño | Bajo | Ninguno |
 | 9 | Galería de fotos por personaje (pestaña "Fotos" en la ficha) | Grande | Alto (nuevo almacén de imágenes, posible migración de IndexedDB) | Depende de que exista contenido que mostrar ahí (hoy no hay generación de imágenes) |
 | 10 | Buscador dentro de Ajustes | Pequeño | Bajo | Ninguno — hoy Ajustes es una sola pantalla corta, prioridad baja hasta que crezca |
 

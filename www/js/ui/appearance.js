@@ -1,7 +1,7 @@
 // www/js/ui/appearance.js
 // Hoja de apariencia: claro u oscuro y tipografía dividida. Global, aplica a toda la app. UI-024: ya no se elige skin (la app
 // tiene uno solo, Penumbra Claude; los demás están archivados en css/themes-archived.css). El fondo de chat es otra cosa —
-// es por personaje, se edita desde el menú ⋮ del chat (ver ui/chat-background.js).
+// es por personaje, se edita desde su ficha (UI-032; ver ui/chat-background.js).
 
 import { getSettings, saveSettings } from '../state.js';
 import { applyThemeMode, applySplitTypography } from './shell.js';
@@ -28,7 +28,7 @@ export function openAppearance(app) {
       <div class="field__hint">Experimental. En los mensajes del personaje que traen acciones en cursiva, el diálogo se ve con letra sin serifas y la acción conserva la letra del skin. Apagado, todo se ve como siempre.</div>
     </div>
 
-    <div class="field__hint">El tamaño del texto de los mensajes se elige en Ajustes → Apariencia. El fondo de chat (imagen, brillo, etc.) es por personaje — se edita desde el menú ⋮ dentro de cada chat.</div>
+    <div class="field__hint">El tamaño del texto de los mensajes se elige en Ajustes → Apariencia. El fondo de chat (imagen, brillo, etc.) es por personaje — se edita desde su ficha (toca el nombre del personaje dentro de un chat).</div>
   `;
 
   const q = (sel) => node.querySelector(sel);

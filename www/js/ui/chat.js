@@ -1480,7 +1480,7 @@ function openLorebookSheet(note = '') {
         'div',
         'field__hint',
         'Todavía no hay recuerdos. Se crean al usar el botón de arriba (con lo que hayas hablado en cualquiera de tus ' +
-          'chats con este personaje), o solos si activas la actualización automática.'
+          'episodios con este personaje), o solos si activas la actualización automática.'
       )
     );
   }
@@ -1757,12 +1757,12 @@ function openContinuitySheet(note = '') {
   if (!character || !chat) return;
   const summary = chat.continuitySummary || { text: '', coveredUntil: 0, updated: 0 };
   const wrap = loreEl('div');
-  wrap.appendChild(loreEl('h3', 'sheet__title', 'Resumen de este chat'));
+  wrap.appendChild(loreEl('h3', 'sheet__title', 'Resumen de este episodio'));
   const intro = loreEl(
     'div',
     'field__hint',
     'Cuando esta conversación es tan larga que los mensajes más viejos ya no caben en la memoria de la IA, aquí se guarda un ' +
-      'resumen breve de lo que pasó, para que el personaje no lo pierda del todo. Solo se crea cuando hace falta y es solo de ESTE chat.'
+      'resumen breve de lo que pasó, para que el personaje no lo pierda del todo. Solo se crea cuando hace falta y es solo de ESTE episodio.'
   );
   intro.style.marginBottom = 'var(--space-3, 12px)';
   wrap.appendChild(intro);
@@ -1776,7 +1776,7 @@ function openContinuitySheet(note = '') {
   text.rows = 7;
   text.maxLength = CONTINUITY_TOTAL_CHARS;
   text.placeholder = 'Todavía no hay resumen. Puedes escribir uno tú (lo que quieras que el personaje recuerde de esta conversación) o esperar a que se cree solo.';
-  text.setAttribute('aria-label', 'Resumen de este chat');
+  text.setAttribute('aria-label', 'Resumen de este episodio');
   text.style.marginTop = 'var(--space-2, 8px)';
   const counter = loreEl('div', 'field__hint', '');
   const refreshCounter = () => {
@@ -1818,7 +1818,7 @@ function openContinuitySheet(note = '') {
   const saveHint = loreEl(
     'div',
     'field__hint',
-    'Mientras haya un resumen guardado, cada respuesta lo lleva y, en chats largos, puede tardar unos 2 segundos más (medido con ~500 caracteres). ' +
+    'Mientras haya un resumen guardado, cada respuesta lo lleva y, en episodios largos, puede tardar unos 2 segundos más (medido con ~500 caracteres). ' +
       'Si prefieres la máxima velocidad, bórralo. Si lo escribes o editas tú, el resumen automático puede juntarlo o quitarle las frases más antiguas cuando ya no quepa.'
   );
   saveHint.style.marginTop = 'var(--space-1, 4px)';
@@ -1829,7 +1829,7 @@ function openContinuitySheet(note = '') {
   deleteBtn.disabled = !summary.text;
   deleteBtn.addEventListener('click', () => {
     openContinuityConfirm(
-      '¿Borrar el resumen de este chat? Lo que ya no cabe en la conversación no se puede volver a resumir: si se borra, el personaje lo pierde.',
+      '¿Borrar el resumen de este episodio? Lo que ya no cabe en la conversación no se puede volver a resumir: si se borra, el personaje lo pierde.',
       'Borrar',
       async () => {
         chat = await saveChatContinuity(chat.id, { text: '', coveredUntil: 0, updated: 0 });
@@ -1848,12 +1848,12 @@ function openContinuitySheet(note = '') {
   autoBox.type = 'checkbox';
   autoBox.checked = !!(settings && settings.continuityAuto);
   autoBox.style.accentColor = 'var(--color-accent, #8b1fe0)';
-  autoRow.append(autoBox, loreEl('span', '', 'Resumir automáticamente cuando el chat se hace muy largo'));
+  autoRow.append(autoBox, loreEl('span', '', 'Resumir automáticamente cuando el episodio se hace muy largo'));
   const autoHint = loreEl(
     'div',
     'field__hint',
     'Se hace en segundo plano, solo cuando algo está a punto de perderse, y se cancela si envías un mensaje. ' +
-      'Está apagado por defecto porque, con un resumen guardado, cada respuesta puede tardar unos 2 segundos más en chats largos.'
+      'Está apagado por defecto porque, con un resumen guardado, cada respuesta puede tardar unos 2 segundos más en episodios largos.'
   );
   autoHint.style.marginBottom = 'var(--space-3, 12px)';
   autoBox.addEventListener('change', async () => {
@@ -2061,7 +2061,7 @@ function onMenu() {
   // "Continuar" en el hub se entra directo al chat, así que atrás vuelve al hub, no a esta lista — límite conocido).
   const characterItems = [
     menuItem(`Lo que recuerda ${character.name}`, () => openLorebookSheet()),
-    menuItem('Resumen de este chat', () => openContinuitySheet()),
+    menuItem('Resumen de este episodio', () => openContinuitySheet()),
   ];
   if (character && character.card.alternate_greetings && character.card.alternate_greetings.length && isOnlyGreeting()) {
     characterItems.push(menuItem('Cambiar saludo', () => openGreetingSheet()));
@@ -2074,11 +2074,11 @@ function onMenu() {
 
   wrap.appendChild(
     menuSection('Datos', [
-      menuItem('Exportar este chat', () => {
+      menuItem('Exportar este episodio', () => {
         app.closeSheet();
         onExportChat();
       }),
-      menuItem('Importar chat', () => {
+      menuItem('Importar episodio', () => {
         app.closeSheet();
         onImportChat();
       }),
@@ -2119,9 +2119,9 @@ async function onExportChat() {
   try {
     const date = new Date().toISOString().slice(0, 10);
     const { savedToDevice } = await saveBlob(chatExportBlob(), `companion-chat-${chatSlug()}-${date}.json`);
-    if (savedToDevice) app.toast('Chat guardado en Documentos del teléfono.');
+    if (savedToDevice) app.toast('Episodio guardado en Documentos del teléfono.');
   } catch (err) {
-    app.toast('No se pudo exportar el chat.');
+    app.toast('No se pudo exportar el episodio.');
   }
 }
 
@@ -2160,7 +2160,7 @@ async function onImportChat() {
   }
 
   if (!data || typeof data !== 'object' || !Array.isArray(data.messages)) {
-    app.toast('Ese archivo no es un log de chat válido de Companion.');
+    app.toast('Ese archivo no es un log de episodio válido de Companion.');
     return;
   }
 
@@ -2174,7 +2174,7 @@ async function onImportChat() {
   }
 
   const ok = await app.confirmDialog(
-    `¿Reemplazar el chat actual con este log importado (${cleaned.length} mensajes)? Se perderá el historial actual.`,
+    `¿Reemplazar el episodio actual con este log importado (${cleaned.length} mensajes)? Se perderá el historial actual.`,
     { confirmText: 'Importar', danger: true }
   );
   if (!ok) return;
@@ -2193,7 +2193,7 @@ async function onImportChat() {
   messages = cleaned;
   await persistChat();
   renderMessages();
-  app.toast('Chat importado.');
+  app.toast('Episodio importado.');
 }
 
 function isOnlyGreeting() {

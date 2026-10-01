@@ -230,7 +230,7 @@ function renderRow(character) {
   avatar.className = 'home-card__avatar';
   avatar.setAttribute('role', 'button');
   avatar.tabIndex = 0;
-  avatar.setAttribute('aria-label', `Chats de ${character.name}`);
+  avatar.setAttribute('aria-label', `Episodios de ${character.name}`);
   if (character.avatar) {
     const img = document.createElement('img');
     img.src = character.avatar;
@@ -289,7 +289,7 @@ function renderRow(character) {
 }
 
 async function onDelete(character) {
-  const ok = await app.confirmDialog(`¿Borrar a ${character.name} y todos sus chats?`, {
+  const ok = await app.confirmDialog(`¿Borrar a ${character.name} y todos sus episodios?`, {
     danger: true,
     confirmText: 'Borrar',
   });

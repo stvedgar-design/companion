@@ -207,7 +207,7 @@ export function openSettings(app) {
           <input class="inp" id="pin-confirm" type="password" inputmode="numeric" autocomplete="off" placeholder="Repetir PIN">
           <button class="btn btn--ghost btn--sm" id="pin-activate" type="button">Activar</button>
         </div>
-        <div class="field__hint">Opcional. Si lo activás, no hay forma de recuperarlo si lo olvidás: tendrías que borrar los datos de la app (y perder los personajes/chats) para volver a entrar.</div>
+        <div class="field__hint">Opcional. Si lo activás, no hay forma de recuperarlo si lo olvidás: tendrías que borrar los datos de la app (y perder los personajes/episodios) para volver a entrar.</div>
       `;
       const pinNew = q('#pin-new');
       const pinConfirm = q('#pin-confirm');

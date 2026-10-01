@@ -29,7 +29,7 @@ export function openDiagnostics(app) {
   const node = el('div', 'settings');
   node.append(el('h3', 'sheet__title', 'Diagnóstico y rendimiento'));
 
-  const intro = el('div', 'field__hint', 'Mide qué tan fluida va la app en este teléfono. Usa chats y personajes INVENTADOS que se crean en un lugar aparte y se borran solos al terminar: no toca ni muestra tus chats. Nada sale del teléfono salvo que tú exportes el informe.');
+  const intro = el('div', 'field__hint', 'Mide qué tan fluida va la app en este teléfono. Usa chats y personajes INVENTADOS que se crean en un lugar aparte y se borran solos al terminar: no toca ni muestra tus episodios. Nada sale del teléfono salvo que tú exportes el informe.');
   node.append(intro);
 
   const field = el('div', 'field');
