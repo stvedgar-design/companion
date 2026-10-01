@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PERSONALITY_TAGS, MAX_PERSONALITY_TAGS, sanitizePersonalityTags, personalityTextFromTags } from '../www/js/personality-tags.js';
-import { buildCharacterCard, cleanText, normalizeField, NAME_MAX, DESCRIPTION_MAX, SCENARIO_MAX, FIRST_MES_MAX, MES_EXAMPLE_MAX } from '../www/js/cards/build.js';
+import { buildCharacterCard, cleanText, normalizeField, NAME_MAX, DESCRIPTION_MAX, SCENARIO_MAX, FIRST_MES_MAX, MES_EXAMPLE_MAX, INSTRUCTIONS_MAX } from '../www/js/cards/build.js';
 import { normCard } from '../www/js/cards/parse.js';
 import { createState } from '../www/js/state.js';
 import { readFileSync } from 'node:fs';
@@ -107,6 +107,27 @@ test('buildCharacterCard: nombre vacío cae a "Sin nombre" (igual que normCard);
   assert.equal(buildCharacterCard({ scenario: 'x'.repeat(9999) }).scenario.length, SCENARIO_MAX);
   assert.equal(buildCharacterCard({ firstMes: 'x'.repeat(9999) }).first_mes.length, FIRST_MES_MAX);
   assert.equal(buildCharacterCard({ mesExample: 'x'.repeat(9999) }).mes_example.length, MES_EXAMPLE_MAX);
+  // CCC-002: "Instrucciones" se guarda en post_history_instructions y respeta el mismo tope real al
+  // guardar, aunque el campo de origen haya recibido más texto (pegado o por IME, sin pasar por `maxlength`).
+  assert.equal(buildCharacterCard({ instructions: 'x'.repeat(9999) }).post_history_instructions.length, INSTRUCTIONS_MAX);
+});
+
+// ---------- CCC-002: "Instrucciones" (post_history_instructions) ----------
+
+test('CCC-002: buildCharacterCard arma "Instrucciones" en post_history_instructions, igual que los demás campos narrativos', () => {
+  const card = buildCharacterCard({ name: 'Mia', instructions: '  never breaks character  ' });
+  assert.equal(card.post_history_instructions, 'Never breaks character');
+});
+
+test('CCC-002: sin "Instrucciones", post_history_instructions queda vacío (el prompt no cambia, ver api/prompt.js)', () => {
+  assert.equal(buildCharacterCard({ name: 'Mia' }).post_history_instructions, '');
+  assert.equal(buildCharacterCard({ name: 'Mia', instructions: '   ' }).post_history_instructions, '');
+});
+
+test('CCC-002 round-trip: una card con "Instrucciones" se reimporta (normCard) bit a bit igual', () => {
+  const card = buildCharacterCard({ name: 'Mia', instructions: 'always speaks in third person' });
+  const viaImportRoundtrip = normCard({ data: card, spec: 'chara_card_v2' });
+  assert.deepEqual(viaImportRoundtrip, card);
 });
 
 test('buildCharacterCard: la salida tiene EXACTAMENTE la forma de una Card normalizada (compatible con normCard/chara_card_v2)', () => {

@@ -263,6 +263,24 @@ input[type=range]:focus-visible{
   line-height: 1.4;
 }
 
+/* CCC-002: bloque "Ejemplo" plegable bajo un campo del creador de personajes. */
+.field-example{ margin-top: var(--space-1); }
+.field-example__panel{
+  margin-top: var(--space-2);
+  padding: var(--space-3);
+  background: var(--color-surface-2);
+  border: 1.5px solid var(--color-line);
+  border-radius: var(--radius-md);
+}
+.field-example__panel[hidden]{ display: none; }
+.field-example__text{
+  margin: 0 0 var(--space-2) 0;
+  font-size: var(--fs-sm);
+  color: var(--color-text);
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
 /* CCC-001: selector de etiquetas (pills) togglables, p. ej. rasgos de personalidad en el creador/editor
    de personajes. Varias por fila, se envuelven; cada una es un botón de encendido/apagado independiente. */
 .tag-picker{

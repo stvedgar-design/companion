@@ -13,6 +13,10 @@ export const FIRST_MES_MAX = 400;
 export const MES_EXAMPLE_MAX = 300;
 // Tope generoso para personalidad en texto libre (card importada sin etiquetas, editada a mano).
 export const PERSONALITY_TEXT_MAX = 400;
+// CCC-002: reglas de comportamiento del personaje (no son personalidad ni descripción). Se guardan en
+// `post_history_instructions`, un campo de la card Tavern V2 que ya existía reservado sin interfaz
+// propia (ver api/prompt.js: ya se incluye en el prompt en ambos modos, plain y plantilla).
+export const INSTRUCTIONS_MAX = 300;
 
 /**
  * Recorta espacios sobrantes (incluidos saltos de línea, que estos campos no usan) y el tope de
@@ -52,6 +56,7 @@ export function normalizeField(value, max) {
  *   scenario?: string,
  *   firstMes?: string,
  *   mesExample?: string,
+ *   instructions?: string,
  * }} fields
  * @returns {import('../state.js').Card}
  */
@@ -69,7 +74,7 @@ export function buildCharacterCard(fields = {}) {
     first_mes: normalizeField(fields.firstMes, FIRST_MES_MAX),
     mes_example: normalizeField(fields.mesExample, MES_EXAMPLE_MAX),
     system_prompt: '',
-    post_history_instructions: '',
+    post_history_instructions: normalizeField(fields.instructions, INSTRUCTIONS_MAX),
     alternate_greetings: [],
     character_book: null,
   };

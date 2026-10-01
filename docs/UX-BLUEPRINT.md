@@ -202,15 +202,18 @@ Todo de ámbito Personaje, lectura primero — ya alineada con la dirección ext
 
 **Crear/editar personaje** ([character-editor.js](../www/js/ui/character-editor.js)): avatar, nombre,
 personalidad (pills o texto libre), descripción, situación actual, primer mensaje, ejemplo de diálogo,
-apariencia (rasgos fijos / ropa de ahora). **No tiene** (verificado, ninguno existe en el código):
-guía de ayuda por campo con ejemplo, botón "Ejemplo" por campo, plantilla `<START>`/`{{user}}`/`{{char}}`
-en el ejemplo de diálogo, ni un campo "Instrucciones" — todo esto es exactamente lo que pide CCC-002,
-que sigue bloqueado según el Registro de contratos (`docs/NOTES.md`). El selector de "estilo de
-escritura" está oculto a propósito desde CCC-003 (no es un pendiente de este documento). El límite de
+apariencia (rasgos fijos / ropa de ahora), instrucciones de comportamiento (opcional). **Implementado
+por CCC-002 (2026-09-30):** guía de una línea + botón "Ejemplo" plegable en los 8 campos del contrato,
+plantilla `<START>`/`{{user}}`/`{{char}}` explicada en lenguaje llano bajo "Ejemplo de diálogo", y el
+campo nuevo "Instrucciones" (se guarda en `post_history_instructions`, un campo de la card Tavern V2
+que ya estaba conectado al prompt en `api/prompt.js` sin interfaz propia). El selector de "estilo de
+escritura" sigue oculto a propósito desde CCC-003 (no es un pendiente de este documento). El límite de
 caracteres SÍ está puesto como atributo `maxlength` en cada campo
-([character-editor.js:36](../www/js/ui/character-editor.js)) — si todavía se puede superar pegando
-texto o con IME es exactamente lo que CCC-002 pide medir y arreglar; no lo volví a probar acá porque
-es su alcance, no el de ARQ-003.
+([character-editor.js:36](../www/js/ui/character-editor.js)) y, verificado por CCC-002, **también se
+corrige al GUARDAR** en todos los campos (`cleanText`/`normalizeField`/`sanitizeAppearance` ya recortaban
+al tope real desde antes de CCC-002) — se probó forzando 5000 caracteres por JS (saltando el `maxlength`
+del DOM, como podría pasar con un IME) y el registro guardado quedó recortado a su tope exacto. Ver
+"CCC-002" en `docs/HISTORIAL.md`.
 
 **Apariencia del personaje** (MEM-009, [character-look.js](../www/js/ui/character-look.js)): "Rasgos
 fijos" y "Ropa o estado de ahora", con contador de caracteres y aviso de costo de latencia en lenguaje
@@ -347,7 +350,7 @@ explícito de no añadir pantallas, interruptores ni avisos de restricción.
 | 2 | ~~Renombrar rótulos sin cambiar comportamiento~~ — **hecho, UI-030 (2026-09-30)** | Pequeño | Bajo | Ninguno |
 | 3 | ~~Mover "Cambiar avatar" y "Apariencia del personaje" del menú ⋮ a la ficha; quitar "Ver personaje"~~ — **hecho, UI-031 (2026-09-30)** | Mediano | Medio (cambia una ruta de navegación que el usuario ya conoce) | Ninguno técnico; sí autorización explícita del usuario |
 | 4 | ~~Mover "Fondo del chat" del menú ⋮ a la ficha del personaje~~ — **hecho, UI-032 (2026-09-30)** | Pequeño | Bajo | Puede ir junto con el #3 |
-| 5 | CCC-002 reformulado sobre CCC-003 (guías por campo, botón "Ejemplo", plantilla `<START>`/`{{user}}`/`{{char}}`, campo "Instrucciones") | Mediano | Medio | Ya estaba escrito; solo falta que el arquitecto lo reformule sobre `main` actual (ver fila CCC-002 del Registro de contratos) |
+| 5 | ~~CCC-002 reformulado sobre CCC-003 (guías por campo, botón "Ejemplo", plantilla `<START>`/`{{user}}`/`{{char}}`, campo "Instrucciones")~~ — **hecho, CCC-002 (2026-09-30)** | Mediano | Medio | Ninguno |
 | 6 | Wizard del creador de personajes con plantillas y ejemplos | Grande | Medio | #5 (comparten pantalla) |
 | 7 | Duplicar personaje | Pequeño–Mediano | Bajo | Ninguno |
 | 8 | Memoria como "historia compartida": renombrar chats → episodios en la interfaz (sin tocar datos) | Pequeño | Bajo | Decisión de vocabulario del usuario |

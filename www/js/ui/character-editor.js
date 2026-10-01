@@ -16,15 +16,65 @@ import {
   FIRST_MES_MAX,
   MES_EXAMPLE_MAX,
   PERSONALITY_TEXT_MAX,
+  INSTRUCTIONS_MAX,
 } from '../cards/build.js';
 import { PERSONALITY_TAGS, MAX_PERSONALITY_TAGS, sanitizePersonalityTags } from '../personality-tags.js';
 import { sanitizeAppearance, APPEARANCE_FIXED_MAX, APPEARANCE_CURRENT_MAX } from '../character-appearance.js';
+
+// CCC-002: ejemplos de referencia para el botón "Ejemplo" de cada campo. Inventados a propósito (nunca
+// contenido real de un personaje del usuario); en inglés, como el resto del contenido narrativo de las
+// cards (ver personality-tags.js) — es lo que de verdad se manda al modelo.
+const EXAMPLE_PERSONALITY_TAGS = ['curious', 'playful', 'loyal'];
+const EXAMPLE_PERSONALITY_TEXT = 'Warm and a little shy at first, but fiercely loyal once she trusts you. Quick to tease, slow to open up about what she really feels.';
+const EXAMPLE_DESCRIPTION = 'A quiet art student who just moved to the city. Still finding her way around, but always curious about the people she meets.';
+const EXAMPLE_SCENARIO = "It's a quiet evening at her apartment, and she's been waiting for you to show up for a while now.";
+const EXAMPLE_FIRST_MES = "*looks up and smiles as the door opens* Oh — you're finally here! I was starting to wonder if you got lost.";
+const EXAMPLE_MES_EXAMPLE = "<START>\n{{user}}: What have you been up to today?\n{{char}}: *stretches and grins* Not much, actually. Just been waiting around for you, if I'm honest.";
+const EXAMPLE_APPEARANCE_FIXED = 'Short and slim, pink hair, violet eyes.';
+const EXAMPLE_APPEARANCE_CURRENT = 'A white oversized hoodie and jeans.';
+const EXAMPLE_INSTRUCTIONS = 'Always stays in character and never breaks the fourth wall. Speaks in short, casual sentences.';
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
   if (className) node.className = className;
   if (text !== undefined) node.textContent = text;
   return node;
+}
+
+/**
+ * CCC-002: botón "Ejemplo" plegable junto a un campo. Al abrirse, muestra un texto de ejemplo real
+ * (nunca contenido del usuario) y un botón "Usar este ejemplo" que lo copia al campo — directo si está
+ * vacío, con confirmación si ya tiene algo escrito (nunca se borra nada sin preguntar).
+ * @param {{ confirmDialog: Function }} app
+ * @param {{ label: string, exampleText: string, getValue: () => string, setValue: (text: string) => void }} opts
+ */
+function exampleBlock(app, { label, exampleText, getValue, setValue }) {
+  const wrap = el('div', 'field-example');
+  const toggleBtn = el('button', 'btn btn--ghost btn--sm', 'Ejemplo');
+  toggleBtn.type = 'button';
+  toggleBtn.setAttribute('aria-expanded', 'false');
+  const panel = el('div', 'field-example__panel');
+  panel.hidden = true;
+  panel.appendChild(el('p', 'field-example__text', exampleText));
+  const insertBtn = el('button', 'btn btn--ghost btn--sm', 'Usar este ejemplo');
+  insertBtn.type = 'button';
+  insertBtn.addEventListener('click', async () => {
+    const current = (getValue() || '').trim();
+    if (current) {
+      const ok = await app.confirmDialog(`Esto va a reemplazar lo que ya escribiste en "${label}". ¿Reemplazar?`, { confirmText: 'Reemplazar' });
+      if (!ok) return;
+    }
+    setValue(exampleText);
+  });
+  panel.appendChild(insertBtn);
+  toggleBtn.addEventListener('click', () => {
+    const show = panel.hidden;
+    panel.hidden = !show;
+    toggleBtn.setAttribute('aria-expanded', String(show));
+    toggleBtn.textContent = show ? 'Ocultar ejemplo' : 'Ejemplo';
+  });
+  wrap.append(toggleBtn, panel);
+  return wrap;
 }
 
 function textField({ label, hint, max, rows, value, placeholder }) {
@@ -110,6 +160,53 @@ export function openCharacterEditor(app, opts = {}) {
   // ---------- personalidad (pills o texto libre) ----------
   const personalityWrap = el('div', 'field');
   personalityWrap.appendChild(el('div', 'field__label', 'Personalidad'));
+  personalityWrap.appendChild(el('div', 'field__hint', 'Cómo es: unas pocas palabras bastan. Elige etiquetas o descríbelo con tus propias palabras.'));
+  const personalityExamplePanel = el('div', 'field-example__panel');
+  personalityExamplePanel.hidden = true;
+  function renderPersonalityExample() {
+    personalityExamplePanel.replaceChildren();
+    if (usingTags) {
+      const labels = EXAMPLE_PERSONALITY_TAGS.map((id) => id.charAt(0).toUpperCase() + id.slice(1)).join(', ');
+      personalityExamplePanel.appendChild(el('p', 'field-example__text', `Por ejemplo: ${labels}.`));
+      const insertBtn = el('button', 'btn btn--ghost btn--sm', 'Usar este ejemplo');
+      insertBtn.type = 'button';
+      insertBtn.addEventListener('click', async () => {
+        if (selectedTags.length) {
+          const ok = await app.confirmDialog('Esto va a reemplazar las etiquetas que ya elegiste. ¿Reemplazar?', { confirmText: 'Reemplazar' });
+          if (!ok) return;
+        }
+        selectedTags = [...EXAMPLE_PERSONALITY_TAGS];
+        renderPersonality();
+      });
+      personalityExamplePanel.appendChild(insertBtn);
+    } else {
+      personalityExamplePanel.appendChild(el('p', 'field-example__text', EXAMPLE_PERSONALITY_TEXT));
+      const insertBtn = el('button', 'btn btn--ghost btn--sm', 'Usar este ejemplo');
+      insertBtn.type = 'button';
+      insertBtn.addEventListener('click', async () => {
+        const area = personalityBody.querySelector('textarea');
+        if (!area) return;
+        if (area.value.trim()) {
+          const ok = await app.confirmDialog('Esto va a reemplazar lo que ya escribiste. ¿Reemplazar?', { confirmText: 'Reemplazar' });
+          if (!ok) return;
+        }
+        area.value = EXAMPLE_PERSONALITY_TEXT;
+        area.dispatchEvent(new Event('input'));
+      });
+      personalityExamplePanel.appendChild(insertBtn);
+    }
+  }
+  const personalityExampleBtn = el('button', 'btn btn--ghost btn--sm', 'Ejemplo');
+  personalityExampleBtn.type = 'button';
+  personalityExampleBtn.setAttribute('aria-expanded', 'false');
+  personalityExampleBtn.addEventListener('click', () => {
+    const show = personalityExamplePanel.hidden;
+    personalityExamplePanel.hidden = !show;
+    personalityExampleBtn.setAttribute('aria-expanded', String(show));
+    personalityExampleBtn.textContent = show ? 'Ocultar ejemplo' : 'Ejemplo';
+    if (show) renderPersonalityExample();
+  });
+  personalityWrap.append(personalityExampleBtn, personalityExamplePanel);
   const personalityBody = el('div');
   personalityWrap.appendChild(personalityBody);
   node.appendChild(personalityWrap);
@@ -165,38 +262,67 @@ export function openCharacterEditor(app, opts = {}) {
       );
       personalityBody.append(area, hint, convertBtn);
     }
+    if (!personalityExamplePanel.hidden) renderPersonalityExample();
   }
   renderPersonality();
 
   // ---------- descripción / escenario / primer mensaje / ejemplo ----------
   const description = textField({
     label: 'Descripción / trasfondo',
+    hint: 'Quién es y de dónde viene, en pocas frases.',
     max: DESCRIPTION_MAX,
     rows: 3,
     value: card ? card.description : '',
     placeholder: 'Quién es, cómo es. En inglés, el modelo responde mejor.',
   });
+  description.field.appendChild(exampleBlock(app, {
+    label: 'Descripción / trasfondo',
+    exampleText: EXAMPLE_DESCRIPTION,
+    getValue: () => description.input.value,
+    setValue: (text) => { description.input.value = text; description.input.dispatchEvent(new Event('input')); },
+  }));
   const scenario = textField({
     label: 'Situación actual',
+    hint: 'Dónde está el personaje y qué está pasando justo antes de este chat.',
     max: SCENARIO_MAX,
     rows: 2,
     value: card ? card.scenario : '',
     placeholder: 'Dónde y en qué momento están (opcional).',
   });
+  scenario.field.appendChild(exampleBlock(app, {
+    label: 'Situación actual',
+    exampleText: EXAMPLE_SCENARIO,
+    getValue: () => scenario.input.value,
+    setValue: (text) => { scenario.input.value = text; scenario.input.dispatchEvent(new Event('input')); },
+  }));
   const firstMes = textField({
     label: 'Primer mensaje',
+    hint: 'Cómo saluda la primera vez que hablan.',
     max: FIRST_MES_MAX,
     rows: 3,
     value: card ? card.first_mes : '',
     placeholder: 'Cómo saluda la primera vez.',
   });
+  firstMes.field.appendChild(exampleBlock(app, {
+    label: 'Primer mensaje',
+    exampleText: EXAMPLE_FIRST_MES,
+    getValue: () => firstMes.input.value,
+    setValue: (text) => { firstMes.input.value = text; firstMes.input.dispatchEvent(new Event('input')); },
+  }));
   const mesExample = textField({
     label: 'Ejemplo de diálogo (opcional)',
+    hint: 'Un intercambio corto que muestre cómo habla. Si quieres, escribe <START> al principio y luego algunas líneas con {{user}} y {{char}}: {{user}} se reemplaza por tu nombre y {{char}} por el del personaje cuando hablan.',
     max: MES_EXAMPLE_MAX,
     rows: 2,
     value: card ? card.mes_example : '',
     placeholder: 'Un intercambio corto que muestre su forma de hablar.',
   });
+  mesExample.field.appendChild(exampleBlock(app, {
+    label: 'Ejemplo de diálogo',
+    exampleText: EXAMPLE_MES_EXAMPLE,
+    getValue: () => mesExample.input.value,
+    setValue: (text) => { mesExample.input.value = text; mesExample.input.dispatchEvent(new Event('input')); },
+  }));
   node.append(description.field, scenario.field, firstMes.field, mesExample.field);
 
   // ---------- apariencia (MEM-009, reutilizado tal cual) ----------
@@ -210,6 +336,12 @@ export function openCharacterEditor(app, opts = {}) {
     value: savedAppearance.fixed,
     placeholder: 'Ej.: short and slim, pink hair, violet eyes',
   });
+  fixed.field.appendChild(exampleBlock(app, {
+    label: 'Rasgos fijos',
+    exampleText: EXAMPLE_APPEARANCE_FIXED,
+    getValue: () => fixed.input.value,
+    setValue: (text) => { fixed.input.value = text; fixed.input.dispatchEvent(new Event('input')); },
+  }));
   const current = textField({
     label: 'Ropa o estado de ahora',
     hint: 'Lo que cambia seguido: qué lleva puesto, si está despeinada…',
@@ -218,7 +350,30 @@ export function openCharacterEditor(app, opts = {}) {
     value: savedAppearance.current,
     placeholder: 'Ej.: a white oversized hoodie and jeans',
   });
+  current.field.appendChild(exampleBlock(app, {
+    label: 'Ropa o estado de ahora',
+    exampleText: EXAMPLE_APPEARANCE_CURRENT,
+    getValue: () => current.input.value,
+    setValue: (text) => { current.input.value = text; current.input.dispatchEvent(new Event('input')); },
+  }));
   node.append(fixed.field, current.field);
+
+  // ---------- instrucciones (CCC-002: reglas de comportamiento, no personalidad ni descripción) ----------
+  const instructions = textField({
+    label: 'Instrucciones (opcional)',
+    hint: 'Reglas de comportamiento que no son personalidad ni descripción. Por ejemplo: nunca rompe el personaje, siempre habla en tercera persona.',
+    max: INSTRUCTIONS_MAX,
+    rows: 2,
+    value: card ? card.post_history_instructions : '',
+    placeholder: 'Ej.: nunca rompe el personaje.',
+  });
+  instructions.field.appendChild(exampleBlock(app, {
+    label: 'Instrucciones',
+    exampleText: EXAMPLE_INSTRUCTIONS,
+    getValue: () => instructions.input.value,
+    setValue: (text) => { instructions.input.value = text; instructions.input.dispatchEvent(new Event('input')); },
+  }));
+  node.appendChild(instructions.field);
 
   // CCC-003: el selector "Nomi/Libre" de la rama original queda OCULTO — en `main`, `formatStyle` todavía
   // no conecta con `formatAssist` ni con la reparación de asteriscos de `format.js` (decisión de producto
@@ -248,6 +403,7 @@ export function openCharacterEditor(app, opts = {}) {
         scenario: scenario.input.value,
         firstMes: firstMes.input.value,
         mesExample: mesExample.input.value,
+        instructions: instructions.input.value,
       });
       const appearance = sanitizeAppearance({ fixed: fixed.input.value, current: current.input.value, updated: Date.now() });
       const personalityTags = usingTags ? selectedTags : [];

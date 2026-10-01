@@ -3048,3 +3048,107 @@ PERSONAJE (foto, apariencia, fondo, editor completo) vive en su ficha, con un so
 (tocar el nombre). Quedan en la lista de `UX-BLUEPRINT.md` sección 12, sin tocar en esta sesión: CCC-002
 reformulado, wizard del creador, duplicar personaje, "chats → episodios", galería de fotos, buscador
 dentro de Ajustes.
+
+## CCC-002 (2026-09-30): creador de personajes — guías por campo, ejemplo, plantilla `<START>` e "Instrucciones"
+
+Reformulado sobre `main` actual (CCC-003 ya había traído el creador), según lo pedía la fila CCC-002
+del Registro de contratos. Alcance: `www/js/ui/character-editor.js` y `www/js/cards/build.js` —
+ningún otro módulo.
+
+**Hallazgo clave que simplificó todo: `post_history_instructions` ya existía, reservado y conectado al
+prompt, sin interfaz.** Antes de inventar un campo nuevo en `Character` o en `state.js`, se leyó
+`api/prompt.js` completo: la Card (formato Tavern V2) ya trae `system_prompt` y `post_history_instructions`
+desde `cards/parse.js`, y `headBlock`/`buildPlainPrompt`/`buildChatMessages` YA arman
+`post_history_instructions` dentro del prompt en AMBOS modos (plano: entre corchetes, después del
+historial; plantilla: pegado a la cabecera del mensaje `system`, con las mismas macros `{{user}}`/
+`{{char}}` resueltas) — simplemente nunca tuvo un campo editable en el creador. El nuevo campo
+"Instrucciones" del contrato se guarda ahí: cero cambios en `api/prompt.js`, `state.js` ni el esquema
+de `Character`; el campo ya viajaba en cada card, editada o importada, desde CCC-001.
+
+**Qué se agregó a `cards/build.js`:** `INSTRUCTIONS_MAX = 300` (mismo orden de magnitud que
+`DESCRIPTION_MAX`) y un parámetro `instructions` en `buildCharacterCard()` que arma
+`post_history_instructions` con `normalizeField()` — igual que descripción/escenario/primer mensaje/
+ejemplo: capitaliza, recorta espacios y aplica el tope REAL al guardar, sin importar qué haya llegado al
+campo.
+
+**Qué se agregó a `character-editor.js`:**
+- **Guía de una línea bajo cada campo** (personalidad, descripción, situación actual, primer mensaje,
+  ejemplo de diálogo; apariencia ya tenía la suya desde MEM-009): texto directo, sin tecnicismos, p. ej.
+  "Dónde está el personaje y qué está pasando justo antes de este chat" para Situación actual.
+- **Botón "Ejemplo" plegable en los 8 campos del contrato** (personalidad, descripción, situación
+  actual, primer mensaje, ejemplo de diálogo, apariencia × 2, instrucciones): un botón que despliega un
+  panel con un texto de ejemplo inventado (nunca un personaje real del usuario, en inglés — es lo que de
+  verdad se manda al modelo) y un botón "Usar este ejemplo". **Decisión de diseño:** el ejemplo se
+  muestra EN LA MISMA hoja (un panel que se despliega, reutilizando `.field__hint`/clases nuevas), no en
+  una hoja aparte — se investigó el patrón de hojas del proyecto (`shell.js`) y `openSheet` REEMPLAZA el
+  contenido de la hoja actual (no hay pila de hojas); abrir una hoja nueva para el ejemplo habría hecho
+  perder todo el formulario en progreso al cerrarla. Un panel plegable en el lugar no pierde nada.
+  - Si el campo ya tiene texto, "Usar este ejemplo" pide confirmar con `app.confirmDialog` antes de
+    reemplazar (cumple el requisito de no borrar nada sin confirmar); si está vacío, lo llena directo.
+  - El caso de "Personalidad" es especial porque tiene dos modos (pills/texto libre): en modo pills, el
+    ejemplo ofrece 3 etiquetas (`curious`, `playful`, `loyal`) y "Usar este ejemplo" las selecciona (con
+    el mismo confirm si ya había etiquetas elegidas); en modo texto libre, llena el textarea. El panel
+    se reconstruye cada vez que se abre o que cambia el modo (`renderPersonality()` llama a
+    `renderPersonalityExample()` si el panel ya estaba abierto), para no mostrar el ejemplo del modo
+    equivocado.
+- **Explicación en lenguaje llano de `<START>`/`{{user}}`/`{{char}}`**, como una guía fija (no
+  escondida) bajo "Ejemplo de diálogo": "...escribe `<START>` al principio y luego algunas líneas con
+  `{{user}}` y `{{char}}`: `{{user}}` se reemplaza por tu nombre y `{{char}}` por el del personaje
+  cuando hablan" — sin las palabras "macro" ni "variable", como pedía el contrato. El ejemplo insertable
+  de ese campo usa el patrón real (con saltos de línea, visibles en el panel gracias a
+  `white-space: pre-wrap` en `.field-example__text`); al guardarse se aplana a una sola línea como
+  CUALQUIER `mes_example` desde siempre (`normalizeField`/`cleanText` ya colapsaban saltos de línea
+  antes de este contrato, para todos los campos narrativos — comportamiento preexistente, no tocado).
+- **Campo nuevo "Instrucciones (opcional)"**, después de Apariencia y antes del botón de guardar (mismo
+  lugar y agrupación visual de siempre, solo se agrega al final): guía, contador, botón "Ejemplo" con el
+  mismo mecanismo que los demás.
+
+**El límite de caracteres YA se corregía al guardar, en todos los campos — se verificó, no hizo falta
+tocar nada ahí.** El contrato pedía comprobar si pegar texto largo o un IME podían superar el
+`maxlength` del DOM, y corregirlo recortando al GUARDAR (no solo letra por letra). Se verificó en el
+navegador: fijando `textarea.value` directo vía el setter nativo (como haría un paste no estándar o un
+IME de Android que no respete `maxlength`), el campo SÍ puede mostrar más caracteres que el tope en
+pantalla (contador llegó a mostrar "5000 / 300"). Pero TODOS los campos de texto del creador ya pasaban,
+al guardar, por `cleanText`/`normalizeField` (`cards/build.js`) o `sanitizeAppearance`
+(`character-appearance.js`) — ambas funciones YA recortaban a su tope exacto desde que existen (CCC-001/
+MEM-009), independientemente de lo que haya en el campo del DOM. Prueba de punta a punta en el
+navegador: se forzaron 5000 caracteres en "Instrucciones", se guardó el personaje, y el registro en
+IndexedDB quedó con `post_history_instructions.length === 300` exactamente. **No se necesitó ningún
+cambio de código para este punto** — el riesgo que preocupaba al contrato ya estaba cubierto por el
+patrón que usa todo el creador desde que se escribió; se agregó un test (`cards/build.js`,
+`INSTRUCTIONS_MAX`) y la verificación manual de arriba como evidencia.
+
+**Por qué `character-sheet.js` NO se tocó (estaba en el Alcance como "a verificar").** La ficha de
+lectura (UI-027) no muestra TODOS los campos de la card hoy: muestra nombre, relación, rasgos, fecha,
+descripción y apariencia, pero NO escenario, NO primer mensaje, NI ejemplo de diálogo — ya es una
+selección curada, no un volcado completo. "Instrucciones" es un campo del mismo nivel narrativo que
+esos tres que ya se omiten; mostrarlo ahí habría sido inconsistente con ese patrón ya establecido, no
+un alineamiento con él. Se decide dejarlo fuera de la ficha (visible y editable solo en el editor
+completo), documentado acá para que quede explícito que fue una decisión, no un olvido.
+
+**Verificado en el navegador integrado (375×812), contra un servidor http-server propio en el puerto
+8757** (el 8756 de `.claude/launch.json` estaba en uso por otra sesión de Claude Code en este mismo
+proyecto; se sembró `Settings` a mano en IndexedDB del origen `:8757` para saltar la pantalla de
+configuración inicial, sin tocar ningún dato real del usuario — aislado por puerto/origen):
+1. Crear personaje: guía + "Ejemplo" visibles en personalidad (ambos modos), descripción, situación
+   actual, primer mensaje, ejemplo de diálogo, apariencia (rasgos fijos/ropa) e instrucciones.
+2. "Ejemplo" en personalidad (modo pills) seleccionó `Curious`/`Playful`/`Loyal` sin tocar nada más.
+3. "Ejemplo" en descripción y en ejemplo de diálogo insertaron el texto correcto (el de diálogo se vio
+   con los saltos de línea del patrón `<START>` en el panel).
+4. Guardado con esos valores + 5000 caracteres forzados en "Instrucciones": el personaje se creó, se
+   abrió su ficha (rasgos, descripción correctos) y, al editarlo de nuevo, "Instrucciones" volvió a
+   mostrar el valor YA RECORTADO (300 caracteres) — ciclo completo sin pérdida de datos más allá del
+   recorte esperado.
+
+**Tests.** `tests/character-editor.test.mjs`: 3 tests nuevos (`INSTRUCTIONS_MAX` en el test de topes ya
+existente, armado de `post_history_instructions` desde `instructions`, vacío por defecto, y round-trip
+con `normCard`). `node --test tests/*.test.mjs`: 633/633 (630 + 3).
+
+**No bloqueado por ninguna condición de parada del contrato:** incluir "Instrucciones" en el prompt no
+rompe el formato esperado por el modelo (reutiliza un mecanismo que YA estaba en producción, sin
+cambiarlo); el límite de caracteres no necesitó tocar ningún módulo fuera de alcance (ya se corregía
+donde tenía que corregirse).
+
+**Pendiente de probar en el teléfono** (no se puede verificar fuera de un APK real): que el `maxlength`
+del DOM se comporte igual con el teclado de autocompletado real de Android (el bypass de esta sesión fue
+simulado vía JS para forzar el peor caso; el recorte al guardar es independiente de eso y ya se probó).
