@@ -6,6 +6,7 @@ import { PERSONALITY_TAGS, MAX_PERSONALITY_TAGS, sanitizePersonalityTags, person
 import { buildCharacterCard, cleanText, normalizeField, NAME_MAX, DESCRIPTION_MAX, SCENARIO_MAX, FIRST_MES_MAX, MES_EXAMPLE_MAX, INSTRUCTIONS_MAX } from '../www/js/cards/build.js';
 import { normCard } from '../www/js/cards/parse.js';
 import { createState } from '../www/js/state.js';
+import { CHARACTER_ARCHETYPES } from '../www/js/data/character-archetypes.js';
 import { readFileSync } from 'node:fs';
 
 function memoryBackend() {
@@ -215,6 +216,56 @@ test('CCC-003 round-trip: un personaje importado (chara_card_v2 puro, sin ningú
   assert.deepEqual(loaded.personalityTags, []);
   assert.deepEqual(loaded.lorebookTombstones, []);
   assert.equal(loaded.relationship.level, 'early');
+});
+
+// ---------- CCC-004: arquetipos del paso 2 del wizard de creación ----------
+
+test('CCC-004: CHARACTER_ARCHETYPES trae al menos 6 arquetipos, con id único y label/tagline en español', () => {
+  assert.ok(CHARACTER_ARCHETYPES.length >= 6);
+  const ids = CHARACTER_ARCHETYPES.map((a) => a.id);
+  assert.equal(new Set(ids).size, ids.length, 'sin ids repetidos');
+  for (const a of CHARACTER_ARCHETYPES) {
+    assert.ok(a.label && a.label.trim(), `${a.id}: label vacío`);
+    assert.ok(a.tagline && a.tagline.trim(), `${a.id}: tagline vacío`);
+  }
+});
+
+test('CCC-004: cada arquetipo respeta los topes reales de cards/build.js (los mismos del creador)', () => {
+  for (const a of CHARACTER_ARCHETYPES) {
+    assert.ok(a.description.length <= DESCRIPTION_MAX, `${a.id}: description excede DESCRIPTION_MAX`);
+    assert.ok(a.scenario.length <= SCENARIO_MAX, `${a.id}: scenario excede SCENARIO_MAX`);
+    assert.ok(a.firstMes.length <= FIRST_MES_MAX, `${a.id}: firstMes excede FIRST_MES_MAX`);
+    assert.ok(a.mesExample.length <= MES_EXAMPLE_MAX, `${a.id}: mesExample excede MES_EXAMPLE_MAX`);
+  }
+});
+
+test('CCC-004: las personalityTags de cada arquetipo son todas válidas (sobreviven sanitizePersonalityTags intactas)', () => {
+  for (const a of CHARACTER_ARCHETYPES) {
+    assert.deepEqual(sanitizePersonalityTags(a.personalityTags), a.personalityTags, `${a.id}: alguna etiqueta no es válida o sobra`);
+    assert.ok(a.personalityTags.length > 0 && a.personalityTags.length <= MAX_PERSONALITY_TAGS);
+  }
+});
+
+test('CCC-004: un arquetipo aplicado produce la MISMA card que si el usuario hubiera escrito esos campos a mano (misma buildCharacterCard)', () => {
+  const a = CHARACTER_ARCHETYPES[0];
+  const card = buildCharacterCard({
+    name: 'Prueba',
+    personalityTags: a.personalityTags,
+    description: a.description,
+    scenario: a.scenario,
+    firstMes: a.firstMes,
+    mesExample: a.mesExample,
+  });
+  assert.equal(card.personality, personalityTextFromTags(a.personalityTags));
+  assert.equal(card.description, normalizeField(a.description, DESCRIPTION_MAX));
+  assert.equal(card.first_mes, normalizeField(a.firstMes, FIRST_MES_MAX));
+});
+
+test('CCC-004: crear sigue siendo el wizard y editar sigue siendo la pantalla única (no se tocó el flujo de edición)', () => {
+  const src = readFileSync(new URL('../www/js/ui/character-editor.js', import.meta.url), 'utf8');
+  assert.match(src, /function renderWizard\(/, 'el flujo de creación arma un wizard');
+  assert.match(src, /function renderEditScreen\(/, 'el flujo de edición sigue siendo una pantalla única aparte');
+  assert.match(src, /if \(editing\) \{\s*renderEditScreen\(/, 'editing -> pantalla única, no el wizard');
 });
 
 test('CCC-003 round-trip: un personaje creado con el creador (formatStyle "plain" + personalityTags) abre, se le edita la apariencia (MEM-009) y se guarda sin perder los campos del creador ni viceversa', async () => {

@@ -335,7 +335,7 @@ explícito de no añadir pantallas, interruptores ni avisos de restricción.
 
 | Función pendiente | Ubicación tentativa (PROPUESTA) | Notas |
 |---|---|---|
-| Wizard del creador (con plantillas) | Reemplazaría la pantalla única de `character-editor.js` al CREAR (no al editar); entrada desde "Crear personaje" en el hub | Depende de que CCC-002 (guías/ejemplos) se resuelva primero o en conjunto |
+| ~~Wizard del creador (con plantillas)~~ | **Hecho, CCC-004 (2026-10-01)** — Reemplaza la pantalla única de `character-editor.js` SOLO al CREAR (entrada desde "Crear personaje" en el hub); editar sigue igual que siempre | 5 pasos, 6 arquetipos en `character-archetypes.js`; ver "CCC-004" en `NOTES.md`/`HISTORIAL.md` |
 | ~~Duplicar personaje~~ | **Hecho, UI-033 (2026-10-01)** — Ficha del personaje, junto a "Editar" | — |
 | ~~Memoria como "historia compartida" (chats = episodios)~~ | **Hecho, UI-034 (2026-10-01)** | Cambio de vocabulario únicamente, sin tocar datos; si se quiere "resumen de identidad" periódico, eso sigue siendo un contrato aparte, anotado como pendiente en `docs/NOTES.md` |
 | Perfil del usuario ("Mi perfil") | Ajustes → Conexión (junto a "Tu nombre en el chat"), como pantalla propia si crece (foto para el avatar del usuario, horario) | Hoy "Tu nombre" ya vive ahí; un campo de foto sería la primera pieza |
@@ -355,7 +355,7 @@ explícito de no añadir pantallas, interruptores ni avisos de restricción.
 | 3 | ~~Mover "Cambiar avatar" y "Apariencia del personaje" del menú ⋮ a la ficha; quitar "Ver personaje"~~ — **hecho, UI-031 (2026-09-30)** | Mediano | Medio (cambia una ruta de navegación que el usuario ya conoce) | Ninguno técnico; sí autorización explícita del usuario |
 | 4 | ~~Mover "Fondo del chat" del menú ⋮ a la ficha del personaje~~ — **hecho, UI-032 (2026-09-30)** | Pequeño | Bajo | Puede ir junto con el #3 |
 | 5 | ~~CCC-002 reformulado sobre CCC-003 (guías por campo, botón "Ejemplo", plantilla `<START>`/`{{user}}`/`{{char}}`, campo "Instrucciones")~~ — **hecho, CCC-002 (2026-09-30)** | Mediano | Medio | Ninguno |
-| 6 | Wizard del creador de personajes con plantillas y ejemplos | Grande | Medio | #5 (comparten pantalla) |
+| 6 | ~~Wizard del creador de personajes con plantillas y ejemplos~~ — **hecho, CCC-004 (2026-10-01)** | Grande | Medio | #5 (comparten pantalla) |
 | 7 | ~~Duplicar personaje~~ — **hecho, UI-033 (2026-10-01)** | Pequeño–Mediano | Bajo | Ninguno |
 | 8 | ~~Memoria como "historia compartida": renombrar chats → episodios en la interfaz (sin tocar datos)~~ — **hecho, UI-034 (2026-10-01)** | Pequeño | Bajo | Ninguno |
 | 9 | Galería de fotos por personaje (pestaña "Fotos" en la ficha) | Grande | Alto (nuevo almacén de imágenes, posible migración de IndexedDB) | Depende de que exista contenido que mostrar ahí (hoy no hay generación de imágenes) |

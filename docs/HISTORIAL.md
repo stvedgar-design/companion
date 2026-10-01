@@ -3411,3 +3411,191 @@ hechos, cada uno en su propio commit, con `node --test tests/*.test.mjs` en verd
 control existente; los tres cambios de interfaz (CCC-002, UI-034, UI-035) y la función nueva (UI-033)
 se verificaron de punta a punta en el navegador integrado (375×812) contra datos sembrados a mano, no
 contra un APK real.
+
+## CCC-004 (2026-10-01): wizard del creador de personajes con plantillas (arquetipos)
+
+Alcance: `www/js/ui/character-editor.js` (reorganizado), `www/js/data/character-archetypes.js` (nuevo),
+`www/css/base.css` (clases del wizard + un bug de `[hidden]` encontrado al verificar, ver abajo),
+`www/js/main.js` (gancho del botón atrás de Android), `tests/character-editor.test.mjs` (+5). EDITAR un
+personaje existente no se tocó: sigue siendo exactamente la pantalla única de siempre.
+
+**Diseño: un solo juego de campos, dos formas de mostrarlo.** `openCharacterEditor()` llama una sola vez
+a `buildFormFields()`, que arma TODOS los campos del formulario (avatar, nombre, personalidad, descripción,
+situación, primer mensaje, ejemplo, apariencia, instrucciones) exactamente como antes de este contrato —
+mismos `textField()`/`exampleBlock()`, mismas guías, mismos botones "Ejemplo", mismo
+`buildCharacterCard()`/`saveCharacter()` al final (`saveFromFields()`, una sola función para los dos
+flujos). Lo único que cambia es qué función arma el DOM alrededor de esos campos:
+- `renderEditScreen()` (editar): idéntica a la pantalla única de CCC-002, solo que ahora los campos
+  vienen de `buildFormFields()` en vez de estar inline en la misma función.
+- `renderWizard()` (crear): agrupa los mismos campos en 5 `<div class="wizard-step">` y controla cuál se
+  ve con `goToStep(i)` (alterna `.hidden`), con una barra de navegación (`Atrás`/`Siguiente`) y un
+  indicador "Paso X de 5". El paso 5 reemplaza "Siguiente" por el botón de guardar de siempre ("Crear
+  personaje").
+
+**Los 5 pasos** (orden pedido por el contrato, el 2 inmediatamente después del 1): (1) Identidad visual
+(avatar + nombre, con el mismo error "El nombre es obligatorio." si se intenta avanzar sin nombre); (2)
+Elegir un punto de partida (6 arquetipos + "Desde cero"); (3) Personalidad y trasfondo (pills,
+descripción, situación); (4) Cómo habla (primer mensaje, ejemplo de diálogo); (5) Apariencia +
+Instrucciones + el botón de guardar.
+
+**Los 6 arquetipos** (`www/js/data/character-archetypes.js`, datos puros, sin DOM): Mentor exigente
+(Dominant/Protective/Blunt/Confident), Confidente (Caring/Gentle/Curious/Loyal), Aventurero caótico
+(Playful/Bold/Mischievous/Curious), Compañero tranquilo (Calm/Reserved/Affectionate/Loyal), Coqueto
+directo (Flirty/Confident/Playful/Bold), Protector reservado (Protective/Shy/Gentle/Anxious). Cada uno
+trae personalidad (etiquetas, no texto libre), descripción, situación, primer mensaje y ejemplo de
+diálogo ya redactados en inglés (contenido sintético, inventado a propósito, igual que los ejemplos de
+CCC-002), todos dentro de los topes reales de `cards/build.js` (verificado por test: el más largo llega a
+151/400 caracteres, bastante margen). `label`/`tagline` (lo único en español, lo que ve el usuario para
+elegir) no son parte de la card.
+
+**Elegir un arquetipo (o "Desde cero") navega directo al paso 3,** sin un botón "Siguiente" aparte en el
+paso 2 — tocar una tarjeta decide. Si los campos de personalidad/descripción/situación/primer
+mensaje/ejemplo YA tenían algo escrito (volviste atrás y elegiste otro arquetipo, o ya habías tocado
+"Desde cero" y escribiste algo a mano), aparece un banner de confirmación ("¿Reemplazar?") antes de
+pisarlo — nunca se borra nada sin preguntar, mismo principio que `exampleBlock` desde CCC-002.
+
+**Por qué el banner de confirmación es propio y NO usa `app.confirmDialog()` (hallazgo real durante la
+verificación en el navegador):** `shell.confirmDialog()` abre su propio contenido DENTRO de la misma hoja
+que ya está abierta (`openSheet()` reemplaza el contenido de `#sheet-card`, no apila una hoja nueva), pero
+sus botones (`okBtn`/`cancelBtn`) llaman a `closeSheet()` incondicionalmente al resolverse — que cierra
+TODA la hoja (`sheet.classList.remove('is-open')`, `card.replaceChildren()`), no solo el diálogo. No hay
+ningún mecanismo que restaure el contenido anterior (el creador/editor) después. Se reprodujo a mano:
+abrir "Crear personaje", escribir algo en "Descripción / trasfondo", tocar "Ejemplo" → "Usar este
+ejemplo" → "Reemplazar" en el diálogo de confirmación — el creador entero desaparece de la pantalla. Esto
+NO es nuevo de este contrato: `exampleBlock()` (CCC-002, ya en `main`) usa `app.confirmDialog()` exactamente
+así, así que el bug ya existe hoy en el creador/editor de siempre para cualquier campo con algo escrito.
+Arreglarlo de raíz (que `confirmDialog`/`closeSheet` sepan apilar y restaurar) es un cambio de `shell.js`
+fuera del alcance de este contrato (que solo autoriza tocar `character-editor.js` y su CSS) y afecta a
+más pantallas que el wizard, así que se deja sin corregir y documentado aquí para un contrato aparte. El
+wizard lo esquiva con su propio banner inline (`overwriteBanner`, parte del paso 2, nunca abre una hoja
+nueva), que no depende de `shell.js` y no hereda el bug.
+
+**Atrás de Android retrocede un paso del wizard.** Mismo patrón que `diag-running`/`companion:diag-back`
+(`diagnostics.js`, UI-005): mientras el wizard está en un paso > 0, `renderWizard()` pone la clase
+`wizard-step-active` en `<body>`; `onAndroidBack()` (`main.js`) la revisa ANTES de `decideBack()` y, si
+está puesta, dispara el evento `companion:wizard-back` en vez de navegar — el wizard lo escucha y
+retrocede un paso. En el paso 1 la clase se quita sola, así que ahí "atrás" cae al comportamiento normal
+de siempre (cierra la hoja = sale de la creación, sin confirmación — igual que hoy al tocar fuera de la
+hoja, el contrato no pedía agregar una). La clase se limpia también al cerrarse la hoja por cualquier
+motivo (`shell:sheetclose`, una sola vez con `{ once: true }`), para no dejar un listener colgado. Sin
+Capacitor disponible en el navegador de verificación, se simuló disparando el evento a mano por JS
+(`document.dispatchEvent(new CustomEvent('companion:wizard-back'))`): retrocedió del paso 2 al 1
+conservando el nombre ya escrito, y la clase desapareció al llegar al paso 1.
+
+**Bug real encontrado y corregido, de alcance general (mismo patrón que UI-035): `.btn[hidden]` y
+`.wizard-nav[hidden]` no escondían nada.** `.btn{ display:flex }` y la nueva `.wizard-nav{ display:flex }`
+le ganan a la regla del navegador para `[hidden]` (misma especificidad, autor contra UA). El botón
+"Atrás" ocultado por JS en el paso 1 seguía mostrándose. Se agregaron `.btn[hidden]{ display:none; }` y
+`.wizard-nav[hidden]{ display:none; }` en `base.css` — la primera es general (cualquier `.btn` oculto en
+cualquier pantalla del proyecto, no solo el wizard).
+
+**Verificado en el navegador integrado (sembrando `Settings` por JS para saltar la pantalla de conexión,
+ya que no hay un KoboldCpp real disponible en este entorno):**
+1. Crear con el arquetipo "Confidente": paso 2 → paso 3 llega con Caring/Gentle/Curious/Loyal marcadas y
+   descripción/situación precargadas; se avanza sin tocar nada hasta el paso 5 y "Crear personaje" guarda
+   — la ficha del personaje nuevo ("Nova") muestra esos mismos cuatro rasgos y la descripción tal cual.
+2. Atrás desde el paso 3 vuelve al paso 2 con "Confidente" todavía resaltado (sin perder la selección);
+   re-elegir el mismo arquetipo con contenido ya escrito muestra el banner "¿Reemplazar?" en vez de pisar
+   directo — confirmar reemplaza y avanza, sin que la hoja se cierre (a diferencia del bug de
+   `confirmDialog` de arriba).
+3. "Desde cero" (un segundo personaje, "Theo"): avanza con todos los campos vacíos, sin banner (no había
+   nada que perder); se guarda igual y su ficha queda sin rasgos ni descripción, igual que el creador de
+   antes sin arquetipos.
+4. Editar un personaje ya existente ("Nova") abre la pantalla única de siempre, con los 8 campos a la vez
+   y sin ningún paso; `document.body.className` queda vacío (no se activa el gancho del botón atrás del
+   wizard al editar).
+5. Simulación del botón atrás de Android (ver arriba): retrocede un paso sin perder el nombre escrito.
+
+**Tests.** `tests/character-editor.test.mjs` (+5): `CHARACTER_ARCHETYPES` trae ≥6 arquetipos con id único
+y label/tagline en español; cada uno respeta los topes reales de `cards/build.js`; sus `personalityTags`
+sobreviven `sanitizePersonalityTags` intactas (ninguna etiqueta inválida ni de más); aplicar un arquetipo
+produce la MISMA card que `buildCharacterCard` con esos mismos campos escritos a mano; y un test de
+humo por texto fuente que confirma que crear usa `renderWizard` y editar usa `renderEditScreen` (no hay
+manera sencilla de montar DOM completo sin jsdom, mismo patrón ya usado en UI-031/CCC-001 para separar
+flujos por código fuente). `node --test tests/*.test.mjs`: 644/644 (639 + 5).
+
+**No bloqueado por ninguna condición de parada:** dividir el formulario en pasos no obligó a cambiar
+`buildCharacterCard`/`saveCharacter` (`saveFromFields()` es literalmente la misma lógica de guardado que
+ya existía, solo movida a una función compartida) y no afectó en nada al flujo de edición. Los 6
+arquetipos se completaron con la calidad esperada, dentro de los topes reales, sin necesidad de recortar
+la lista.
+
+## UI-036 (2026-10-01): `confirmDialog` anidado ya no cierra toda la hoja
+
+Cierra el hallazgo documentado por CCC-004 (ver arriba, "Por qué el banner de confirmación es propio y NO
+usa `app.confirmDialog()`") como pendiente de un contrato aparte. Alcance: solo `www/js/ui/shell.js` —
+ningún llamador (`character-editor.js`, `home.js`, `chats.js`, `chat.js`, `diagnostics.js`) cambió una
+sola línea, porque todos siguen usando la misma `openSheet`/`closeSheet`/`confirmDialog` con la misma
+firma.
+
+**Reproducción confirmada antes del arreglo, igual que la de CCC-004.** Abrir "Crear personaje" o editar
+uno existente, escribir algo en "Descripción / trasfondo", tocar "Ejemplo" → "Usar este ejemplo" (el
+campo ya tiene texto, así que pide confirmar) → "Reemplazar" o "Cancelar" en el diálogo: la hoja entera
+del creador/editor desaparecía, perdiendo lo escrito. Revisando `main.js` se confirmó que el mismo
+problema alcanzaba a dos caminos más que no pasan por los botones del propio diálogo: tocar fuera de la
+tarjeta (el `click` del `#sheet` en `shell.js`) y el botón "atrás" de Android (`onAndroidBack()` →
+`decideBack()` → `shell.closeSheet()`), porque los tres llaman exactamente a la misma `closeSheet()`.
+
+**Causa raíz.** `shell.js` solo modelaba "¿hay una hoja abierta? sí/no": `openSheet(node)` reemplazaba el
+contenido de `#sheet-card` SIN avisar si ya había algo mostrándose debajo (nunca apilaba, ver `wasOpen` en
+el código viejo), y `closeSheet()` siempre vaciaba `#sheet-card` por completo y apagaba `.is-open`. Cuando
+`confirmDialog()` (usado por `exampleBlock` de CCC-002 para "¿Reemplazar?") se abría con el creador/editor
+ya mostrándose debajo, su propio `openSheet(wrap)` pisaba el nodo del creador sin guardar ninguna
+referencia a él; al resolverse el diálogo con `closeSheet()`, no había nada que restaurar, así que la hoja
+se apagaba entera.
+
+**Arreglo: `shell.js` pasa de "abierta sí/no" a una pila (`sheetStack`).** `confirmDialog()` ahora abre su
+contenido con una función interna nueva, `pushSheetLayer(node, onDismiss)` (no exportada; reemplaza su
+antigua llamada a `openSheet`): si ya había una hoja abierta, guarda en `sheetStack` el nodo que estaba
+mostrando `#sheet-card` en ese momento JUNTO con el `sheetCloseCallback` que tuviera (por si ya era un
+`confirmDialog` anidado sobre otro). `closeSheet()` — sin cambiar ninguna de sus tres llamadas existentes
+(botones del diálogo, tocar fuera, "atrás" de Android) — ahora revisa la pila antes de cerrar nada: si
+tiene algo, lo saca y lo vuelve a poner en `#sheet-card`, restaura el `sheetCloseCallback` guardado, y
+listo — la hoja sigue abierta de principio a fin, así que NO dispara `shell:sheetclose` ni toca el
+historial (`main.js` no se entera, no hace falta: nunca hubo un `pushState` para esta capa, ver
+`shell:sheetopen` más abajo). Solo cuando la pila queda vacía hace el cierre real de siempre (apagar
+`.is-open`, vaciar la tarjeta, disparar `shell:sheetclose`). `openSheet()` (el reemplazo normal, usado al
+abrir cualquier hoja de arriba a abajo) vacía `sheetStack` al reemplazar: si se navega a una hoja
+totalmente distinta mientras había algo guardado para restaurar, ese contenido ya no tiene sentido y se
+descarta, igual que ya hacía con el `sheetCloseCallback` pendiente de un `confirmDialog` previo.
+
+**Por qué no hizo falta tocar `main.js` para el camino del historial.** `openSheet`/`pushSheetLayer` solo
+disparan `shell:sheetopen` (que empuja una entrada de historial) la primera vez que la hoja pasa de
+cerrada a abierta — un `confirmDialog` anidado nunca lo dispara, exactamente igual que antes. Por el lado
+del cierre, con el arreglo tampoco se dispara `shell:sheetclose` mientras quede algo en la pila, así que
+`sheetHistoryPushed` (la bandera de `main.js` que vincula una hoja abierta con su entrada de historial)
+nunca se toca de más ni de menos: la única entrada de historial sigue siendo la de la hoja de verdad
+(el creador/editor), nunca una por cada diálogo anidado que se abre y se cierra encima.
+
+**Verificado en el navegador integrado** (sembrando `Settings` por JS para saltar la pantalla de conexión,
+mismo truco que CCC-004; servidor local sobre `http-server`, puerto reasignado automáticamente porque el
+8756 de `.claude/launch.json` estaba en uso por otra sesión en esta máquina — sin tocar ese archivo):
+1. Crear personaje → escribir en "Descripción / trasfondo" → "Ejemplo" → "Usar este ejemplo" →
+   "Reemplazar": el editor queda ABIERTO (antes desaparecía), con el campo ahora mostrando el texto de
+   ejemplo — se capturó en pantalla antes y después del clic.
+2. Mismo camino, pero tocando "Cancelar" en el diálogo: el editor queda abierto y la descripción
+   ORIGINAL (la escrita a mano) sigue intacta, sin cambios.
+3. Mismo camino, pero tocando fuera de la tarjeta del diálogo (sin usar ninguno de sus botones, el otro
+   cierre que señalaba el hallazgo de CCC-004): mismo resultado que "Cancelar" — el editor se restaura y
+   el texto no cambia. El botón "atrás" de Android llama a la misma `closeSheet()` que este camino
+   (`onAndroidBack` → `decideBack` → `shell.closeSheet()`), así que queda cubierto por el mismo arreglo
+   sin una prueba aparte (no hay Capacitor en el navegador de verificación, mismo límite ya documentado en
+   CCC-004).
+4. Con `shell.js` importado directo por consola (`import('/js/ui/shell.js')`, mismo módulo que usa la app
+   — los ids/listeners del `#sheet` real confirman que no es una copia aislada): un `confirmDialog` SIN
+   ninguna hoja abierta antes (standalone) sigue cerrando todo igual que siempre al tocar "Cancelar" —
+   `isSheetOpen()` pasa a `false`, `#sheet-card` queda vacío y `shell:sheetclose` se dispara exactamente
+   una vez — cero cambio de comportamiento para ese caso, que es el que usan `home.js` (borrar personaje)
+   y `chats.js` (borrar episodio) sin ninguna hoja debajo.
+
+**Tests.** No se agregó ningún test nuevo: `shell.js` no tiene arnés de DOM en este proyecto (`tests/`
+solo prueba lógica pura, como ya señalaba `nav.test.mjs`; confirmado al escribir este contrato, no se creó
+uno ad hoc para esta corrección puntual). `node --test tests/*.test.mjs`: 644/644, sin cambios (ninguno de
+los 644 tests existentes toca `shell.js`). La verificación de punta a punta de arriba es la que cubre este
+arreglo.
+
+**No bloqueado por ninguna condición de parada:** el arreglo quedó contenido en `shell.js`, sin tocar la
+firma pública de `openSheet`/`closeSheet`/`confirmDialog` que usan seis módulos de la UI, así que ninguno
+de ellos necesitó cambios. `exampleBlock` (CCC-002) y el banner propio del wizard (CCC-004) quedan
+funcionando igual que antes, solo que ahora `exampleBlock` ya no tiene el bug que lo obligó al wizard a
+esquivar `confirmDialog`.

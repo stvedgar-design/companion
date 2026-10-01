@@ -1,9 +1,10 @@
 // www/js/ui/character-editor.js
-// CCC-001: creador y editor de personajes propios. Una sola pantalla (hoja) sirve para las dos cosas:
-// sin `opts.character` arma uno nuevo desde cero; con `opts.character` lee y edita cualquier personaje
-// ya existente (creado con este flujo o importado). Todo se ensambla en una Card compatible con
-// `chara_card_v2` vía `cards/build.js` y se guarda con `saveCharacter()`, igual que una card importada
-// (docs/CONTRACT-HANDOFF.md, sección CCC-001: "no un pipeline de datos paralelo").
+// CCC-001: creador y editor de personajes propios. EDITAR (`opts.character` presente) sigue siendo una
+// sola pantalla con todos los campos a la vez, sin cambios. CREAR (CCC-004) es un asistente guiado en
+// pasos, con una pantalla de arquetipos (plantillas) para no empezar de cero. Los dos flujos comparten
+// EXACTAMENTE los mismos campos, guías, botones "Ejemplo" y función de guardado (`buildCharacterCard`):
+// el wizard solo reorganiza su presentación (ver `buildFormFields()` más abajo), no reescribe el
+// formulario (docs/CONTRACT-HANDOFF.md, sección CCC-001: "no un pipeline de datos paralelo").
 
 import { saveCharacter, newId } from '../state.js';
 import { pickFiles } from '../platform.js';
@@ -20,6 +21,7 @@ import {
 } from '../cards/build.js';
 import { PERSONALITY_TAGS, MAX_PERSONALITY_TAGS, sanitizePersonalityTags } from '../personality-tags.js';
 import { sanitizeAppearance, APPEARANCE_FIXED_MAX, APPEARANCE_CURRENT_MAX } from '../character-appearance.js';
+import { CHARACTER_ARCHETYPES } from '../data/character-archetypes.js';
 
 // CCC-002: ejemplos de referencia para el botón "Ejemplo" de cada campo. Inventados a propósito (nunca
 // contenido real de un personaje del usuario); en inglés, como el resto del contenido narrativo de las
@@ -99,21 +101,15 @@ function textField({ label, hint, max, rows, value, placeholder }) {
 }
 
 /**
- * @param {{ openSheet: Function, closeSheet: Function, toast: Function, navigate: Function }} app
- * @param {{ character?: import('../state.js').Character, onSaved?: (updated: import('../state.js').Character) => void }} [opts]
- *   Sin `character`: crea uno nuevo (al guardar, navega a sus chats). Con `character`: lo edita en el
- *   sitio (al guardar, avisa y llama a `onSaved` con la copia guardada, sin navegar).
+ * Construye TODOS los campos del formulario (avatar, nombre, personalidad, descripción, situación,
+ * primer mensaje, ejemplo de diálogo, apariencia, instrucciones) — exactamente como antes del wizard
+ * (CCC-002). Compartido por el flujo de edición (pantalla única) y por el wizard de creación (CCC-004),
+ * que solo decide en qué contenedor va cada `.field` y cuándo se ve.
+ * @param {{ confirmDialog: Function, toast: Function }} app
+ * @param {{ editing: boolean, source: import('../state.js').Character|null }} ctx
  */
-export function openCharacterEditor(app, opts = {}) {
-  const editing = !!opts.character;
-  const source = opts.character || null;
+function buildFormFields(app, { editing, source }) {
   const card = source ? source.card : null;
-
-  const node = el('div', 'character-editor');
-  node.appendChild(el('h3', 'sheet__title', editing ? `Ver personaje: ${source.name}` : 'Crear personaje'));
-  if (!editing) {
-    node.appendChild(el('div', 'field__hint', 'Pocos pasos, para que no se sienta como escribir una card larga a mano. Puedes volver a editar todo después.'));
-  }
 
   // ---------- avatar ----------
   // UI-027: se generan las dos versiones a la vez (pequeña para círculos, grande para la foto de la
@@ -150,11 +146,9 @@ export function openCharacterEditor(app, opts = {}) {
     renderAvatarPreview();
   });
   avatarRow.append(avatarPreview, avatarBtn);
-  node.appendChild(avatarRow);
 
   // ---------- nombre ----------
   const nameField = textField({ label: 'Nombre', max: NAME_MAX, value: source ? source.name : '', placeholder: 'Ej.: Mia' });
-  node.appendChild(nameField.field);
   renderAvatarPreview();
 
   // ---------- personalidad (pills o texto libre) ----------
@@ -209,7 +203,6 @@ export function openCharacterEditor(app, opts = {}) {
   personalityWrap.append(personalityExampleBtn, personalityExamplePanel);
   const personalityBody = el('div');
   personalityWrap.appendChild(personalityBody);
-  node.appendChild(personalityWrap);
 
   let usingTags = editing ? (source.personalityTags && source.personalityTags.length > 0) : true;
   let selectedTags = editing ? sanitizePersonalityTags(source.personalityTags) : [];
@@ -323,11 +316,10 @@ export function openCharacterEditor(app, opts = {}) {
     getValue: () => mesExample.input.value,
     setValue: (text) => { mesExample.input.value = text; mesExample.input.dispatchEvent(new Event('input')); },
   }));
-  node.append(description.field, scenario.field, firstMes.field, mesExample.field);
 
   // ---------- apariencia (MEM-009, reutilizado tal cual) ----------
   const savedAppearance = sanitizeAppearance(source ? source.appearance : undefined);
-  node.appendChild(el('div', 'field__label', 'Apariencia'));
+  const appearanceLabel = el('div', 'field__label', 'Apariencia');
   const fixed = textField({
     label: 'Rasgos fijos',
     hint: 'Lo que no cambia: complexión, pelo, ojos, algún rasgo distintivo.',
@@ -356,7 +348,6 @@ export function openCharacterEditor(app, opts = {}) {
     getValue: () => current.input.value,
     setValue: (text) => { current.input.value = text; current.input.dispatchEvent(new Event('input')); },
   }));
-  node.append(fixed.field, current.field);
 
   // ---------- instrucciones (CCC-002: reglas de comportamiento, no personalidad ni descripción) ----------
   const instructions = textField({
@@ -373,7 +364,6 @@ export function openCharacterEditor(app, opts = {}) {
     getValue: () => instructions.input.value,
     setValue: (text) => { instructions.input.value = text; instructions.input.dispatchEvent(new Event('input')); },
   }));
-  node.appendChild(instructions.field);
 
   // CCC-003: el selector "Nomi/Libre" de la rama original queda OCULTO — en `main`, `formatStyle` todavía
   // no conecta con `formatAssist` ni con la reparación de asteriscos de `format.js` (decisión de producto
@@ -381,71 +371,104 @@ export function openCharacterEditor(app, opts = {}) {
   // ni obligar a una migración el día que se decida conectarlo.
   const formatStyle = editing && source.formatStyle === 'plain' ? 'plain' : 'nomi';
 
-  // ---------- guardar ----------
+  return {
+    avatarRow, avatarBtn, nameField, personalityWrap,
+    description, scenario, firstMes, mesExample,
+    appearanceLabel, fixed, current, instructions,
+    formatStyle,
+    getAvatar: () => ({ avatarDataUrl, avatarLargeDataUrl }),
+    // Estado de personalidad, para que el wizard pueda aplicar un arquetipo o leerlo al guardar.
+    getPersonalityTags: () => (usingTags ? selectedTags : []),
+    getPersonalityText: () => (usingTags ? '' : (personalityBody._getFreeText ? personalityBody._getFreeText() : freeTextInitial)),
+    applyPersonalityTags: (tags) => { usingTags = true; selectedTags = [...tags]; renderPersonality(); },
+    hasPersonalityContent: () => (usingTags ? selectedTags.length > 0 : !!(personalityBody._getFreeText ? personalityBody._getFreeText() : freeTextInitial).trim()),
+  };
+}
+
+/**
+ * Arma la Card y guarda, igual en el flujo de edición y al terminar el wizard de creación: una sola
+ * función de guardado (CCC-004, requisito "misma función de guardado/validación").
+ */
+async function saveFromFields(app, fields, { editing, source, opts }) {
+  const builtCard = buildCharacterCard({
+    name: fields.nameField.input.value,
+    personalityTags: fields.getPersonalityTags(),
+    personalityText: fields.getPersonalityText(),
+    description: fields.description.input.value,
+    scenario: fields.scenario.input.value,
+    firstMes: fields.firstMes.input.value,
+    mesExample: fields.mesExample.input.value,
+    instructions: fields.instructions.input.value,
+  });
+  const appearance = sanitizeAppearance({ fixed: fields.fixed.input.value, current: fields.current.input.value, updated: Date.now() });
+  const personalityTags = fields.getPersonalityTags();
+  const { avatarDataUrl, avatarLargeDataUrl } = fields.getAvatar();
+
+  if (editing) {
+    const updated = {
+      ...source,
+      name: builtCard.name,
+      avatar: avatarDataUrl,
+      avatarLarge: avatarLargeDataUrl,
+      card: builtCard,
+      appearance,
+      formatStyle: fields.formatStyle,
+      personalityTags,
+    };
+    const saved = await saveCharacter(updated);
+    app.toast('Guardado.');
+    if (opts.onSaved) opts.onSaved(saved);
+    app.closeSheet();
+  } else {
+    const now = Date.now();
+    const character = {
+      id: newId(),
+      name: builtCard.name,
+      avatar: avatarDataUrl,
+      avatarLarge: avatarLargeDataUrl,
+      card: builtCard,
+      avatarMode: 'mini',
+      created: now,
+      updated: now,
+      last: '',
+      lorebook: [],
+      lorebookPrevious: [],
+      lorebookPreviousAt: 0,
+      appearance,
+      formatStyle: fields.formatStyle,
+      personalityTags,
+    };
+    const saved = await saveCharacter(character);
+    app.closeSheet();
+    app.navigate('chats', { characterId: saved.id });
+  }
+}
+
+/**
+ * CCC-004: pantalla única de edición — exactamente el formulario de siempre (CCC-002), sin pasos.
+ */
+function renderEditScreen(app, fields, ctx) {
+  const node = el('div', 'character-editor');
+  node.appendChild(el('h3', 'sheet__title', `Ver personaje: ${ctx.source.name}`));
+  node.append(fields.avatarRow, fields.nameField.field, fields.personalityWrap);
+  node.append(fields.description.field, fields.scenario.field, fields.firstMes.field, fields.mesExample.field);
+  node.appendChild(fields.appearanceLabel);
+  node.append(fields.fixed.field, fields.current.field, fields.instructions.field);
+
   const status = el('div', 'field__label');
-  const saveBtn = el('button', 'btn', editing ? 'Guardar' : 'Crear personaje');
+  const saveBtn = el('button', 'btn', 'Guardar');
   saveBtn.type = 'button';
   node.append(saveBtn, status);
 
   saveBtn.addEventListener('click', async () => {
-    if (!nameField.input.value.trim()) {
+    if (!fields.nameField.input.value.trim()) {
       status.textContent = 'El nombre es obligatorio.';
       return;
     }
     saveBtn.disabled = true;
     status.textContent = '';
     try {
-      const builtCard = buildCharacterCard({
-        name: nameField.input.value,
-        personalityTags: usingTags ? selectedTags : [],
-        personalityText: usingTags ? '' : (personalityBody._getFreeText ? personalityBody._getFreeText() : freeTextInitial),
-        description: description.input.value,
-        scenario: scenario.input.value,
-        firstMes: firstMes.input.value,
-        mesExample: mesExample.input.value,
-        instructions: instructions.input.value,
-      });
-      const appearance = sanitizeAppearance({ fixed: fixed.input.value, current: current.input.value, updated: Date.now() });
-      const personalityTags = usingTags ? selectedTags : [];
-
-      if (editing) {
-        const updated = {
-          ...source,
-          name: builtCard.name,
-          avatar: avatarDataUrl,
-          avatarLarge: avatarLargeDataUrl,
-          card: builtCard,
-          appearance,
-          formatStyle,
-          personalityTags,
-        };
-        const saved = await saveCharacter(updated);
-        app.toast('Guardado.');
-        if (opts.onSaved) opts.onSaved(saved);
-        app.closeSheet();
-      } else {
-        const now = Date.now();
-        const character = {
-          id: newId(),
-          name: builtCard.name,
-          avatar: avatarDataUrl,
-          avatarLarge: avatarLargeDataUrl,
-          card: builtCard,
-          avatarMode: 'mini',
-          created: now,
-          updated: now,
-          last: '',
-          lorebook: [],
-          lorebookPrevious: [],
-          lorebookPreviousAt: 0,
-          appearance,
-          formatStyle,
-          personalityTags,
-        };
-        const saved = await saveCharacter(character);
-        app.closeSheet();
-        app.navigate('chats', { characterId: saved.id });
-      }
+      await saveFromFields(app, fields, ctx);
     } catch (err) {
       status.textContent = 'No se pudo guardar. No se cambió nada.';
       saveBtn.disabled = false;
@@ -453,4 +476,222 @@ export function openCharacterEditor(app, opts = {}) {
   });
 
   app.openSheet(node);
+}
+
+/**
+ * CCC-004: wizard de creación, en pasos, con selección de arquetipo (plantilla) como paso 2. Reutiliza
+ * los mismos `fields` que la edición (ver `buildFormFields`) — solo cambia cómo se agrupan y se muestran.
+ * El botón/gesto "atrás" de Android retrocede un paso (ver `companion:wizard-back` en main.js), salvo en
+ * el primer paso, donde sale de la creación (mismo comportamiento que tenía el creador de antes: sin
+ * confirmación, ya que hoy tampoco la tiene al tocar fuera de la hoja).
+ */
+function renderWizard(app, fields, ctx) {
+  const node = el('div', 'character-editor');
+  node.appendChild(el('h3', 'sheet__title', 'Crear personaje'));
+  const progress = el('div', 'field__hint wizard-progress');
+  node.appendChild(progress);
+
+  // ---------- paso 1: identidad visual ----------
+  const step1 = el('div', 'wizard-step');
+  const identityStatus = el('div', 'field__label');
+  step1.append(fields.avatarRow, fields.nameField.field, identityStatus);
+
+  // ---------- paso 2: elegir un punto de partida ----------
+  const step2 = el('div', 'wizard-step');
+  step2.appendChild(el('div', 'field__hint', 'Puedes partir de un arquetipo (lo editas todo después) o empezar en blanco.'));
+  const archetypeGrid = el('div', 'wizard-archetypes');
+  const overwriteBanner = el('div', 'field-example__panel wizard-overwrite');
+  overwriteBanner.hidden = true;
+  step2.append(archetypeGrid, overwriteBanner);
+
+  let selectedStartId = null; // id de arquetipo, o 'blank' para "Desde cero"
+
+  function fieldsHaveDownstreamContent() {
+    return fields.hasPersonalityContent()
+      || !!fields.description.input.value.trim()
+      || !!fields.scenario.input.value.trim()
+      || !!fields.firstMes.input.value.trim()
+      || !!fields.mesExample.input.value.trim();
+  }
+
+  function applyStart(archetype) {
+    if (archetype) {
+      fields.applyPersonalityTags(archetype.personalityTags);
+      fields.description.input.value = archetype.description;
+      fields.scenario.input.value = archetype.scenario;
+      fields.firstMes.input.value = archetype.firstMes;
+      fields.mesExample.input.value = archetype.mesExample;
+    } else {
+      fields.applyPersonalityTags([]);
+      fields.description.input.value = '';
+      fields.scenario.input.value = '';
+      fields.firstMes.input.value = '';
+      fields.mesExample.input.value = '';
+    }
+    for (const f of [fields.description, fields.scenario, fields.firstMes, fields.mesExample]) {
+      f.input.dispatchEvent(new Event('input'));
+    }
+    selectedStartId = archetype ? archetype.id : 'blank';
+    renderArchetypeGrid();
+    goToStep(2);
+  }
+
+  function chooseStart(archetype) {
+    overwriteBanner.hidden = true;
+    if (fieldsHaveDownstreamContent()) {
+      overwriteBanner.replaceChildren();
+      const label = archetype ? archetype.label : 'Desde cero';
+      overwriteBanner.appendChild(el(
+        'p',
+        'field-example__text',
+        `Esto va a reemplazar la personalidad, descripción, situación, primer mensaje y ejemplo de diálogo que ya tenías, con los de "${label}". ¿Reemplazar?`
+      ));
+      const row = el('div', 'wizard-overwrite__actions');
+      const cancelBtn = el('button', 'btn btn--ghost btn--sm', 'Cancelar');
+      cancelBtn.type = 'button';
+      cancelBtn.addEventListener('click', () => { overwriteBanner.hidden = true; });
+      const okBtn = el('button', 'btn btn--sm', 'Reemplazar');
+      okBtn.type = 'button';
+      okBtn.addEventListener('click', () => applyStart(archetype));
+      row.append(cancelBtn, okBtn);
+      overwriteBanner.appendChild(row);
+      overwriteBanner.hidden = false;
+      return;
+    }
+    applyStart(archetype);
+  }
+
+  function renderArchetypeGrid() {
+    archetypeGrid.replaceChildren();
+    for (const archetype of CHARACTER_ARCHETYPES) {
+      const card = el('button', 'archetype-card');
+      card.type = 'button';
+      card.classList.toggle('archetype-card--active', selectedStartId === archetype.id);
+      card.appendChild(el('div', 'archetype-card__label', archetype.label));
+      card.appendChild(el('div', 'archetype-card__tagline', archetype.tagline));
+      card.addEventListener('click', () => chooseStart(archetype));
+      archetypeGrid.appendChild(card);
+    }
+    const blank = el('button', 'archetype-card archetype-card--blank');
+    blank.type = 'button';
+    blank.classList.toggle('archetype-card--active', selectedStartId === 'blank');
+    blank.appendChild(el('div', 'archetype-card__label', 'Desde cero'));
+    blank.appendChild(el('div', 'archetype-card__tagline', 'Empieza con todos los campos vacíos.'));
+    blank.addEventListener('click', () => chooseStart(null));
+    archetypeGrid.appendChild(blank);
+  }
+  renderArchetypeGrid();
+
+  // ---------- paso 3: personalidad y trasfondo ----------
+  const step3 = el('div', 'wizard-step');
+  step3.append(fields.personalityWrap, fields.description.field, fields.scenario.field);
+
+  // ---------- paso 4: cómo habla ----------
+  const step4 = el('div', 'wizard-step');
+  step4.append(fields.firstMes.field, fields.mesExample.field);
+
+  // ---------- paso 5: apariencia e instrucciones + crear ----------
+  const step5 = el('div', 'wizard-step');
+  step5.appendChild(fields.appearanceLabel);
+  step5.append(fields.fixed.field, fields.current.field, fields.instructions.field);
+  const saveStatus = el('div', 'field__label');
+  const saveBtn = el('button', 'btn', 'Crear personaje');
+  saveBtn.type = 'button';
+  step5.append(saveBtn, saveStatus);
+
+  const steps = [step1, step2, step3, step4, step5];
+  node.append(...steps);
+
+  // ---------- navegación ----------
+  const navRow = el('div', 'wizard-nav');
+  const backBtn = el('button', 'btn btn--ghost', 'Atrás');
+  backBtn.type = 'button';
+  const nextBtn = el('button', 'btn', 'Siguiente');
+  nextBtn.type = 'button';
+  navRow.append(backBtn, nextBtn);
+  node.appendChild(navRow);
+
+  let stepIndex = 0;
+
+  // CCC-004: mientras el wizard está en un paso > 0, el botón/gesto "atrás" de Android debe retroceder un
+  // paso en vez de cerrar toda la hoja. Mismo patrón que `diag-running`/`companion:diag-back` en
+  // diagnostics.js: una clase en <body> + un evento de documento, que main.js intercepta antes de decidir
+  // qué hacer con "atrás". Se desactiva solo (clase quitada) al llegar al primer paso, así que ahí "atrás"
+  // vuelve a su comportamiento normal (cerrar la hoja = salir de la creación).
+  function updateBackButtonHook() {
+    document.body.classList.toggle('wizard-step-active', stepIndex > 0);
+  }
+  function onWizardBack() {
+    if (stepIndex > 0) goToStep(stepIndex - 1);
+  }
+  document.addEventListener('companion:wizard-back', onWizardBack);
+  document.addEventListener('shell:sheetclose', cleanupWizardBackHook, { once: true });
+  function cleanupWizardBackHook() {
+    document.removeEventListener('companion:wizard-back', onWizardBack);
+    document.body.classList.remove('wizard-step-active');
+  }
+
+  function goToStep(i) {
+    stepIndex = Math.max(0, Math.min(steps.length - 1, i));
+    steps.forEach((s, idx) => { s.hidden = idx !== stepIndex; });
+    const isArchetypeStep = stepIndex === 1;
+    const isLastStep = stepIndex === steps.length - 1;
+    backBtn.hidden = stepIndex === 0;
+    nextBtn.hidden = isArchetypeStep || isLastStep;
+    navRow.hidden = backBtn.hidden && nextBtn.hidden;
+    progress.textContent = `Paso ${stepIndex + 1} de ${steps.length}`;
+    updateBackButtonHook();
+    const sheetCard = document.getElementById('sheet-card');
+    if (sheetCard) sheetCard.scrollTop = 0;
+  }
+
+  backBtn.addEventListener('click', () => goToStep(stepIndex - 1));
+  nextBtn.addEventListener('click', () => {
+    if (stepIndex === 0) {
+      if (!fields.nameField.input.value.trim()) {
+        identityStatus.textContent = 'El nombre es obligatorio.';
+        return;
+      }
+      identityStatus.textContent = '';
+    }
+    goToStep(stepIndex + 1);
+  });
+
+  saveBtn.addEventListener('click', async () => {
+    if (!fields.nameField.input.value.trim()) {
+      saveStatus.textContent = 'El nombre es obligatorio.';
+      goToStep(0);
+      return;
+    }
+    saveBtn.disabled = true;
+    saveStatus.textContent = '';
+    try {
+      await saveFromFields(app, fields, ctx);
+    } catch (err) {
+      saveStatus.textContent = 'No se pudo guardar. No se cambió nada.';
+      saveBtn.disabled = false;
+    }
+  });
+
+  goToStep(0);
+  app.openSheet(node);
+}
+
+/**
+ * @param {{ openSheet: Function, closeSheet: Function, toast: Function, navigate: Function, confirmDialog: Function }} app
+ * @param {{ character?: import('../state.js').Character, onSaved?: (updated: import('../state.js').Character) => void }} [opts]
+ *   Sin `character`: crea uno nuevo con el wizard (al guardar, navega a sus chats). Con `character`: lo
+ *   edita en la pantalla única de siempre (al guardar, avisa y llama a `onSaved`, sin navegar).
+ */
+export function openCharacterEditor(app, opts = {}) {
+  const editing = !!opts.character;
+  const source = opts.character || null;
+  const ctx = { editing, source, opts };
+  const fields = buildFormFields(app, { editing, source });
+
+  if (editing) {
+    renderEditScreen(app, fields, ctx);
+  } else {
+    renderWizard(app, fields, ctx);
+  }
 }

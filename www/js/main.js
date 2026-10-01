@@ -175,6 +175,14 @@ function onAndroidBack() {
     document.dispatchEvent(new CustomEvent('companion:diag-back'));
     return;
   }
+  // CCC-004: con el wizard de creación de personaje más allá de su primer paso, "atrás" retrocede un paso
+  // del wizard en vez de cerrar toda la hoja (ver character-editor.js, `updateBackButtonHook`). En el
+  // primer paso la clase ya no está puesta, así que cae al comportamiento normal de más abajo (cerrar la
+  // hoja = salir de la creación).
+  if (document.body.classList.contains('wizard-step-active')) {
+    document.dispatchEvent(new CustomEvent('companion:wizard-back'));
+    return;
+  }
   const now = Date.now();
   if (transitioning || now - lastBackAt < BACK_DEBOUNCE_MS) return;
   lastBackAt = now;
