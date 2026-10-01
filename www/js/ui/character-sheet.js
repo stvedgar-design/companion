@@ -12,6 +12,7 @@ import { sanitizeAppearance } from '../character-appearance.js';
 import { PERSONALITY_TAGS } from '../personality-tags.js';
 import { formatDateOnly } from '../msgtime.js';
 import { openCharacterEditor } from './character-editor.js';
+import { openCharacterAppearance } from './character-look.js';
 import { makeAvatarSet } from '../cards/avatar.js';
 import { pickFiles } from '../platform.js';
 
@@ -166,6 +167,18 @@ export function openCharacterSheet(app, character, opts = {}) {
       if (m.appearance.current) body.appendChild(el('div', 'field__hint', m.appearance.current));
       node.appendChild(field('Apariencia', body));
     }
+
+    // ---------- 6b. editar apariencia (UI-031: antes vivía en el menú ⋮ del chat, junto a "Cambiar avatar") ----------
+    const appearanceBtn = el('button', 'menu-item', 'Editar apariencia');
+    appearanceBtn.type = 'button';
+    appearanceBtn.addEventListener('click', () => {
+      openCharacterAppearance(app, current, (updated) => {
+        current = updated;
+        if (opts.onUpdated) opts.onUpdated(updated);
+        render();
+      });
+    });
+    node.appendChild(appearanceBtn);
 
     // ---------- 7. recuerdos ----------
     const memBtn = el('button', 'menu-item', `${m.memoriesCount} recuerdo${m.memoriesCount === 1 ? '' : 's'} · Ver`);

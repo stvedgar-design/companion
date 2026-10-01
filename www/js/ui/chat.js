@@ -1,7 +1,7 @@
 // www/js/ui/chat.js
 // Pantalla de chat: burbujas, streaming, avatar en 3 modos, composer, menú.
 
-import { getChat, getChatMessages, saveChatMessages, getCharacter, saveCharacter, getSettings, saveSettings, markChatExported, saveCharacterLorebook, markChatLorebookProgress, saveChatContinuity, sanitizeContinuity, sanitizeMessage, saveCharacterRelationship } from '../state.js';
+import { getChat, getChatMessages, saveChatMessages, getCharacter, getSettings, saveSettings, markChatExported, saveCharacterLorebook, markChatLorebookProgress, saveChatContinuity, sanitizeContinuity, sanitizeMessage, saveCharacterRelationship } from '../state.js';
 import { generateReplyNonEmpty, completeOnce, completeChatOnce } from '../api/kobold.js';
 import { initialMessages, scenarioGreeting, estimateContextUsage } from '../api/prompt.js';
 import {
@@ -32,13 +32,10 @@ import { createFeelingUpdater, feelingDisplayText } from '../api/feeling.js';
 import { formatMessageTime, formatMessageFullTime } from '../msgtime.js';
 import { createContinuityUpdater, coveredCount, CONTINUITY_TOTAL_CHARS, CONTINUITY_ON_OPEN_DELAY_MS, cleanRecap, verifyRecap } from '../api/continuity.js';
 import { openChatBackground } from './chat-background.js';
-import { openCharacterAppearance } from './character-look.js';
-import { openCharacterEditor } from './character-editor.js';
 import { openCharacterSheet } from './character-sheet.js';
 import { formatMessage } from './format.js';
 import { variantCount, activeVariantIndex, addVariant, selectVariant, editActiveText } from '../variants.js';
 import { MESSAGE_ACTIONS, availableMessageActions, revealDelta, shouldCloseOnScroll } from './msgmenu.js';
-import { makeAvatarSet } from '../cards/avatar.js';
 import { pickFiles, saveBlob, autoBackupBlob } from '../platform.js';
 import { averageColorFromDataUrl } from '../images.js';
 import { setGlassTint } from './shell.js';
@@ -2071,33 +2068,9 @@ function onMenu() {
   if (character && character.card.alternate_greetings && character.card.alternate_greetings.length && isOnlyGreeting()) {
     characterItems.push(menuItem('Cambiar saludo', () => openGreetingSheet()));
   }
-  characterItems.push(
-    menuItem('Cambiar avatar', () => {
-      app.closeSheet();
-      onChangeAvatar();
-    }),
-    // MEM-009: cómo se ve el personaje (rasgos fijos + ropa de ahora). Es de ESTE personaje, no un ajuste global.
-    menuItem('Apariencia del personaje', () => {
-      if (!character) return;
-      // Sincroniza la copia en memoria: otras escrituras (p. ej. "Cambiar avatar") guardan el personaje entero y no deben pisar la ficha.
-      openCharacterAppearance(app, character, (updated) => {
-        character.appearance = updated.appearance;
-      });
-    }),
-    // CCC-001: leer y editar nombre, personalidad, descripción, escenario, saludo, ejemplo, apariencia y
-    // estilo de formato — de CUALQUIER personaje (creado con este flujo o importado, como Mia/Ani/Theo).
-    menuItem('Ver personaje', () => {
-      if (!character) return;
-      openCharacterEditor(app, {
-        character,
-        onSaved: (updated) => {
-          character = updated;
-          els.headName.textContent = character.name;
-          renderMessages();
-        },
-      });
-    })
-  );
+  // UI-031: "Cambiar avatar", "Apariencia del personaje" y "Ver personaje" se quitaron de este menú —
+  // son datos del PERSONAJE, no del chat, y ya viven en su ficha (tocar el nombre, arriba): "Cambiar
+  // foto", "Editar apariencia" y "Editar" (editor completo), respectivamente.
   wrap.appendChild(menuSection('Personaje y memoria', characterItems));
 
   wrap.appendChild(
@@ -2117,29 +2090,6 @@ function onMenu() {
   wrap.appendChild(buildDiagnostics());
 
   app.openSheet(wrap);
-}
-
-async function onChangeAvatar() {
-  if (!character) return;
-  const files = await pickFiles();
-  if (!files.length) return;
-
-  app.toast('Generando avatar…');
-  const { avatar, avatarLarge } = await makeAvatarSet(files[0]);
-  if (!avatar) {
-    app.toast('No se pudo usar esa imagen como avatar.');
-    return;
-  }
-
-  character.avatar = avatar;
-  character.avatarLarge = avatarLarge;
-  try {
-    character = await saveCharacter(character);
-    renderMessages();
-    app.toast('Avatar actualizado.');
-  } catch (err) {
-    app.toast('No se pudo guardar el avatar.');
-  }
 }
 
 function slugify(s) {

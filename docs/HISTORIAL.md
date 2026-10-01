@@ -2946,3 +2946,60 @@ aparte. Ajustes → se verificó por lectura de código (el grupo "Avanzado" ya 
 **Tests.** Se revisó `grep -rln "Contexto usado\|tokens aprox\|Ver lorebook\|Diagnóstico"` sobre
 `tests/`: las únicas coincidencias eran comentarios de test (no aserciones sobre el texto literal), así
 que no hizo falta tocar ningún test. `node --test tests/*.test.mjs`: 630/630, sin cambios en el total.
+
+## UI-031 (2026-09-30): mover "Cambiar avatar" y "Apariencia del personaje" a la ficha; quitar "Ver personaje"
+
+Tercero de los cuatro contratos de esta sesión. El usuario ya había confirmado explícitamente (texto
+del propio contrato) quitar "Ver personaje" del menú ⋮ sin reemplazo.
+
+**Qué se movió y por qué.** Los tres ítems del grupo "Personaje y memoria" del menú ⋮
+(`chat.js:2066-2100` antes del cambio) guardaban/editaban datos del `Character`, no del chat —
+`UX-BLUEPRINT.md` sección 5 ya lo documentaba. Verificado antes de tocar nada: `openChatBackground(app,
+character)` y `openCharacterAppearance(app, character, onSaved)` solo necesitan `app` y `character`
+(ninguno de los dos recibe ni usa un `chatId`), así que llamarlos desde `character-sheet.js` —que no
+tiene noción de chat— no tenía ningún obstáculo técnico.
+
+1. **"Cambiar avatar"** no se migró como botón nuevo: la ficha (UI-027) ya tenía "Cambiar foto"
+   (`character-sheet.js:178-202`), que hace exactamente lo mismo (`pickFiles()` + `makeAvatarSet()` +
+   `saveCharacter()`). Se eliminó la entrada duplicada del menú ⋮ y, con ella, la función
+   `onChangeAvatar()` completa (quedaba sin ningún otro llamador).
+2. **"Apariencia del personaje"** se movió a un botón nuevo "Editar apariencia" en `character-sheet.js`,
+   entre el campo "Apariencia" (de solo lectura) y "N recuerdos · Ver". Abre `openCharacterAppearance`
+   tal cual (import nuevo en `character-sheet.js`; se actualizó el comentario de cabecera de
+   `character-look.js`, que decía "se abre desde el menú ⋮ de un chat, junto a 'Cambiar avatar'").
+3. **"Ver personaje"** se quitó sin reemplazo (autorizado explícitamente): llamaba a
+   `openCharacterEditor` DIRECTO, saltándose la ficha — el hallazgo 3 de `UX-BLUEPRINT.md` sección 5
+   documentaba que esto creaba DOS caminos distintos al editor (tocar nombre → ficha → "Editar", o
+   menú ⋮ → "Ver personaje"). Ahora solo queda el primero.
+
+**Limpieza de imports muertos** (regla del proyecto: nada sin usar). Tras quitar `onChangeAvatar` y los
+tres ítems de menú, quedaron sin ningún otro llamador en `chat.js`: `saveCharacter` (import de
+`state.js`), `openCharacterAppearance`, `openCharacterEditor`, `makeAvatarSet`. Se verificó cada uno con
+`grep -n` antes de borrar el import (`pickFiles` SÍ sigue usado, en `onImportChat`).
+
+**Verificado en el navegador integrado** (misma siembra de UI-029/030): el menú ⋮ ya no muestra
+"Cambiar avatar" ni "Apariencia del personaje" ni "Ver personaje". Tocar el nombre → ficha → "Editar
+apariencia" abre la hoja con los valores reales del personaje sembrado (28/200 y 14/100 caracteres);
+"Guardar" (sin cambiar nada) vuelve sola a la ficha ya actualizada. Ficha → "Editar" abre el editor
+completo ("Ver personaje: Mia") con nombre, personalidad, descripción y apariencia precargados, y su
+propio botón "Cambiar foto" interno (de `character-editor.js`, sin tocar).
+
+**Tests actualizados (ninguno nuevo; tres editados porque afirmaban algo que ya no es cierto, no por
+cambio de comportamiento):**
+- `tests/character-editor.test.mjs`: el test que buscaba `menuItem('Ver personaje'` en `chat.js` ahora
+  confirma lo contrario (`doesNotMatch`) y que `character-sheet.js` sigue abriendo el editor desde
+  "Editar".
+- `tests/character-appearance.test.mjs`: igual, pero para `menuItem('Apariencia del personaje'`; agrega
+  la aserción de que `character-sheet.js` sí llama a `openCharacterAppearance(app, ...)`.
+- `tests/chat-avatar.test.mjs`: el test original contaba ocurrencias de `renderMessages();` en `chat.js`
+  (≥2) razonando "por lo menos Cambiar avatar y Ver personaje deben refrescar la lista" — ese
+  razonamiento ya no aplica (ambos se quitaron). Se reescribió para confirmar lo que importa ahora: que
+  `onOpenCharacterSheet()` sigue refrescando la lista en su `onUpdated`, y que `character-sheet.js`
+  llama a `opts.onUpdated(...)` desde al menos dos puntos (Editar, Cambiar foto, y ahora también Editar
+  apariencia) — el mecanismo que reemplazó al anterior.
+
+`node --test tests/*.test.mjs`: 630/630 (mismo total: se editaron aserciones existentes, no se agregaron
+`test()` nuevos).
+
+**Fuera de alcance, sin tocar:** `character-editor.js`, el contenido interno de `character-look.js`
+(solo el comentario de cabecera), `chat-background.js`.

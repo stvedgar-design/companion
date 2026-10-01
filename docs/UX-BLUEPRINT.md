@@ -274,6 +274,11 @@ modo de llegar a esa acción.
 
 ## 9. Propuesta de estructura (PROPUESTA — no autorizada)
 
+> **Implementado por UI-030/UI-031 (2026-09-30):** las filas "Cambiar avatar", "Apariencia del
+> personaje", "Ver personaje", "Ver lorebook" y "Diagnóstico" (plegado) de la tabla de abajo ya están
+> hechas, tal como las describe esta propuesta. "Fondo del chat" queda para UI-032 (siguiente
+> contrato de la misma tanda).
+
 Aplicando los ámbitos del punto 2 del Contexto, corregidos por los hallazgos de la sección 5 (fondo y
 avatar son de Personaje, no de Chat). Cada fila dice si el cambio sería "solo mover/renombrar" (bajo
 riesgo, un contrato chico podría hacerlo) o "cambia comportamiento" (necesita autorización explícita

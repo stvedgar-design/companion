@@ -148,9 +148,11 @@ test('CCC-001: personalityTags se sanea igual que en el formulario (ids válidos
   assert.equal(c.lorebook.length, 1);
 });
 
-test('CCC-003: "Ver personaje" está en el menú del chat', () => {
+test('UI-031: el editor completo ya no está en el menú del chat ("Ver personaje" se quitó); se llega desde "Editar" en la ficha del personaje', () => {
   const chat = readFileSync(new URL('../www/js/ui/chat.js', import.meta.url), 'utf8');
-  assert.match(chat, /menuItem\('Ver personaje'/, 'la pantalla de lectura/edición está en el menú del chat');
+  assert.doesNotMatch(chat, /menuItem\('Ver personaje'/, 'el menú ⋮ ya no abre el editor directo');
+  const sheet = readFileSync(new URL('../www/js/ui/character-sheet.js', import.meta.url), 'utf8');
+  assert.match(sheet, /openCharacterEditor\(app/, 'la ficha sigue abriendo el editor completo desde "Editar"');
 });
 
 test('CCC-003: formatStyle NO conecta con formatAssist ni con la reparación de asteriscos (decisión de producto pendiente; ver docs)', () => {

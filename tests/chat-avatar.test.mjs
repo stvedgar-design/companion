@@ -29,10 +29,13 @@ test('UI-028: el menú de acciones de un mensaje del personaje se alinea con la 
   assert.match(chat, /chat-row__body.*\)\.appendChild\(menu\)/);
 });
 
-test('UI-028: cambiar la foto o editar el personaje refresca los avatares de los mensajes (no queda un avatar viejo en pantalla)', () => {
-  // ambos puntos donde character.avatar/avatarLarge pueden cambiar vuelven a construir la lista
-  const renders = chat.match(/renderMessages\(\);/g) || [];
-  assert.ok(renders.length >= 2, 'al menos "Cambiar avatar" y "Ver personaje" -> onSaved deben refrescar la lista');
+test('UI-028/UI-031: cambiar la foto o editar el personaje (ambos ahora solo desde la ficha) refresca los avatares de los mensajes (no queda un avatar viejo en pantalla)', () => {
+  // UI-031: "Cambiar avatar" y "Ver personaje" se quitaron del menú ⋮; editar y cambiar foto viven en
+  // character-sheet.js y ambos pasan por el mismo `onUpdated`, que acá refresca la lista una sola vez.
+  assert.match(chat, /onOpenCharacterSheet\(\)[\s\S]*?onUpdated:[\s\S]*?renderMessages\(\);/);
+  const sheet = readFileSync(new URL('../www/js/ui/character-sheet.js', import.meta.url), 'utf8');
+  const calls = sheet.match(/opts\.onUpdated\(/g) || [];
+  assert.ok(calls.length >= 2, 'tanto "Editar" como "Cambiar foto" (y ahora "Editar apariencia") deben avisar a onUpdated');
 });
 
 test('UI-028: el ancho de la burbuja del personaje se compensa EXACTAMENTE con el tamaño del avatar + el hueco (no un número suelto)', () => {

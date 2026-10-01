@@ -1,6 +1,6 @@
 // www/js/ui/character-look.js
 // MEM-009: hoja para editar la apariencia de un personaje (rasgos fijos + ropa/estado de ahora). Es por PERSONAJE (como el fondo y el
-// lorebook): se abre desde el menú ⋮ de un chat, junto a "Cambiar avatar". La ficha es propia de la app, no forma parte de la card.
+// lorebook): se abre desde la ficha del personaje (UI-031; antes vivía en el menú ⋮ de un chat). La ficha es propia de la app, no forma parte de la card.
 
 import { saveCharacterAppearance } from '../state.js';
 import { APPEARANCE_FIXED_MAX, APPEARANCE_CURRENT_MAX, sanitizeAppearance } from '../character-appearance.js';

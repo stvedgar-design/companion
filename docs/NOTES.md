@@ -283,6 +283,7 @@ personajes: segunda iteración visual"; auditoría de recuperabilidad →
 | ARQ-003 | Plano de navegación y ajustes: inventario y propuesta (sin tocar código) | Autorizado — **completado el 2026-09-30** (solo `docs/`, sin código de producción) | `docs/UX-BLUEPRINT.md` (nuevo): inventario completo con cita archivo/línea, dos hallazgos reales (el selector de imágenes YA llega a Google Drive en las 7 pantallas que eligen imagen; el botón del nombre en la cabecera del chat tiene una clase CSS sin regla propia, por debajo de 44px y sin la flechita que `DESIGN.md` dice que tiene), propuesta de estructura marcada mover/renombrar vs. cambia comportamiento, y 10 contratos sugeridos priorizados. Ver "ARQ-003" (en `HISTORIAL.md`). |
 | UI-029 | Corregir el botón de nombre en la cabecera del chat (clase CSS sin estilo) | Autorizado — **implementado el 2026-09-30** (sesión S1); 630 tests; verificado en el navegador (44px de alto, flecha "›", sigue abriendo la ficha); **pendiente de probar en el teléfono** | `chat.js:83`: `chat-head__namebtn` → `chat-head__name` (la regla ya existía, sin usar). Cierra el hallazgo de la sección 2 de `UX-BLUEPRINT.md`. |
 | UI-030 | Renombrar rótulos técnicos a lenguaje de usuario (sin mover nada, sin cambiar comportamiento) | Autorizado — **implementado el 2026-09-30** (sesión S1); 630 tests; verificado en el navegador (menú ⋮ y Ajustes) | "Ver lorebook" → "Lo que recuerda {Nombre}"; sección plegada "Diagnóstico" del menú ⋮ → "Avanzado"; sección "Diagnóstico" de Ajustes → "Avanzado" (el botón interno "Diagnóstico y rendimiento" no cambia); "Contexto usado: ~X% (≈N de M tokens aprox.)" → "Memoria inmediata usada: ~X%" con el detalle en tokens en una segunda línea. Solo texto, cero lógica tocada. |
+| UI-031 | Mover "Cambiar avatar" y "Apariencia del personaje" del menú ⋮ a la ficha; quitar "Ver personaje" | Autorizado (el usuario confirmó quitar "Ver personaje") — **implementado el 2026-09-30** (sesión S1); 630 tests (3 actualizados, ninguno nuevo); verificado en el navegador de punta a punta (ficha → Editar apariencia → guardar → ficha actualizada; ficha → Editar → editor completo; menú ⋮ sin las tres entradas) | `character-sheet.js`: botón nuevo "Editar apariencia" (abre `character-look.js`, ya existía, solo cambia desde dónde se llama) entre "Apariencia" y "N recuerdos · Ver". `chat.js`: se quitaron las tres entradas del menú ⋮ y la función `onChangeAvatar` (quedó sin uso: la ficha ya cubre "Cambiar foto"); imports muertos limpiados (`saveCharacter`, `openCharacterAppearance`, `openCharacterEditor`, `makeAvatarSet`). El único camino al editor completo ahora es ficha → "Editar". |
 | (previos) | `CONTRACT-LOREBOOK.md` (implementado, parcialmente superado), `CONTRACT-CHARACTER-CREATOR.md` (**ANULADO, reemplazado por CCC-001**), `CONTRACT-HANDOFF.md` (briefing) | — | Ver los avisos al inicio de cada uno. |
 
 
@@ -355,6 +356,13 @@ personajes: segunda iteración visual"; auditoría de recuperabilidad →
   sí). "Contexto usado: ~X% (≈N de M tokens aprox.)" pasa a "Memoria inmediata usada: ~X%", sin la
   palabra "tokens" en la línea principal; el detalle en tokens queda en una segunda línea `field__hint`
   aparte, dentro de la misma sección plegada ("Avanzado"). Cero cambios de lógica, cálculo o navegación.
+- **UI-031 (2026-09-30), "Cambiar avatar"/"Apariencia del personaje" a la ficha; "Ver personaje" fuera.**
+  Los tres ítems vivían en el menú ⋮ del chat pero son datos del PERSONAJE: "Cambiar avatar" quedó
+  cubierto por "Cambiar foto" (ya existía en la ficha desde UI-027, mismo `pickFiles()`/`makeAvatarSet`);
+  "Apariencia del personaje" se movió a un botón nuevo "Editar apariencia" en la ficha, junto a la
+  sección "Apariencia"; "Ver personaje" (que abría el editor DIRECTO, saltándose la ficha — confusión
+  real documentada en `UX-BLUEPRINT.md`) se quitó sin reemplazo: la ficha ya tenía "Editar". Ahora hay
+  un solo camino al editor completo (ficha → "Editar") y un solo lugar para todo lo del personaje.
 
 ## Hoja de ruta acordada (propuesta, NO autorizada)
 

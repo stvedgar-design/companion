@@ -231,12 +231,14 @@ test('MEM-009: la copia de seguridad v2 incluye la ficha; una copia vieja (sin e
   assert.deepEqual((await dst2.getCharacter('c1')).appearance, emptyAppearance());
 });
 
-test('MEM-009: kobold.js pasa la ficha del personaje a los prompts; la hoja de edición existe y el menú del chat la ofrece', () => {
+test('MEM-009: kobold.js pasa la ficha del personaje a los prompts; la hoja de edición existe y (UI-031) la ofrece la ficha del personaje, no el menú del chat', () => {
   const kobold = readFileSync(new URL('../www/js/api/kobold.js', import.meta.url), 'utf8');
   assert.match(kobold, /appearanceOf\(character\)/);
   assert.match(kobold, /\.\.\.\(appearance \? \{ appearance \} : \{\}\)/);
   const chat = readFileSync(new URL('../www/js/ui/chat.js', import.meta.url), 'utf8');
-  assert.match(chat, /menuItem\('Apariencia del personaje'/);
+  assert.doesNotMatch(chat, /menuItem\('Apariencia del personaje'/, 'el menú ⋮ ya no la ofrece (UI-031)');
+  const charSheet = readFileSync(new URL('../www/js/ui/character-sheet.js', import.meta.url), 'utf8');
+  assert.match(charSheet, /openCharacterAppearance\(app/, 'la ficha del personaje abre la hoja de apariencia');
   const sheet = readFileSync(new URL('../www/js/ui/character-look.js', import.meta.url), 'utf8');
   assert.match(sheet, /saveCharacterAppearance/);
   assert.ok(!/chara_card_v2|\.card\./.test(sheet), 'la ficha no toca la card');
