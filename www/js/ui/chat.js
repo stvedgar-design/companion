@@ -31,7 +31,6 @@ import { moodText } from '../api/mood.js';
 import { createFeelingUpdater, feelingDisplayText } from '../api/feeling.js';
 import { formatMessageTime, formatMessageFullTime } from '../msgtime.js';
 import { createContinuityUpdater, coveredCount, CONTINUITY_TOTAL_CHARS, CONTINUITY_ON_OPEN_DELAY_MS, cleanRecap, verifyRecap } from '../api/continuity.js';
-import { openChatBackground } from './chat-background.js';
 import { openCharacterSheet } from './character-sheet.js';
 import { formatMessage } from './format.js';
 import { variantCount, activeVariantIndex, addVariant, selectVariant, editActiveText } from '../variants.js';
@@ -2061,7 +2060,6 @@ function onMenu() {
   // cuando se llegó al chat DESDE esa lista o tocando el retrato en el hub (ver docs/HISTORIAL.md, "UI-026": desde
   // "Continuar" en el hub se entra directo al chat, así que atrás vuelve al hub, no a esta lista — límite conocido).
   const characterItems = [
-    menuItem('Fondo del chat', () => openChatBackground(app, character)),
     menuItem(`Lo que recuerda ${character.name}`, () => openLorebookSheet()),
     menuItem('Resumen de este chat', () => openContinuitySheet()),
   ];
@@ -2071,6 +2069,7 @@ function onMenu() {
   // UI-031: "Cambiar avatar", "Apariencia del personaje" y "Ver personaje" se quitaron de este menú —
   // son datos del PERSONAJE, no del chat, y ya viven en su ficha (tocar el nombre, arriba): "Cambiar
   // foto", "Editar apariencia" y "Editar" (editor completo), respectivamente.
+  // UI-032: "Fondo del chat" se quitó por el mismo motivo — también vive en la ficha ahora.
   wrap.appendChild(menuSection('Personaje y memoria', characterItems));
 
   wrap.appendChild(

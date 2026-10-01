@@ -92,7 +92,7 @@ export function openSettings(app) {
       <div class="settings-row">
         <button class="btn btn--ghost btn--sm" id="settings-appearance" type="button">Modo claro/oscuro y tipografía</button>
       </div>
-      <div class="field__hint">El fondo del chat es por personaje: se cambia desde el menú ⋮ dentro de cada chat.</div>
+      <div class="field__hint">El fondo del chat es por personaje: se cambia desde su ficha (toca el nombre del personaje dentro de un chat).</div>
     </div>
 
     <div class="menu-group" aria-hidden="true">Datos</div>

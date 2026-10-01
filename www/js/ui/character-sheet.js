@@ -13,6 +13,7 @@ import { PERSONALITY_TAGS } from '../personality-tags.js';
 import { formatDateOnly } from '../msgtime.js';
 import { openCharacterEditor } from './character-editor.js';
 import { openCharacterAppearance } from './character-look.js';
+import { openChatBackground } from './chat-background.js';
 import { makeAvatarSet } from '../cards/avatar.js';
 import { pickFiles } from '../platform.js';
 
@@ -179,6 +180,12 @@ export function openCharacterSheet(app, character, opts = {}) {
       });
     });
     node.appendChild(appearanceBtn);
+
+    // ---------- 6c. fondo de chat (UI-032: antes vivía en el menú ⋮ del chat) ----------
+    const bgBtn = el('button', 'menu-item', 'Fondo de chat');
+    bgBtn.type = 'button';
+    bgBtn.addEventListener('click', () => openChatBackground(app, current));
+    node.appendChild(bgBtn);
 
     // ---------- 7. recuerdos ----------
     const memBtn = el('button', 'menu-item', `${m.memoriesCount} recuerdo${m.memoriesCount === 1 ? '' : 's'} · Ver`);

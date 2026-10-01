@@ -3003,3 +3003,48 @@ cambio de comportamiento):**
 
 **Fuera de alcance, sin tocar:** `character-editor.js`, el contenido interno de `character-look.js`
 (solo el comentario de cabecera), `chat-background.js`.
+
+## UI-032 (2026-09-30): mover "Fondo del chat" del menú ⋮ a la ficha del personaje
+
+Cuarto y último contrato de la tanda UI-029 a UI-032, ejecutado junto con (y mismo patrón que) UI-031.
+
+**Qué se movió.** La entrada "Fondo del chat" del menú ⋮ (`chat.js:2064` antes del cambio) se quitó y
+se agregó un botón "Fondo de chat" en `character-sheet.js`, junto a "Editar apariencia" (entre la
+sección "Apariencia" y "N recuerdos · Ver"). Llama a `openChatBackground(app, current)` tal cual — el
+mismo archivo `chat-background.js` que ya existía, sin tocar su contenido interno (brillo, fundido a
+negro, ajuste llenar/estirar).
+
+**Por qué era seguro moverlo sin tocar `chat-background.js`.** Antes de mover nada se leyó cómo avisa
+los cambios: `notifyChange(character)` dispara un `CustomEvent('companion:chatbackgroundchange', {
+detail: character })` sobre `document`, y `chat.js` ya tenía un listener de ese evento puesto en
+`init()` (no dentro del menú ⋮), así que escucha sin importar desde qué pantalla se abrió la hoja. No
+hay ningún acoplamiento con "estar dentro de un chat" ni con un `chatId`: `openChatBackground(app,
+character)` solo necesita el personaje. Se documentó esto en el comentario de cabecera de
+`chat-background.js`, que antes decía "se abre desde el menú ⋮ de un chat, nunca desde Ajustes" (ahora
+dice "se abre desde la ficha del personaje").
+
+**Limpieza.** Se quitó el import `openChatBackground` de `chat.js` (sin más llamadores ahí) y se
+actualizó el texto de ayuda de `settings.js` ("Aspecto de la app"), que todavía decía "se cambia desde
+el menú ⋮ dentro de cada chat" — ahora dice "se cambia desde su ficha (toca el nombre del personaje
+dentro de un chat)".
+
+**Verificado en el navegador integrado** (misma siembra de personaje/chat de UI-029/030/031): el menú
+⋮ ya no muestra "Fondo del chat" (quedó solo "Lo que recuerda {Nombre}" y "Resumen de este chat" en el
+grupo "Personaje y memoria"). Ficha → "Fondo de chat" abre "Fondo del chat con Mia" con su interfaz de
+siempre (vista previa, "Elegir imagen", nota de que solo se ve en los chats de ese personaje). Ajustes
+→ Apariencia muestra el texto de ayuda actualizado.
+
+**Tests.** `grep -rln "Fondo del chat\|openChatBackground" tests/` no encontró ningún test que
+dependiera de ese texto o de esa ubicación — no hizo falta tocar ningún test.
+`node --test tests/*.test.mjs`: 630/630, mismo total que antes de esta tanda (ningún test nuevo en los
+cuatro contratos: todos eran renombrados/reubicaciones ya cubiertas por la verificación visual y por
+los tests existentes que seguían describiendo el comportamiento real).
+
+**Cierre de la tanda (UI-029 a UI-032).** Los cuatro contratos de `docs/UX-BLUEPRINT.md` (ARQ-003,
+sección 12, ítems 1-4) quedan hechos. El menú ⋮ del chat ahora solo tiene lo que es realmente del
+CHAT ("Lo que recuerda {Nombre}" — que sigue siendo del personaje pero de acceso diario, "Resumen de
+este chat", "Cambiar saludo" condicional, Exportar/Importar, "Avanzado"); todo lo que es del
+PERSONAJE (foto, apariencia, fondo, editor completo) vive en su ficha, con un solo camino de entrada
+(tocar el nombre). Quedan en la lista de `UX-BLUEPRINT.md` sección 12, sin tocar en esta sesión: CCC-002
+reformulado, wizard del creador, duplicar personaje, "chats → episodios", galería de fotos, buscador
+dentro de Ajustes.

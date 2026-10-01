@@ -274,10 +274,9 @@ modo de llegar a esa acción.
 
 ## 9. Propuesta de estructura (PROPUESTA — no autorizada)
 
-> **Implementado por UI-030/UI-031 (2026-09-30):** las filas "Cambiar avatar", "Apariencia del
-> personaje", "Ver personaje", "Ver lorebook" y "Diagnóstico" (plegado) de la tabla de abajo ya están
-> hechas, tal como las describe esta propuesta. "Fondo del chat" queda para UI-032 (siguiente
-> contrato de la misma tanda).
+> **Implementado por UI-030/UI-031/UI-032 (2026-09-30):** las filas "Cambiar avatar", "Apariencia del
+> personaje", "Ver personaje", "Fondo del chat", "Ver lorebook" y "Diagnóstico" (plegado) de la tabla
+> de abajo ya están hechas, tal como las describe esta propuesta.
 
 Aplicando los ámbitos del punto 2 del Contexto, corregidos por los hallazgos de la sección 5 (fondo y
 avatar son de Personaje, no de Chat). Cada fila dice si el cambio sería "solo mover/renombrar" (bajo
@@ -344,10 +343,10 @@ explícito de no añadir pantallas, interruptores ni avisos de restricción.
 
 | # | Título | Tamaño | Riesgo | Depende de |
 |---|---|---|---|---|
-| 1 | Arreglar la clase CSS del botón del nombre en la cabecera del chat (`chat-head__namebtn` sin estilo) | Pequeño | Bajo | Ninguno — ver sección 2 |
-| 2 | Renombrar rótulos sin cambiar comportamiento: "Lorebook" → "Lo que recuerda {Nombre}", sección "Diagnóstico" → "Avanzado" (menú ⋮ y Ajustes), ocultar "tokens" del texto normal de "Contexto usado" | Pequeño | Bajo | Ninguno |
-| 3 | Mover "Cambiar avatar" y "Apariencia del personaje" del menú ⋮ a la ficha del personaje; quitar "Ver personaje" del menú ⋮ (la ficha ya tiene "Editar") | Mediano | Medio (cambia una ruta de navegación que el usuario ya conoce) | Ninguno técnico; sí autorización explícita del usuario |
-| 4 | Mover "Fondo del chat" del menú ⋮ a la ficha del personaje | Pequeño | Bajo | Puede ir junto con el #3 |
+| 1 | ~~Arreglar la clase CSS del botón del nombre en la cabecera del chat~~ — **hecho, UI-029 (2026-09-30)** | Pequeño | Bajo | Ninguno — ver sección 2 |
+| 2 | ~~Renombrar rótulos sin cambiar comportamiento~~ — **hecho, UI-030 (2026-09-30)** | Pequeño | Bajo | Ninguno |
+| 3 | ~~Mover "Cambiar avatar" y "Apariencia del personaje" del menú ⋮ a la ficha; quitar "Ver personaje"~~ — **hecho, UI-031 (2026-09-30)** | Mediano | Medio (cambia una ruta de navegación que el usuario ya conoce) | Ninguno técnico; sí autorización explícita del usuario |
+| 4 | ~~Mover "Fondo del chat" del menú ⋮ a la ficha del personaje~~ — **hecho, UI-032 (2026-09-30)** | Pequeño | Bajo | Puede ir junto con el #3 |
 | 5 | CCC-002 reformulado sobre CCC-003 (guías por campo, botón "Ejemplo", plantilla `<START>`/`{{user}}`/`{{char}}`, campo "Instrucciones") | Mediano | Medio | Ya estaba escrito; solo falta que el arquitecto lo reformule sobre `main` actual (ver fila CCC-002 del Registro de contratos) |
 | 6 | Wizard del creador de personajes con plantillas y ejemplos | Grande | Medio | #5 (comparten pantalla) |
 | 7 | Duplicar personaje | Pequeño–Mediano | Bajo | Ninguno |

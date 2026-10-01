@@ -1,8 +1,11 @@
 // www/js/ui/chat-background.js
 // Hoja de fondo de chat: imagen, brillo, fundido a negro y ajuste — por
 // PERSONAJE (ver docs/NOTES.md, "Fondo de chat por personaje"), no global.
-// Se abre desde el menú ⋮ de un chat (ver ui/chat.js), nunca desde Ajustes:
-// fuera de un chat no hay un personaje al que asignarle el fondo.
+// Se abre desde la ficha del personaje (UI-032; antes vivía en el menú ⋮ de
+// un chat), nunca desde Ajustes: ahí no hay un personaje al que asignarle
+// el fondo. `notifyChange` avisa por evento de documento, no por callback,
+// así que un chat de ese personaje ya abierto se refresca solo sin
+// importar desde dónde se abrió esta hoja.
 
 import { saveCharacterBackground } from '../state.js';
 import { pickFiles } from '../platform.js';
