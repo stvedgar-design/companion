@@ -349,6 +349,62 @@ input[type=range]:focus-visible{
 .archetype-card__label{ font-size: var(--fs-md); font-weight: 500; }
 .archetype-card__tagline{ margin-top: 2px; font-size: var(--fs-xs); color: var(--color-muted); }
 
+/* UI-037: pantalla de recorte de la foto de perfil (ui/image-crop.js). Capa propia sobre la hoja (z-index
+   por encima de .sheet = 20). El escenario es un lienzo de edición oscuro en cualquier tema (la foto se ve
+   igual de día o de noche); el resto usa los tokens normales. Fuera del marco la imagen se atenúa. */
+.crop{
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface);
+  color: var(--color-text);
+  padding-bottom: var(--sab, 0px);
+}
+.crop__head{ padding: var(--space-4) var(--space-4) var(--space-3); }
+.crop__title{ font-size: var(--fs-xl); font-weight: 500; }
+.crop__hint{ margin-top: 4px; font-size: var(--fs-xs); color: var(--color-muted); }
+.crop__stage{
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: #0b0b0e;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.crop__img{
+  position: absolute;
+  left: 0;
+  top: 0;
+  max-width: none;
+  max-height: none;
+  transform-origin: 0 0;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+.crop__frame{
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, .62);
+  pointer-events: none;
+}
+.crop__circle{
+  position: absolute;
+  inset: 0;
+  border: 1px dashed rgba(255, 255, 255, .6);
+  border-radius: 50%;
+}
+.crop__controls{ padding: var(--space-3) var(--space-4) var(--space-4); }
+.crop__zoomlabel{ display: flex; align-items: center; gap: var(--space-3); font-size: var(--fs-sm); color: var(--color-muted); }
+.crop__zoom{ flex: 1; min-height: 44px; accent-color: var(--color-accent); }
+.crop__actions{ display: flex; gap: var(--space-3); margin-top: var(--space-2); }
+.crop__actions .btn{ flex: 1; }
+
 .wizard-overwrite{ margin-top: var(--space-3); }
 .wizard-overwrite__actions{ display: flex; gap: var(--space-3); }
 .wizard-overwrite__actions .btn{ flex: 1; }

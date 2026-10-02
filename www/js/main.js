@@ -175,6 +175,11 @@ function onAndroidBack() {
     document.dispatchEvent(new CustomEvent('companion:diag-back'));
     return;
   }
+  // UI-037: con la pantalla de recorte de foto abierta (encima de cualquier hoja), "atrás" solo la cancela.
+  if (document.body.classList.contains('crop-active')) {
+    document.dispatchEvent(new CustomEvent('companion:crop-back'));
+    return;
+  }
   // CCC-004: con el wizard de creación de personaje más allá de su primer paso, "atrás" retrocede un paso
   // del wizard en vez de cerrar toda la hoja (ver character-editor.js, `updateBackButtonHook`). En el
   // primer paso la clase ya no está puesta, así que cae al comportamiento normal de más abajo (cerrar la

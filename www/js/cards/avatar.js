@@ -69,12 +69,18 @@ export const AVATAR_LARGE_SIZE = 1024;
  * @param {Blob} blob
  * @returns {Promise<{avatar: string, avatarLarge: string}>}
  */
-export async function makeAvatarSet(blob) {
-  const [avatar, avatarLarge] = await Promise.all([makeAvatar(blob), makeAvatar(blob, AVATAR_LARGE_SIZE)]);
+export async function makeAvatarSet(blob, crop) {
+  const [avatar, avatarLarge] = await Promise.all([makeAvatar(blob, 384, crop), makeAvatar(blob, AVATAR_LARGE_SIZE, crop)]);
   return { avatar, avatarLarge };
 }
 
-export async function makeAvatar(blob, size = 384) {
+/**
+ * UI-037: `crop` opcional = `{ sx, sy, side }`, el cuadrado de la imagen ORIGINAL (en sus píxeles) que el usuario
+ * eligió en la pantalla de recorte (ui/image-crop.js). Sin `crop` se mantiene el recorte automático de siempre
+ * (cuadrado centrado con sesgo hacia arriba), que sigue usando la importación de cards. El tamaño de salida no
+ * cambia (384 y 1024): el recorte manual no infla el almacenamiento.
+ */
+export async function makeAvatar(blob, size = 384, crop) {
   if (!blob) return '';
 
   let loaded;
@@ -88,9 +94,14 @@ export async function makeAvatar(blob, size = 384) {
   try {
     if (!width || !height) return '';
 
-    const side = Math.min(width, height);
-    const offsetX = (width - side) / 2;
-    const offsetY = (height - side) * TOP_BIAS;
+    let side = Math.min(width, height);
+    let offsetX = (width - side) / 2;
+    let offsetY = (height - side) * TOP_BIAS;
+    if (crop && Number.isFinite(crop.side) && crop.side > 0) {
+      side = Math.min(crop.side, width, height);
+      offsetX = Math.min(width - side, Math.max(0, Number.isFinite(crop.sx) ? crop.sx : 0));
+      offsetY = Math.min(height - side, Math.max(0, Number.isFinite(crop.sy) ? crop.sy : 0));
+    }
 
     let canvas;
     if (typeof document !== 'undefined' && document.createElement) {

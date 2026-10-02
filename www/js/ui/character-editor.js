@@ -7,8 +7,7 @@
 // formulario (docs/CONTRACT-HANDOFF.md, sección CCC-001: "no un pipeline de datos paralelo").
 
 import { saveCharacter, newId } from '../state.js';
-import { pickFiles } from '../platform.js';
-import { makeAvatarSet } from '../cards/avatar.js';
+import { chooseAvatar } from './image-crop.js';
 import {
   buildCharacterCard,
   NAME_MAX,
@@ -172,18 +171,17 @@ function buildFormFields(app, { editing, source }) {
   const avatarBtn = el('button', 'btn btn--sm', editing ? 'Cambiar foto' : 'Elegir foto (opcional)');
   avatarBtn.type = 'button';
   avatarBtn.addEventListener('click', async () => {
-    const files = await pickFiles();
-    if (!files.length) return;
     avatarBtn.disabled = true;
-    const { avatar, avatarLarge } = await makeAvatarSet(files[0]);
-    avatarBtn.disabled = false;
-    if (!avatar) {
-      app.toast('No se pudo usar esa imagen como avatar.');
-      return;
+    try {
+      // UI-037: selector → recorte manual → las dos imágenes finales (mismo componente que "Cambiar foto").
+      const set = await chooseAvatar(app);
+      if (!set) return;
+      avatarDataUrl = set.avatar;
+      avatarLargeDataUrl = set.avatarLarge;
+      renderAvatarPreview();
+    } finally {
+      avatarBtn.disabled = false;
     }
-    avatarDataUrl = avatar;
-    avatarLargeDataUrl = avatarLarge;
-    renderAvatarPreview();
   });
   avatarRow.append(avatarPreview, avatarBtn);
 

@@ -17,8 +17,7 @@ import { formatDateOnly } from '../msgtime.js';
 import { openCharacterEditor } from './character-editor.js';
 import { openCharacterAppearance } from './character-look.js';
 import { openChatBackground } from './chat-background.js';
-import { makeAvatarSet } from '../cards/avatar.js';
-import { pickFiles } from '../platform.js';
+import { chooseAvatar } from './image-crop.js';
 
 const ICON_BACK = '<svg viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>';
 
@@ -281,16 +280,12 @@ export function openCharacterSheet(app, character, opts = {}) {
     photoBtn.type = 'button';
     photoBtn.style.marginTop = 'var(--space-3, 12px)';
     photoBtn.addEventListener('click', async () => {
-      const files = await pickFiles();
-      if (!files.length) return;
       photoBtn.disabled = true;
       try {
-        const { avatar, avatarLarge } = await makeAvatarSet(files[0]);
-        if (!avatar) {
-          app.toast('No se pudo usar esa imagen como avatar.');
-          return;
-        }
-        const saved = await saveCharacter({ ...current, avatar, avatarLarge });
+        // UI-037: selector → recorte manual → las dos imágenes finales (mismo componente que el creador).
+        const set = await chooseAvatar(app);
+        if (!set) return;
+        const saved = await saveCharacter({ ...current, avatar: set.avatar, avatarLarge: set.avatarLarge });
         current = saved;
         if (opts.onUpdated) opts.onUpdated(saved);
         render();
