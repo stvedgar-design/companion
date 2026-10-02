@@ -22,15 +22,18 @@ import {
 import { PERSONALITY_TAGS, MAX_PERSONALITY_TAGS, sanitizePersonalityTags } from '../personality-tags.js';
 import { sanitizeAppearance, APPEARANCE_FIXED_MAX, APPEARANCE_CURRENT_MAX } from '../character-appearance.js';
 import { CHARACTER_ARCHETYPES } from '../data/character-archetypes.js';
+import { applyGender, archetypeForGender, sanitizeGender, GENDER_LABELS } from '../pronoun-substitution.js';
 import { logEvent, TEL_EVENTS } from '../telemetry.js';
 
 // CCC-002: ejemplos de referencia para el botón "Ejemplo" de cada campo. Inventados a propósito (nunca
 // contenido real de un personaje del usuario); en inglés, como el resto del contenido narrativo de las
 // cards (ver personality-tags.js) — es lo que de verdad se manda al modelo.
+// CCC-005: escritos UNA sola vez con pronombres neutros (they/their) y convertidos según el género elegido
+// (pronoun-substitution.js; ver ahí la regla de qué puede ir después de "they").
 const EXAMPLE_PERSONALITY_TAGS = ['curious', 'playful', 'loyal'];
-const EXAMPLE_PERSONALITY_TEXT = 'Warm and a little shy at first, but fiercely loyal once she trusts you. Quick to tease, slow to open up about what she really feels.';
-const EXAMPLE_DESCRIPTION = 'A quiet art student who just moved to the city. Still finding her way around, but always curious about the people she meets.';
-const EXAMPLE_SCENARIO = "It's a quiet evening at her apartment, and she's been waiting for you to show up for a while now.";
+const EXAMPLE_PERSONALITY_TEXT = "Warm and a little shy at first, but fiercely loyal once they're sure of you. Quick to tease, slow to open up about what they're really feeling.";
+const EXAMPLE_DESCRIPTION = "A quiet art student who just moved to the city. Still finding their way around, but always curious about everyone they've met so far.";
+const EXAMPLE_SCENARIO = "It's a quiet evening at their apartment, and they've been waiting for you to show up for a while now.";
 const EXAMPLE_FIRST_MES = "*looks up and smiles as the door opens* Oh — you're finally here! I was starting to wonder if you got lost.";
 const EXAMPLE_MES_EXAMPLE = "<START>\n{{user}}: What have you been up to today?\n{{char}}: *stretches and grins* Not much, actually. Just been waiting around for you, if I'm honest.";
 const EXAMPLE_APPEARANCE_FIXED = 'Short and slim, pink hair, violet eyes.';
@@ -48,17 +51,21 @@ function el(tag, className, text) {
  * CCC-002: botón "Ejemplo" plegable junto a un campo. Al abrirse, muestra un texto de ejemplo real
  * (nunca contenido del usuario) y un botón "Usar este ejemplo" que lo copia al campo — directo si está
  * vacío, con confirmación si ya tiene algo escrito (nunca se borra nada sin preguntar).
+ * CCC-005: `exampleText` viene con pronombres neutros; se muestra y se inserta ya convertido al género
+ * elegido en ese momento (`genderHub`), y el texto del panel se actualiza si el género cambia.
  * @param {{ confirmDialog: Function }} app
- * @param {{ label: string, exampleText: string, getValue: () => string, setValue: (text: string) => void }} opts
+ * @param {{ label: string, exampleText: string, getValue: () => string, setValue: (text: string) => void, genderHub: { get: () => string, subscribe: (fn: () => void) => void } }} opts
  */
-function exampleBlock(app, { label, exampleText, getValue, setValue }) {
+function exampleBlock(app, { label, exampleText, getValue, setValue, genderHub }) {
   const wrap = el('div', 'field-example');
   const toggleBtn = el('button', 'btn btn--ghost btn--sm', 'Ejemplo');
   toggleBtn.type = 'button';
   toggleBtn.setAttribute('aria-expanded', 'false');
   const panel = el('div', 'field-example__panel');
   panel.hidden = true;
-  panel.appendChild(el('p', 'field-example__text', exampleText));
+  const exampleEl = el('p', 'field-example__text', applyGender(exampleText, genderHub.get()));
+  genderHub.subscribe(() => { exampleEl.textContent = applyGender(exampleText, genderHub.get()); });
+  panel.appendChild(exampleEl);
   const insertBtn = el('button', 'btn btn--ghost btn--sm', 'Usar este ejemplo');
   insertBtn.type = 'button';
   insertBtn.addEventListener('click', async () => {
@@ -67,7 +74,7 @@ function exampleBlock(app, { label, exampleText, getValue, setValue }) {
       const ok = await app.confirmDialog(`Esto va a reemplazar lo que ya escribiste en "${label}". ¿Reemplazar?`, { confirmText: 'Reemplazar' });
       if (!ok) return;
     }
-    setValue(exampleText);
+    setValue(applyGender(exampleText, genderHub.get()));
   });
   panel.appendChild(insertBtn);
   toggleBtn.addEventListener('click', () => {
@@ -111,6 +118,38 @@ function textField({ label, hint, max, rows, value, placeholder }) {
  */
 function buildFormFields(app, { editing, source }) {
   const card = source ? source.card : null;
+
+  // ---------- género (CCC-005) ----------
+  // Solo decide los pronombres de plantillas y ejemplos; se guarda en `Character.gender` y se puede cambiar
+  // después. Cambiarlo NUNCA reescribe lo que ya está en los campos (el usuario pudo editarlo).
+  let gender = sanitizeGender(source ? source.gender : undefined);
+  const genderListeners = [];
+  const genderHub = { get: () => gender, subscribe: (fn) => { genderListeners.push(fn); } };
+  const genderField = el('div', 'field');
+  genderField.appendChild(el('div', 'field__label', 'Género'));
+  genderField.appendChild(el('div', 'field__hint', 'Solo ajusta los pronombres (she/her, he/his, they/their) de las plantillas y los ejemplos. No cambia nada más.'));
+  const genderPicker = el('div', 'tag-picker');
+  genderPicker.setAttribute('role', 'radiogroup');
+  genderPicker.setAttribute('aria-label', 'Género');
+  const renderGender = () => {
+    genderPicker.replaceChildren();
+    for (const { id, label } of GENDER_LABELS) {
+      const btn = el('button', 'tag-pill', label);
+      btn.type = 'button';
+      btn.setAttribute('role', 'radio');
+      btn.setAttribute('aria-checked', String(gender === id));
+      btn.classList.toggle('tag-pill--active', gender === id);
+      btn.addEventListener('click', () => {
+        if (gender === id) return;
+        gender = id;
+        renderGender();
+        for (const fn of genderListeners) fn();
+      });
+      genderPicker.appendChild(btn);
+    }
+  };
+  renderGender();
+  genderField.appendChild(genderPicker);
 
   // ---------- avatar ----------
   // UI-027: se generan las dos versiones a la vez (pequeña para círculos, grande para la foto de la
@@ -175,7 +214,7 @@ function buildFormFields(app, { editing, source }) {
       });
       personalityExamplePanel.appendChild(insertBtn);
     } else {
-      personalityExamplePanel.appendChild(el('p', 'field-example__text', EXAMPLE_PERSONALITY_TEXT));
+      personalityExamplePanel.appendChild(el('p', 'field-example__text', applyGender(EXAMPLE_PERSONALITY_TEXT, gender)));
       const insertBtn = el('button', 'btn btn--ghost btn--sm', 'Usar este ejemplo');
       insertBtn.type = 'button';
       insertBtn.addEventListener('click', async () => {
@@ -185,7 +224,7 @@ function buildFormFields(app, { editing, source }) {
           const ok = await app.confirmDialog('Esto va a reemplazar lo que ya escribiste. ¿Reemplazar?', { confirmText: 'Reemplazar' });
           if (!ok) return;
         }
-        area.value = EXAMPLE_PERSONALITY_TEXT;
+        area.value = applyGender(EXAMPLE_PERSONALITY_TEXT, gender);
         area.dispatchEvent(new Event('input'));
       });
       personalityExamplePanel.appendChild(insertBtn);
@@ -259,6 +298,7 @@ function buildFormFields(app, { editing, source }) {
     if (!personalityExamplePanel.hidden) renderPersonalityExample();
   }
   renderPersonality();
+  genderListeners.push(() => { if (!personalityExamplePanel.hidden) renderPersonalityExample(); });
 
   // ---------- descripción / escenario / primer mensaje / ejemplo ----------
   const description = textField({
@@ -270,6 +310,7 @@ function buildFormFields(app, { editing, source }) {
     placeholder: 'Quién es, cómo es. En inglés, el modelo responde mejor.',
   });
   description.field.appendChild(exampleBlock(app, {
+    genderHub,
     label: 'Descripción / trasfondo',
     exampleText: EXAMPLE_DESCRIPTION,
     getValue: () => description.input.value,
@@ -284,6 +325,7 @@ function buildFormFields(app, { editing, source }) {
     placeholder: 'Dónde y en qué momento están (opcional).',
   });
   scenario.field.appendChild(exampleBlock(app, {
+    genderHub,
     label: 'Situación actual',
     exampleText: EXAMPLE_SCENARIO,
     getValue: () => scenario.input.value,
@@ -298,6 +340,7 @@ function buildFormFields(app, { editing, source }) {
     placeholder: 'Cómo saluda la primera vez.',
   });
   firstMes.field.appendChild(exampleBlock(app, {
+    genderHub,
     label: 'Primer mensaje',
     exampleText: EXAMPLE_FIRST_MES,
     getValue: () => firstMes.input.value,
@@ -312,6 +355,7 @@ function buildFormFields(app, { editing, source }) {
     placeholder: 'Un intercambio corto que muestre su forma de hablar.',
   });
   mesExample.field.appendChild(exampleBlock(app, {
+    genderHub,
     label: 'Ejemplo de diálogo',
     exampleText: EXAMPLE_MES_EXAMPLE,
     getValue: () => mesExample.input.value,
@@ -330,6 +374,7 @@ function buildFormFields(app, { editing, source }) {
     placeholder: 'Ej.: short and slim, pink hair, violet eyes',
   });
   fixed.field.appendChild(exampleBlock(app, {
+    genderHub,
     label: 'Rasgos fijos',
     exampleText: EXAMPLE_APPEARANCE_FIXED,
     getValue: () => fixed.input.value,
@@ -344,6 +389,7 @@ function buildFormFields(app, { editing, source }) {
     placeholder: 'Ej.: a white oversized hoodie and jeans',
   });
   current.field.appendChild(exampleBlock(app, {
+    genderHub,
     label: 'Ropa o estado de ahora',
     exampleText: EXAMPLE_APPEARANCE_CURRENT,
     getValue: () => current.input.value,
@@ -360,6 +406,7 @@ function buildFormFields(app, { editing, source }) {
     placeholder: 'Ej.: nunca rompe el personaje.',
   });
   instructions.field.appendChild(exampleBlock(app, {
+    genderHub,
     label: 'Instrucciones',
     exampleText: EXAMPLE_INSTRUCTIONS,
     getValue: () => instructions.input.value,
@@ -373,10 +420,11 @@ function buildFormFields(app, { editing, source }) {
   const formatStyle = editing && source.formatStyle === 'plain' ? 'plain' : 'nomi';
 
   return {
-    avatarRow, avatarBtn, nameField, personalityWrap,
+    avatarRow, avatarBtn, nameField, genderField, personalityWrap,
     description, scenario, firstMes, mesExample,
     appearanceLabel, fixed, current, instructions,
     formatStyle,
+    getGender: () => gender,
     getAvatar: () => ({ avatarDataUrl, avatarLargeDataUrl }),
     // Estado de personalidad, para que el wizard pueda aplicar un arquetipo o leerlo al guardar.
     getPersonalityTags: () => (usingTags ? selectedTags : []),
@@ -415,6 +463,7 @@ async function saveFromFields(app, fields, { editing, source, opts }) {
       appearance,
       formatStyle: fields.formatStyle,
       personalityTags,
+      gender: fields.getGender(),
     };
     const saved = await saveCharacter(updated);
     // TEL-002: solo si la apariencia de verdad cambió — nunca el contenido, solo que se editó.
@@ -443,6 +492,7 @@ async function saveFromFields(app, fields, { editing, source, opts }) {
       appearance,
       formatStyle: fields.formatStyle,
       personalityTags,
+      gender: fields.getGender(),
     };
     const saved = await saveCharacter(character);
     logEvent(TEL_EVENTS.CHARACTER_CREATED, { characterId: saved.id, method: 'guided' });
@@ -457,7 +507,7 @@ async function saveFromFields(app, fields, { editing, source, opts }) {
 function renderEditScreen(app, fields, ctx) {
   const node = el('div', 'character-editor');
   node.appendChild(el('h3', 'sheet__title', `Ver personaje: ${ctx.source.name}`));
-  node.append(fields.avatarRow, fields.nameField.field, fields.personalityWrap);
+  node.append(fields.avatarRow, fields.nameField.field, fields.genderField, fields.personalityWrap);
   node.append(fields.description.field, fields.scenario.field, fields.firstMes.field, fields.mesExample.field);
   node.appendChild(fields.appearanceLabel);
   node.append(fields.fixed.field, fields.current.field, fields.instructions.field);
@@ -501,7 +551,7 @@ function renderWizard(app, fields, ctx) {
   // ---------- paso 1: identidad visual ----------
   const step1 = el('div', 'wizard-step');
   const identityStatus = el('div', 'field__label');
-  step1.append(fields.avatarRow, fields.nameField.field, identityStatus);
+  step1.append(fields.avatarRow, fields.nameField.field, fields.genderField, identityStatus);
 
   // ---------- paso 2: elegir un punto de partida ----------
   const step2 = el('div', 'wizard-step');
@@ -521,7 +571,9 @@ function renderWizard(app, fields, ctx) {
       || !!fields.mesExample.input.value.trim();
   }
 
-  function applyStart(archetype) {
+  function applyStart(chosen) {
+    // CCC-005: el texto base es neutro; se convierte al género elegido en el paso 1.
+    const archetype = chosen ? archetypeForGender(chosen, fields.getGender()) : null;
     if (archetype) {
       fields.applyPersonalityTags(archetype.personalityTags);
       fields.description.input.value = archetype.description;
@@ -538,7 +590,7 @@ function renderWizard(app, fields, ctx) {
     for (const f of [fields.description, fields.scenario, fields.firstMes, fields.mesExample]) {
       f.input.dispatchEvent(new Event('input'));
     }
-    selectedStartId = archetype ? archetype.id : 'blank';
+    selectedStartId = chosen ? chosen.id : 'blank';
     renderArchetypeGrid();
     goToStep(2);
   }

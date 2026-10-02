@@ -11,6 +11,7 @@ import { sanitizeRelationship } from './api/relationship.js';
 import { sanitizeIdentity } from './api/identity-synthesis.js';
 import { sanitizeMailbox, withInteraction, MAILBOX_TOUCH_THROTTLE_MS } from './api/mailbox.js';
 import { sanitizePersonalityTags } from './personality-tags.js';
+import { sanitizeGender } from './pronoun-substitution.js';
 import { sanitizeFeeling } from './api/feeling.js';
 
 /**
@@ -89,6 +90,9 @@ import { sanitizeFeeling } from './api/feeling.js';
  *   asteriscos (Mia, Theo): `formatAssist` (arranque en `*`) y la reparación de asteriscos de format.js se aplican
  *   normalmente. 'plain' = sin asteriscos ni comillas (Ani): ninguno de los dos se aplica a sus respuestas, así no se le
  *   fuerza un formato que su card no usa. 'nomi' por defecto (así ningún personaje existente cambia de comportamiento).
+ * @property {'female'|'male'|'neutral'} gender  // CCC-005: género elegido en el creador, SOLO para convertir los pronombres de
+ *   las plantillas y los botones "Ejemplo" al crear/editar (pronoun-substitution.js). No toca el prompt ni nada más. 'neutral' por
+ *   defecto, también para todo personaje guardado antes (su texto no se reescribe nunca).
  * @property {string[]} personalityTags  // CCC-001: ids de personality-tags.js elegidos al crear/editar este personaje
  *   con el creador guiado (`card.personality` se ensambla desde ellos). `[]` = la personalidad de la card es texto libre
  *   (importada, o editada a mano sin pasar por las etiquetas) y se muestra/edita como tal, nunca como pills inventadas.
@@ -398,6 +402,7 @@ function sanitizeCharacterExtras(raw) {
   const lorebookArchive = sanitizeArchive(raw.lorebookArchive, lorebook);
   const formatStyle = raw.formatStyle === 'plain' ? 'plain' : DEFAULT_FORMAT_STYLE;
   const personalityTags = sanitizePersonalityTags(raw.personalityTags);
+  const gender = sanitizeGender(raw.gender);
   return {
     ...raw,
     lorebook,
@@ -413,6 +418,7 @@ function sanitizeCharacterExtras(raw) {
     ...sanitizeCharacterBackground(raw),
     formatStyle,
     personalityTags,
+    gender,
   };
 }
 

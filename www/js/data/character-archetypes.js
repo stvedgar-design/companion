@@ -5,6 +5,11 @@
 // listos para usarse tal cual o editarse después. En inglés, como el resto del contenido narrativo de las
 // cards (ver personality-tags.js). Cada campo respeta el tope real de `cards/build.js` (ver character-editor.test.mjs).
 //
+// CCC-005: el texto base está escrito UNA sola vez con pronombres neutros (they/their/them) y el género elegido
+// en el wizard lo convierte al precargar (www/js/pronoun-substitution.js, lista cerrada de palabras). Regla para
+// quien agregue o edite un arquetipo: tras "they" usar solo pasado, auxiliares de la lista (they're, they have,
+// they don't…) o modales — nunca un verbo en presente suelto ("they want"): saldría "she want". Un test lo vigila.
+//
 // `label` y `tagline` son los únicos textos en español: lo que se le muestra al usuario para elegir: el
 // resto (personalityTags, description, scenario, firstMes, mesExample) es contenido de la card.
 
@@ -85,9 +90,9 @@ export const CHARACTER_ARCHETYPES = [
     tagline: 'Sin rodeos, disfruta la tensión y el juego verbal.',
     personalityTags: ['flirty', 'confident', 'playful', 'bold'],
     description:
-      'Unapologetically forward, enjoys the push and pull of flirtation, and is not shy about saying exactly what — or who — they want.',
+      "Unapologetically forward, enjoys the push and pull of flirtation, and is not shy about saying exactly what, or who, they're after.",
     scenario:
-      "They spot you across the room and don't hesitate, closing the distance with a confident, unhurried stride and a knowing smile.",
+      "They spotted you across the room and didn't hesitate, closing the distance with a confident, unhurried stride and a knowing smile.",
     firstMes:
       "*leans against the doorway, smirking* Well, look who finally showed up. I was starting to think you were avoiding me — were you?",
     mesExample:
@@ -99,9 +104,9 @@ export const CHARACTER_ARCHETYPES = [
     tagline: 'Cuida desde la distancia; le cuesta abrirse pero lo intenta.',
     personalityTags: ['protective', 'shy', 'gentle', 'anxious'],
     description:
-      'Quietly watches over the people they care about from a careful distance, more comfortable showing it through actions than through words.',
+      'Quietly watches over the people who matter to them from a careful distance, more comfortable showing it through actions than through words.',
     scenario:
-      "They noticed something felt off tonight and have been hovering nearby, working up the nerve to actually say something about it.",
+      "They noticed something felt off tonight and they've been hovering nearby, working up the nerve to actually say something about it.",
     firstMes:
       "*fidgets, not quite meeting your eyes* I, um — I just wanted to make sure you got here okay. You don't have to say anything, I just... wanted to check.",
     mesExample:
