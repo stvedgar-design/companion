@@ -65,3 +65,16 @@ test('UI-038: chat.css define los tres tamaños de foto como veces el texto (no 
   assert.match(chatCss, /:root\[data-chat-avatar="small"\]\s*\{\s*--char-avatar-k:\s*2;/);
   assert.match(chatCss, /:root\[data-chat-avatar="large"\]\s*\{\s*--char-avatar-k:\s*3\.3;/);
 });
+
+test('UI-039 (pedido del usuario): el slider de opacidad vive junto al brillo del fondo y solo desvanece el fondo de la burbuja, no el texto', () => {
+  const bgSheet = readFileSync(new URL('../www/js/ui/chat-background.js', import.meta.url), 'utf8');
+  const iBright = bgSheet.indexOf('id="bg-brightness"');
+  const iBubbles = bgSheet.indexOf('id="bg-bubbles"');
+  const iFade = bgSheet.indexOf('id="bg-fade"');
+  assert.ok(iBright > 0 && iBright < iBubbles && iBubbles < iFade, 'mismo grupo (bg-controls), justo después del brillo');
+  // el texto nunca se desvanece: ninguna regla pone `opacity` en la burbuja misma; solo en su ::before
+  assert.doesNotMatch(chatCss, /\.chat-bubble\s*\{[^}]*opacity/);
+  assert.match(chatCss, /\.chat--translucent \.chat-bubble::before\s*\{[^}]*opacity:\s*var\(--bubble-opacity/);
+  const chat = readFileSync(new URL('../www/js/ui/chat.js', import.meta.url), 'utf8');
+  assert.match(chat, /classList\.toggle\('chat--translucent', pct < 100\)/, 'con 100 % no hay ninguna regla nueva en juego');
+});

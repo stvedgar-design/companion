@@ -82,6 +82,7 @@ import { sanitizeFeeling } from './api/feeling.js';
  * @property {string} chatBackground           // data URL JPEG del fondo de SUS chats, '' si no hay
  * @property {number} chatBackgroundBrightness // 20 a 180 (%), 100 = sin cambios
  * @property {boolean} chatBackgroundFade      // fundido a negro en la mitad inferior de la imagen
+ * @property {number} bubbleOpacity            // pedido directo del usuario (UI-039): opacidad del FONDO de las burbujas de SUS chats, 30 a 100 (%), 100 = opacas como siempre (el texto nunca se vuelve transparente); vive con el fondo del chat porque se ajusta en el mismo sitio y tiene sentido por personaje
  * @property {'fill'|'stretch'} chatBackgroundFit // 'fill' = cubre y recorta; 'stretch' = deforma sin recortar
  *   El fondo es por personaje (no global, no por chat): ver docs/NOTES.md,
  *   "Fondo de chat por personaje". Se ve solo dentro de sus chats — el resto
@@ -214,6 +215,9 @@ export function migrateMessageFontSize(px) {
 // UI-038: tamaños de la foto del personaje junto a las burbujas.
 export const CHAT_AVATAR_SIZES = Object.freeze(['small', 'medium', 'large']);
 
+// UI-039: piso de la opacidad de las burbujas; por debajo el texto se pierde sobre casi cualquier fondo.
+export const BUBBLE_OPACITY_MIN = 30;
+
 // Por defecto de los campos de fondo de chat en Character (ver
 // sanitizeCharacterExtras): mismos valores que tenía Settings antes de que
 // el fondo pasara a ser por personaje.
@@ -222,6 +226,7 @@ const DEFAULT_CHARACTER_BACKGROUND = Object.freeze({
   chatBackgroundBrightness: 100,
   chatBackgroundFade: false,
   chatBackgroundFit: 'fill',
+  bubbleOpacity: 100,
 });
 
 // CCC-001: por defecto 'nomi' (el estilo de asteriscos, el único que existía hasta ahora) para que ningún
@@ -286,6 +291,10 @@ function sanitizeCharacterBackground(raw) {
     ),
     chatBackgroundFade: !!merged.chatBackgroundFade,
     chatBackgroundFit: merged.chatBackgroundFit === 'stretch' ? 'stretch' : DEFAULT_CHARACTER_BACKGROUND.chatBackgroundFit,
+    // Solo un número de verdad (clampNumber convertiría null o '' en 0 → 30 %, que oscurecería sin que nadie lo pidiera).
+    bubbleOpacity: typeof merged.bubbleOpacity === 'number'
+      ? Math.round(clampNumber(merged.bubbleOpacity, BUBBLE_OPACITY_MIN, 100, DEFAULT_CHARACTER_BACKGROUND.bubbleOpacity))
+      : DEFAULT_CHARACTER_BACKGROUND.bubbleOpacity,
   };
 }
 

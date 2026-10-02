@@ -7,7 +7,7 @@
 // así que un chat de ese personaje ya abierto se refresca solo sin
 // importar desde dónde se abrió esta hoja.
 
-import { saveCharacterBackground } from '../state.js';
+import { saveCharacterBackground, BUBBLE_OPACITY_MIN } from '../state.js';
 import { pickFiles } from '../platform.js';
 import { resizeImageToDataUrl, averageColorFromDataUrl } from '../images.js';
 import { setGlassTint } from './shell.js';
@@ -47,6 +47,9 @@ export function openChatBackground(app, character) {
     <div class="field appearance-bgcontrols" id="bg-controls" hidden>
       <label class="field__label" for="bg-brightness">Brillo: <span id="bg-brightness-v"></span>%</label>
       <input class="inp" type="range" id="bg-brightness" min="20" max="180" step="5">
+      <label class="field__label" for="bg-bubbles">Opacidad de las burbujas: <span id="bg-bubbles-v"></span>%</label>
+      <input class="inp" type="range" id="bg-bubbles" min="${BUBBLE_OPACITY_MIN}" max="100" step="5">
+      <div class="field__hint">Con menos de 100 % se ve la imagen a través de las burbujas. El texto siempre se ve completo.</div>
       <div class="settings-row appearance-toggles">
         <button class="btn btn--ghost btn--sm" id="bg-fade" type="button">Fundido a negro: no</button>
         <button class="btn btn--ghost btn--sm" id="bg-fit" type="button">Ajuste: llenar</button>
@@ -65,6 +68,8 @@ export function openChatBackground(app, character) {
     bgControls: q('#bg-controls'),
     brightness: q('#bg-brightness'),
     brightnessV: q('#bg-brightness-v'),
+    bubbles: q('#bg-bubbles'),
+    bubblesV: q('#bg-bubbles-v'),
     fadeBtn: q('#bg-fade'),
     fitBtn: q('#bg-fit'),
   };
@@ -83,6 +88,8 @@ export function openChatBackground(app, character) {
     els.previewFade.hidden = !c.chatBackgroundFade;
     els.brightness.value = c.chatBackgroundBrightness;
     els.brightnessV.textContent = c.chatBackgroundBrightness;
+    els.bubbles.value = c.bubbleOpacity;
+    els.bubblesV.textContent = c.bubbleOpacity;
     els.fadeBtn.textContent = `Fundido a negro: ${c.chatBackgroundFade ? 'sí' : 'no'}`;
     els.fitBtn.textContent = `Ajuste: ${c.chatBackgroundFit === 'stretch' ? 'estirar' : 'llenar'}`;
   }
@@ -125,6 +132,17 @@ export function openChatBackground(app, character) {
     clearTimeout(brightnessTimer);
     brightnessTimer = setTimeout(async () => {
       current = await saveCharacterBackground(current.id, { chatBackgroundBrightness: value });
+      notifyChange(current);
+    }, BRIGHTNESS_DEBOUNCE_MS);
+  });
+
+  let bubblesTimer = null;
+  els.bubbles.addEventListener('input', () => {
+    const value = Math.max(BUBBLE_OPACITY_MIN, Math.min(100, Math.round(+els.bubbles.value / 5) * 5));
+    els.bubblesV.textContent = value;
+    clearTimeout(bubblesTimer);
+    bubblesTimer = setTimeout(async () => {
+      current = await saveCharacterBackground(current.id, { bubbleOpacity: value });
       notifyChange(current);
     }, BRIGHTNESS_DEBOUNCE_MS);
   });

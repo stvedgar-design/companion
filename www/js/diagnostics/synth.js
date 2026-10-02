@@ -109,6 +109,7 @@ export function makeSyntheticCharacter(i, avatar = '') {
     chatBackgroundBrightness: 100,
     chatBackgroundFade: false,
     chatBackgroundFit: 'cover',
+    bubbleOpacity: 100,
   };
 }
 

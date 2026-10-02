@@ -150,7 +150,16 @@ export function init(rootEl, appApi) {
   });
 }
 
+// UI-039: opacidad de las burbujas (por personaje). Con 100 % se quita la clase y todo queda exactamente como siempre.
+// Solo aplica si el personaje tiene un fondo: sin imagen detrás no hay nada que ver a través de la burbuja.
+function applyBubbleOpacity() {
+  const pct = character && character.chatBackground && Number.isFinite(character.bubbleOpacity) ? character.bubbleOpacity : 100;
+  root.classList.toggle('chat--translucent', pct < 100);
+  root.style.setProperty('--bubble-opacity', String(pct / 100));
+}
+
 function applyChatBackground() {
+  applyBubbleOpacity();
   const bg = character && character.chatBackground;
   if (!bg) {
     els.bg.hidden = true;

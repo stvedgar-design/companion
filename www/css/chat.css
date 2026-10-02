@@ -140,6 +140,23 @@
   border-bottom-right-radius: var(--radius-sm);
 }
 .chat-row--char { --em-color: var(--color-em, var(--color-muted)); }
+/* UI-039 (pedido directo del usuario): opacidad de las burbujas, por personaje (Character.bubbleOpacity, ajustada junto al
+   brillo del fondo). Las burbujas pintan su fondo con un degradado de un token, así que `opacity` en la burbuja
+   desvanecería también el texto: en su lugar el fondo pasa a una capa detrás del texto (::before) y solo esa capa se
+   desvanece. La clase `.chat--translucent` solo se pone con menos de 100 %: con burbujas opacas (lo de siempre) estas reglas
+   no existen para ninguna burbuja y el costo es cero. */
+.chat--translucent .chat-bubble { background: none; position: relative; isolation: isolate; }
+.chat--translucent .chat-bubble::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  opacity: var(--bubble-opacity, 1);
+  pointer-events: none;
+}
+.chat--translucent .chat-row--char .chat-bubble::before { background: var(--color-surface-2); }
+.chat--translucent .chat-row--user .chat-bubble::before { background: var(--grad-user); }
 .chat-row--user { --em-color: var(--color-muted-on-accent); }
 .chat-bubble em { color: var(--em-color); font-style: italic; }
 /* Regla directa de respaldo además de la variable --em-color, por si el navegador tiene algún problema

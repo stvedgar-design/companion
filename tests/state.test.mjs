@@ -298,6 +298,24 @@ test('markChatLorebookProgress contra un chat inexistente lanza', async () => {
 
 // ---------- fondo de chat por personaje (docs/NOTES.md) ----------
 
+// ---------- UI-039 (pedido del usuario): opacidad de las burbujas, por personaje, junto al brillo del fondo ----------
+
+test('UI-039: bubbleOpacity es 100 por defecto (también para un personaje guardado antes), se limita a 30-100 y no pisa el resto del fondo', async () => {
+  const state = createState(createMemoryBackend());
+  await state.saveCharacter(makeCharacter({ id: 'x' }));
+  assert.equal((await state.getCharacter('x')).bubbleOpacity, 100, 'un personaje anterior carga con burbujas opacas, como siempre');
+  const withBg = await state.saveCharacterBackground('x', { chatBackground: 'data:image/jpeg;base64,AAAA', chatBackgroundBrightness: 70 });
+  assert.equal(withBg.bubbleOpacity, 100);
+  assert.equal((await state.saveCharacterBackground('x', { bubbleOpacity: 55 })).bubbleOpacity, 55);
+  const kept = await state.getCharacter('x');
+  assert.equal(kept.chatBackground, 'data:image/jpeg;base64,AAAA', 'cambiar la opacidad no toca la imagen');
+  assert.equal(kept.chatBackgroundBrightness, 70, 'ni el brillo');
+  for (const [bad, expected] of [[0, 30], [10, 30], [999, 100], [57.4, 57], [NaN, 100], ['x', 100], [null, 100]]) {
+    assert.equal((await state.saveCharacterBackground('x', { bubbleOpacity: bad })).bubbleOpacity, expected, String(bad));
+  }
+});
+
+
 test('saveCharacterBackground guarda y valida los campos, con merge parcial', async () => {
   const state = createState(createMemoryBackend());
   await state.saveCharacter(makeCharacter({ id: 'x' }));
