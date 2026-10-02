@@ -38,6 +38,7 @@ const SETTING_LABELS = {
   formatAssist: 'Corregir formato automáticamente',
   varietyAssist: 'Ayuda a que las respuestas no se repitan',
   personalityAdapts: 'Personalidad que se adapta a la escena',
+  humanTouch: 'Detalles de presencia humana',
   splitTypography: 'Tipografía dividida (narración/diálogo)',
   continuityAuto: 'Resumen de continuidad automático',
 };

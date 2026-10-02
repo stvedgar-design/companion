@@ -322,20 +322,31 @@ function continuityPadding(continuity) {
 // se reserva un espacio fijo, tenga la frase el largo que tenga (la más larga posible ronda los 30 caracteres con corchetes).
 export const TIME_RESERVE_CHARS = 48;
 
+// HUM-001: reserva fija de la nota de presencia (ánimo + ritmo + observaciones; tope de la nota en api/presence.js: 430 + corchetes y salto).
+export const PRESENCE_RESERVE_CHARS = 440;
+
 // Relleno que completa la reserva fija de la hora; 0 si no hay frase.
 function timePadding(timeNote) {
   const t = String(timeNote || '').trim();
   return t ? Math.max(0, TIME_RESERVE_CHARS - (formatTopicBlock(t).length + 1)) : 0;
 }
 
+// HUM-001: la nota de presencia (api/presence.js) cambia de largo en cada turno; igual que la hora, reserva un espacio FIJO en el presupuesto
+// del historial para que la ventana de mensajes no se mueva (si se moviera, el servidor reprocesaría el prompt entero).
+function presencePadding(presenceNote) {
+  const t = String(presenceNote || '').trim();
+  return t ? Math.max(0, PRESENCE_RESERVE_CHARS - (formatTopicBlock(t).length + 1)) : 0;
+}
+
 // Todo lo que va al FINAL del prompt (MEM-007 continuidad + MEM-009 apariencia actual + MEM-004 "por tema" + FMT-004 nota de variedad
 // + TIME-001 hora aproximada), en este orden. '' si no hay nada: sin ninguno, el prompt es idéntico al de antes.
-function endBlock(topicBlock, varietyNote, continuity = '', current = '', timeNote = '') {
+function endBlock(topicBlock, varietyNote, continuity = '', current = '', timeNote = '', presenceNote = '') {
   return [
     continuity ? formatTopicBlock(continuity) : '',
     current ? formatTopicBlock(current) : '', // MEM-009: ropa/estado actual (estable entre turnos: antes del "por tema", que sí cambia cada turno)
     topicBlock ? formatTopicBlock(topicBlock) : '',
     varietyNote ? formatTopicBlock(varietyNote) : '',
+    presenceNote ? formatTopicBlock(presenceNote) : '', // HUM-001: ánimo, ritmo y observaciones (cambia cada turno: va al final, con reserva fija)
     timeNote ? formatTopicBlock(timeNote) : '', // TIME-001: siempre al final del todo
   ]
     .filter(Boolean)
@@ -405,8 +416,9 @@ export function buildPlainPrompt(card, messages, settings, chatScenario = '', lo
 
   const continuity = formatContinuityBlock(extras && extras.continuity);
   const timeNote = String((extras && extras.timeOfDay) || '').trim();
-  const topic = endBlock(topicBlock, varietyNote, continuity, formatAppearanceCurrent(extras && extras.appearance && extras.appearance.current, N, U), timeNote);
-  const budget = historyBudgetChars(settings, head.length, post.length, cue.length, topic.length + continuityPadding(continuity) + timePadding(timeNote));
+  const presenceNote = String((extras && extras.presence) || '').trim();
+  const topic = endBlock(topicBlock, varietyNote, continuity, formatAppearanceCurrent(extras && extras.appearance && extras.appearance.current, N, U), timeNote, presenceNote);
+  const budget = historyBudgetChars(settings, head.length, post.length, cue.length, topic.length + continuityPadding(continuity) + timePadding(timeNote) + presencePadding(presenceNote));
 
   const lines = messages.map((m) => `${m.role === 'user' ? U : N}: ${m.text}`);
   const kept = pickHistory(lines, budget, (line) => line.length);
@@ -442,7 +454,7 @@ export function buildPlainPrompt(card, messages, settings, chatScenario = '', lo
  * @param {string} [varietyNote] FMT-004: nota de variedad; va junto al bloque "por tema". Ver `buildPlainPrompt`.
  * @param {boolean} [prefill] FMT-002: si es true, se añade al final un mensaje `assistant` con `FORMAT_PREFILL`
  *   (la respuesta arranca dentro de una acción). Solo en la copia enviada; los mensajes guardados no se tocan.
- * @param {{ continuity?: string, timeOfDay?: string, identity?: string }} [extras] MEM-019: `identity` = síntesis aceptada (cabecera, tras la personalidad). MEM-007: ver `buildPlainPrompt`. TIME-001: `timeOfDay` = frase de la hora (api/timeofday.js), siempre lo último del bloque final. Va junto al bloque "por tema", en el último
+ * @param {{ continuity?: string, timeOfDay?: string, identity?: string, presence?: string }} [extras] HUM-001: `presence` = nota de ánimo/ritmo/observaciones (api/presence.js), antes de la hora, con reserva fija. MEM-019: `identity` = síntesis aceptada (cabecera, tras la personalidad). MEM-007: ver `buildPlainPrompt`. TIME-001: `timeOfDay` = frase de la hora (api/timeofday.js), siempre lo último del bloque final. Va junto al bloque "por tema", en el último
  *   mensaje del usuario de la copia enviada.
  * @returns {{ messages: {role:'system'|'user'|'assistant', content:string}[], stop: string[] }}
  */
@@ -457,8 +469,9 @@ export function buildChatMessages(card, messages, settings, chatScenario = '', l
 
   const continuity = formatContinuityBlock(extras && extras.continuity);
   const timeNote = String((extras && extras.timeOfDay) || '').trim();
-  const topic = endBlock(topicBlock, varietyNote, continuity, formatAppearanceCurrent(extras && extras.appearance && extras.appearance.current, N, U), timeNote);
-  const budget = historyBudgetChars(settings, head.length, topic.length + continuityPadding(continuity) + timePadding(timeNote));
+  const presenceNote = String((extras && extras.presence) || '').trim();
+  const topic = endBlock(topicBlock, varietyNote, continuity, formatAppearanceCurrent(extras && extras.appearance && extras.appearance.current, N, U), timeNote, presenceNote);
+  const budget = historyBudgetChars(settings, head.length, topic.length + continuityPadding(continuity) + timePadding(timeNote) + presencePadding(presenceNote));
   const kept = stableFront(pickHistory(messages, budget, (m) => m.text.length), messages.length);
 
   const out = [{ role: 'system', content: head }];
@@ -466,7 +479,14 @@ export function buildChatMessages(card, messages, settings, chatScenario = '', l
   if (!kept.length || kept[0].role !== 'user') {
     out.push({ role: 'user', content: '[Start of roleplay]' });
   }
-  kept.forEach((m) => out.push({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text }));
+  kept.forEach((m) => {
+    const role = m.role === 'user' ? 'user' : 'assistant';
+    const prev = out[out.length - 1];
+    // HUM-001: la segunda mitad de una respuesta partida en dos mensajes (`cont`) viaja unida a la primera: algunas plantillas exigen
+    // que los turnos alternen, y para el modelo sigue siendo UNA respuesta de un solo párrafo.
+    if (m.cont && prev && prev.role === 'assistant' && role === 'assistant') prev.content += ' ' + m.text;
+    else out.push({ role, content: m.text });
+  });
   if (topic) {
     // Copia enviada: el bloque va al principio del contenido del último mensaje del usuario.
     for (let i = out.length - 1; i > 0; i--) {
@@ -531,12 +551,13 @@ export function estimateContextUsage(card, messages, settings, chatScenario = ''
  * @param {{ fixed?: string, current?: string }|null} [appearance] MEM-009: ficha de apariencia (los rasgos fijos van en la cabecera; la ropa/estado actual, en el bloque final).
  * @param {boolean} [withTime] TIME-001: true si la respuesta real llevará la frase de la hora (reserva fija `TIME_RESERVE_CHARS` en el bloque final).
  * @param {string} [identity] MEM-019: texto de identidad aceptado (la línea de la cabecera ocupa presupuesto).
+ * @param {boolean} [withPresence] HUM-001: true si la respuesta real llevará la nota de presencia (reserva fija `PRESENCE_RESERVE_CHARS`).
  * @returns {number} 0 si todo cabe; `messages.length - 1` como mucho (siempre queda al menos 1 mensaje).
  */
-export function historyStartIndex(card, messages, settings, chatScenario = '', loreBlock = '', endChars = 0, extraChars = 0, relationship = null, appearance = null, withTime = false, identity = '') {
+export function historyStartIndex(card, messages, settings, chatScenario = '', loreBlock = '', endChars = 0, extraChars = 0, relationship = null, appearance = null, withTime = false, identity = '', withPresence = false) {
   const N = card.name;
   const U = (settings && settings.user) || 'User';
-  const end = Math.max(0, endChars || 0) + Math.max(0, extraChars || 0) + appearanceEndChars(appearance, N, U) + (withTime ? TIME_RESERVE_CHARS : 0);
+  const end = Math.max(0, endChars || 0) + Math.max(0, extraChars || 0) + appearanceEndChars(appearance, N, U) + (withTime ? TIME_RESERVE_CHARS : 0) + (withPresence ? PRESENCE_RESERVE_CHARS : 0);
   const fixed = appearance && appearance.fixed;
   if (settings && settings.mode === 'chat') {
     let head = headBlock(card, settings, chatScenario, loreBlock, relationship, fixed, identity);

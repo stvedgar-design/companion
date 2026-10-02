@@ -71,6 +71,14 @@ export function openSettings(app) {
 
     <div class="field">
       <label class="field__label" style="display:flex;align-items:center;gap:var(--space-2, 8px)">
+        <input type="checkbox" id="settings-human-touch" style="accent-color:var(--color-accent, #8b1fe0)">
+        <span>Detalles de presencia humana</span>
+      </label>
+      <div class="field__hint">El personaje tiene un ánimo que cambia con la hora, el día y lo que escribes (se ve bajo su nombre, en el chat). Sus respuestas varían de largo, siempre en un solo párrafo; a veces nota que llevas días sin escribirle, que hoy escribes más corto o que es muy tarde; a veces una respuesta larga llega partida en dos mensajes, y antes de contestar hace una pausa de "escribiendo". No hace el chat más lento (salvo una pausa de uno o dos segundos cuando el servidor responde muy rápido).</div>
+    </div>
+
+    <div class="field">
+      <label class="field__label" style="display:flex;align-items:center;gap:var(--space-2, 8px)">
         <input type="checkbox" id="settings-personality-adapts" style="accent-color:var(--color-accent, #8b1fe0)">
         <span>Personalidad que se adapta a la escena</span>
       </label>
@@ -172,6 +180,7 @@ export function openSettings(app) {
     user: q('#settings-user'),
     mode: q('#settings-mode'),
     variety: q('#settings-variety'),
+    humanTouch: q('#settings-human-touch'),
     personalityAdapts: q('#settings-personality-adapts'),
     format: q('#settings-format'),
     feelings: q('#settings-feelings'),
@@ -196,6 +205,7 @@ export function openSettings(app) {
     els.user.value = settings.user;
     els.mode.value = settings.mode;
     els.variety.checked = settings.varietyAssist === true;
+    els.humanTouch.checked = settings.humanTouch !== false;
     els.personalityAdapts.checked = settings.personalityAdapts !== false;
     els.format.checked = settings.formatAssist !== false;
     els.feelings.checked = settings.feelingsEnabled === true;
@@ -305,6 +315,11 @@ export function openSettings(app) {
   els.variety.addEventListener('change', () => {
     saveSettings({ varietyAssist: els.variety.checked });
     logEvent(TEL_EVENTS.EXPERIMENTAL_SETTING_CHANGED, { setting: 'varietyAssist', enabled: els.variety.checked });
+  });
+
+  els.humanTouch.addEventListener('change', () => {
+    saveSettings({ humanTouch: els.humanTouch.checked });
+    logEvent(TEL_EVENTS.EXPERIMENTAL_SETTING_CHANGED, { setting: 'humanTouch', enabled: els.humanTouch.checked });
   });
 
   els.personalityAdapts.addEventListener('change', () => {

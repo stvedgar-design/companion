@@ -1,7 +1,7 @@
 // www/js/ui/chat.js
 // Pantalla de chat: burbujas, streaming, avatar en 3 modos, composer, menú.
 
-import { getChat, getChatMessages, saveChatMessages, getCharacter, getSettings, saveSettings, markChatExported, saveCharacterLorebook, markChatLorebookProgress, saveChatContinuity, sanitizeContinuity, sanitizeMessage, saveCharacterRelationship, saveCharacterIdentity, saveChatArchive, isChatArchived, isChatArchivePending } from '../state.js';
+import { getChat, getChatMessages, saveChatMessages, getCharacter, getSettings, saveSettings, markChatExported, saveCharacterLorebook, markChatLorebookProgress, saveChatContinuity, sanitizeContinuity, sanitizeMessage, saveCharacterRelationship, saveCharacterIdentity, saveCharacterMood, saveChatArchive, isChatArchived, isChatArchivePending } from '../state.js';
 import { generateReplyNonEmpty, completeOnce, completeChatOnce } from '../api/kobold.js';
 import { initialMessages, scenarioGreeting, estimateContextUsage } from '../api/prompt.js';
 import {
@@ -33,6 +33,7 @@ import {
 import { appearanceOf } from '../character-appearance.js';
 import { identityForPrompt } from '../api/identity-synthesis.js';
 import { moodText } from '../api/mood.js';
+import { computeMood, moodHeadText, planSplit, typingHoldMs } from '../api/presence.js';
 import { createFeelingUpdater, feelingDisplayText } from '../api/feeling.js';
 import { formatMessageTime, formatMessageFullTime } from '../msgtime.js';
 import { createContinuityUpdater, coveredCount, CONTINUITY_TOTAL_CHARS, CONTINUITY_ON_OPEN_DELAY_MS, cleanRecap, verifyRecap } from '../api/continuity.js';
@@ -87,7 +88,7 @@ export function init(rootEl, appApi) {
     <div class="topbar">
       <button class="ib" type="button" id="chat-back" aria-label="Volver">${ICON_BACK}</button>
       <div class="chat-head" id="chat-head">
-        <button class="chat-head__name" type="button" id="chat-head-name" aria-label="Ver ficha del personaje"></button>
+        <button class="chat-head__name" type="button" id="chat-head-name" aria-label="Ver ficha del personaje"><span class="chat-head__nm" id="chat-head-nm"></span><span class="chat-head__sub" id="chat-head-sub"></span></button>
       </div>
       <button class="ib" type="button" id="chat-menu" aria-label="Más">${ICON_MENU}</button>
     </div>
@@ -111,6 +112,8 @@ export function init(rootEl, appApi) {
   els = {
     back: root.querySelector('#chat-back'),
     headName: root.querySelector('#chat-head-name'),
+    headNm: root.querySelector('#chat-head-nm'),
+    headSub: root.querySelector('#chat-head-sub'),
     menu: root.querySelector('#chat-menu'),
     bg: root.querySelector('#chat-bg'),
     bgFade: root.querySelector('#chat-bg-fade'),
@@ -231,7 +234,7 @@ export async function show({ chatId } = {}) {
   busy = false;
   abortCtl = null;
 
-  els.headName.textContent = character.name;
+  els.headNm.textContent = character.name;
   els.input.value = draftByChat.get(chat.id) || '';
   autosizeInput();
   syncSendButton();
@@ -282,7 +285,7 @@ function onOpenCharacterSheet() {
   openCharacterSheet(app, character, {
     onUpdated: (updated) => {
       character = updated;
-      els.headName.textContent = character.name;
+      els.headNm.textContent = character.name;
       renderMessages();
     },
     openMemories: () => openLorebookSheet(),
@@ -357,6 +360,10 @@ let streamBubble = null;
 let streamReply = null;
 // Cadencia del repintado mientras llega la respuesta (≈ cada 90 ms) y, con él, del scroll al fondo.
 const streamPaint = createThrottle(paintStreamingBubble, STREAM_PAINT_MS);
+// HUM-001: hasta cuándo se retiene el primer texto de la respuesta (pausa natural) y el temporizador que lo libera.
+let streamHoldUntil = 0;
+let streamHoldTimer = 0;
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 let retryEl = null; // el ícono "Reintentar respuesta", si está en la lista
 
 function removeRetryButton() {
@@ -782,7 +789,24 @@ function autosizeInput() {
   els.input.style.height = Math.min(els.input.scrollHeight, 140) + 'px';
 }
 
+// HUM-001: línea bajo el nombre: "escribiendo…" mientras responde; si no, el ánimo del momento ("ánimo tranquilo"). El ánimo mostrado es el
+// guardado más la hora y el día (sin lo que se escriba): el que se usa al responder lo recalcula `generateReply` con el mensaje nuevo.
+function headSubText() {
+  if (busy) return 'escribiendo…';
+  if (!character || !settings || settings.humanTouch !== true) return '';
+  return moodHeadText(computeMood({ prev: character.mood, characterId: character.id, tags: character.personalityTags }).id);
+}
+
+function syncHeadSub() {
+  if (!els.headSub) return;
+  const text = headSubText();
+  els.headSub.textContent = text;
+  els.headSub.hidden = !text;
+  els.headSub.classList.toggle('chat-head__sub--typing', busy);
+}
+
 function syncSendButton() {
+  syncHeadSub();
   const hasText = els.input.value.trim().length > 0;
   els.send.classList.toggle('chat-send--ready', !busy && hasText);
   els.send.classList.toggle('chat-send--stop', busy);
@@ -961,6 +985,10 @@ async function generate(opts = {}) {
   const startedAt = performance.now();
   let firstChunkAt = 0;
   let replyMeta = null;
+  let moodResult = null; // HUM-001: ánimo usado en este turno (se guarda si cambió)
+  let wasAborted = false;
+  const humanTouch = !!settings && settings.humanTouch === true;
+  streamHoldUntil = humanTouch ? startedAt + typingHoldMs(Math.random, character.mood && character.mood.id) : 0;
 
   try {
     const result = await generateReplyNonEmpty({
@@ -976,6 +1004,8 @@ async function generate(opts = {}) {
       },
     });
     reply.text = (result && result.text) || '';
+    wasAborted = !!(result && result.aborted);
+    moodResult = (result && result.mood) || null;
     // Una respuesta completa (no cortada por el usuario) guarda sus tiempos.
     if (reply.text && firstChunkAt && !(result && result.aborted)) {
       replyMeta = { ttftMs: firstChunkAt - startedAt, totalMs: performance.now() - startedAt, chars: reply.text.length };
@@ -993,6 +1023,12 @@ async function generate(opts = {}) {
   } catch (err) {
     app.toast((err && err.message) || 'No se pudo generar la respuesta.');
   } finally {
+    // HUM-001: si la respuesta llegó antes de la pausa natural, se espera lo que falte (los puntos siguen visibles).
+    const holdLeft = streamHoldUntil - performance.now();
+    if (reply.text && !wasAborted && holdLeft > 0) await sleep(holdLeft);
+    streamHoldUntil = 0;
+    clearTimeout(streamHoldTimer);
+    streamHoldTimer = 0;
     streamPaint.cancel(); // el texto final se pinta al reconstruir la fila (abajo): no hace falta la cola
     const idx = messages.indexOf(reply);
     const meta = replyMeta ? sanitizeMeta(replyMeta) : undefined;
@@ -1011,15 +1047,51 @@ async function generate(opts = {}) {
     } else if (meta) {
       reply.meta = meta;
     }
-    busy = false;
+    // HUM-001: a veces una respuesta larga llega partida en dos mensajes (solo respuestas nuevas, no versiones regeneradas ni cortadas).
+    // Cada mitad sigue siendo un solo párrafo. El chat sigue "ocupado" hasta mostrar la segunda.
+    let tail = null;
+    if (!previous && !wasAborted && humanTouch && reply.text && idx >= 0 && idx === messages.length - 1) {
+      const parts = planSplit(reply.text);
+      if (parts) {
+        reply.text = parts[0];
+        tail = parts[1];
+      }
+    }
+    if (!tail) busy = false;
     abortCtl = null;
     syncSendButton();
     finishStreamRow(idx);
     await persistChat();
+    // HUM-001: el ánimo solo se escribe en el personaje cuando cambió (el registro lleva imágenes).
+    if (moodResult && moodResult.changed && character && reply.text) {
+      saveCharacterMood(character.id, { id: moodResult.id, updated: moodResult.updated })
+        .then((updated) => { if (updated && character && character.id === updated.id) { character = updated; syncHeadSub(); } })
+        .catch(() => {});
+    }
     // MEM-015: después de mostrar y guardar la respuesta, en segundo plano (apagado por defecto; ver
     // Settings.feelingsEnabled). Nunca sobre un mensaje vacío que se acaba de quitar de `messages`.
     if (idx >= 0 && messages[idx] && messages[idx].role === 'char' && messages[idx].text) maybeUpdateFeeling(idx);
+    if (tail) await showContinuation(tail);
   }
+}
+
+// HUM-001: la segunda mitad de una respuesta partida. Se guarda YA (nada se pierde si el usuario sale del chat) y se muestra tras una pausa
+// de "escribiendo…" (la cabecera lo dice mientras tanto). `cont` marca que es continuación de la anterior: al regenerar se vuelven a juntar.
+async function showContinuation(text) {
+  const mine = messages;
+  const myChat = chat;
+  const second = { role: 'char', text, ts: Date.now(), cont: true };
+  messages.push(second);
+  await persistChat();
+  await sleep(typingHoldMs(Math.random, character && character.mood && character.mood.id) + Math.min(1200, text.length * 8));
+  if (messages !== mine || chat !== myChat) return; // se cambió de chat: show() ya reinició el estado y dibujará ambos mensajes
+  const i = messages.indexOf(second);
+  if (i >= 0) {
+    if (!appendMessageRow(i)) renderMessages();
+    scrollToBottom(true);
+  }
+  busy = false;
+  syncSendButton();
 }
 
 // UI-001: al terminar la respuesta solo se rehace SU fila (o se quita, si quedó vacía); el resto de la lista no se toca.
@@ -1047,6 +1119,14 @@ function finishStreamRow(idx) {
 // Repinta la burbuja de la respuesta en curso (la cadencia la marca `streamPaint`). Sin búsquedas en el DOM: usa la referencia.
 function paintStreamingBubble() {
   if (!streamBubble || !streamReply) return;
+  // HUM-001: pausa natural de "escribiendo…": si el servidor contesta tan rápido que parece instantáneo, el texto espera hasta `streamHoldUntil`
+  // (los puntos siguen a la vista). Nunca suma latencia cuando el servidor ya tardó más que eso.
+  const wait = streamHoldUntil - performance.now();
+  if (streamReply.text && wait > 0) {
+    if (!streamBubble.querySelector('.chat-dots')) streamBubble.replaceChildren(buildDots());
+    if (!streamHoldTimer) streamHoldTimer = setTimeout(() => { streamHoldTimer = 0; paintStreamingBubble(); }, wait + 5);
+    return;
+  }
   if (streamReply.text) {
     setBubbleContent(streamBubble, streamReply);
   } else {
@@ -1076,7 +1156,16 @@ function regenerate() {
     // mensaje del usuario) y vuelve como una de las versiones. Lo guardado en disco no cambia hasta terminar.
     messages.pop();
     removeLastRow(); // la respuesta anterior sale de la vista solo mientras se genera
-    generate({ previous: last });
+    let base = last;
+    // HUM-001: una respuesta que llegó partida en dos se regenera como UNA: las dos mitades se juntan y esa es la versión anterior.
+    const before = messages[messages.length - 1];
+    if (last.cont && before && before.role === 'char') {
+      messages.pop();
+      removeLastRow();
+      const { cont: _cont, ...rest } = last;
+      base = { ...before, text: `${before.text} ${rest.text}` };
+    }
+    generate({ previous: base });
   } else {
     generate();
   }

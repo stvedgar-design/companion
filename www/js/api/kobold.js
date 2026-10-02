@@ -5,6 +5,7 @@
 
 import { buildPlainPrompt, buildChatMessages, cleanReply, trimPartial, FORMAT_PREFILL } from './prompt.js';
 import { timeOfDayNote } from './timeofday.js';
+import { buildPresence } from './presence.js';
 import { identityForPrompt } from './identity-synthesis.js';
 import { buildLoreBlocks } from './lorebook.js';
 import { relationshipForPrompt } from './relationship.js';
@@ -346,12 +347,14 @@ function makeGenKey() {
  *   settings: import('./prompt.js').Settings,
  *   signal?: AbortSignal,
  *   onToken?: (chunk: string) => void,
- *   now?: Date
+ *   now?: Date,
+ *   rnd?: () => number
  * }} opts
  * @returns {Promise<{ text: string, truncated: boolean, aborted: boolean, loreUsed: import('./lorebook.js').LoreUsed[] }>}
  *   `loreUsed`: recuerdos que viajaron en ESTE prompt (UI-010), para guardarlos en el mensaje.
+ *   HUM-001: `mood` = `{id, changed, updated}` del ánimo usado en este turno (null con `humanTouch` apagado); quien llama lo guarda si `changed`.
  */
-export async function generateReply({ character, chat, messages, settings, signal, onToken, now = new Date() }) {
+export async function generateReply({ character, chat, messages, settings, signal, onToken, now = new Date(), rnd = Math.random }) {
   const base = normUrl(settings && settings.url);
   if (!base) throw makeError(INVALID_URL_MSG, 'INVALID_URL');
 
@@ -384,7 +387,10 @@ export async function generateReply({ character, chat, messages, settings, signa
   const timeOfDay = timeOfDayNote(now);
   // MEM-019: síntesis de identidad ACEPTADA (la propuesta pendiente nunca viaja); '' = no se envía nada.
   const identity = identityForPrompt(character);
-  const extras = { ...(continuity ? { continuity } : {}), relationship, ...(appearance ? { appearance } : {}), ...(timeOfDay ? { timeOfDay } : {}), ...(identity ? { identity } : {}) };
+  // HUM-001: ánimo + ritmo + observaciones (api/presence.js), una nota corta al FINAL; apagable con `Settings.humanTouch`. `rnd` inyectable para tests.
+  const presence = settings.humanTouch === true ? buildPresence({ character, messages, settings, now, rnd }) : null;
+  const extras = { ...(continuity ? { continuity } : {}), relationship, ...(appearance ? { appearance } : {}), ...(timeOfDay ? { timeOfDay } : {}), ...(identity ? { identity } : {}), ...(presence ? { presence: presence.note } : {}) };
+  const moodInfo = presence ? presence.mood : null;
   const genkey = makeGenKey();
   const mode = settings.mode === 'chat' ? 'chat' : 'plain';
   const maxLen = settings.maxLen || 220;
@@ -477,13 +483,13 @@ export async function generateReply({ character, chat, messages, settings, signa
     const wasAborted = (signal && signal.aborted) || (err && err.name === 'AbortError');
     if (wasAborted) {
       notifyAbort();
-      return { text: cleanReply(fullText, card.name), truncated: false, aborted: true, loreUsed };
+      return { text: cleanReply(fullText, card.name), truncated: false, aborted: true, loreUsed, mood: moodInfo };
     }
     if (err && KNOWN_CODES.has(err.code)) throw err;
     // Fallo de red genérico: fetch rechazado, o el stream se cortó a mitad
     // de camino. Si ya había texto recibido, no se pierde.
     if (fullText) {
-      return { text: trimPartial(cleanReply(fullText, card.name)), truncated: true, aborted: false, loreUsed };
+      return { text: trimPartial(cleanReply(fullText, card.name)), truncated: true, aborted: false, loreUsed, mood: moodInfo };
     }
     throw makeError(STREAM_NETWORK_MSG, 'NETWORK');
   }
@@ -496,7 +502,7 @@ export async function generateReply({ character, chat, messages, settings, signa
     text = trimPartial(text);
     truncated = true;
   }
-  return { text, truncated, aborted: false, loreUsed };
+  return { text, truncated, aborted: false, loreUsed, mood: moodInfo };
 }
 
 /**

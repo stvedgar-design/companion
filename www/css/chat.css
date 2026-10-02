@@ -15,9 +15,10 @@
   flex: 1;
   min-width: 0;
   display: flex;
+  flex-direction: column; /* HUM-001: el nombre y, debajo, el ánimo ("escribiendo…" mientras responde) */
   align-items: center;
   justify-content: center;
-  gap: 2px;
+  gap: 0;
   min-height: 44px;
   padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-md);
@@ -27,11 +28,27 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.chat-head__name::after {
+.chat-head__nm {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
+}
+.chat-head__nm::after {
   content: '›';
   color: var(--color-muted);
   font-weight: 400;
+  margin-left: 2px;
 }
+/* HUM-001: ánimo del personaje bajo el nombre, discreto; "escribiendo…" va un poco más vivo. */
+.chat-head__sub {
+  font-size: var(--fs-xs, 12px);
+  font-weight: 400;
+  line-height: 1.1;
+  color: var(--color-muted);
+}
+.chat-head__sub[hidden] { display: none; }
+.chat-head__sub--typing { color: var(--color-accent-2, var(--color-muted)); }
 .chat-head__name:active { background: var(--color-surface-2); }
 .chat-head__name:focus-visible { outline: 2px solid var(--color-accent-2); outline-offset: 2px; }
 

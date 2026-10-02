@@ -273,9 +273,9 @@ export function planForContext(ctx, opts = {}) {
   const scenario = (chat && chat.scenario) || '';
   const relationship = relationshipForPrompt(character);
   const appearance = appearanceOf(character);
-  const windowStart = historyStartIndex(character.card, messages, settings, scenario, preview.alwaysBlock, endChars, 0, relationship, appearance, true, identityForPrompt(character));
+  const windowStart = historyStartIndex(character.card, messages, settings, scenario, preview.alwaysBlock, endChars, 0, relationship, appearance, true, identityForPrompt(character), !!settings && settings.humanTouch === true);
   const look = CONTINUITY_LOOKAHEAD_CHARS * (opts.manual ? CONTINUITY_MANUAL_LOOKAHEAD_FACTOR : 1);
-  const triggerStart = historyStartIndex(character.card, messages, settings, scenario, preview.alwaysBlock, endChars, look, relationship, appearance, true, identityForPrompt(character));
+  const triggerStart = historyStartIndex(character.card, messages, settings, scenario, preview.alwaysBlock, endChars, look, relationship, appearance, true, identityForPrompt(character), !!settings && settings.humanTouch === true);
   return planContinuityUpdate({ messages, coveredUntil: summary.coveredUntil, windowStart, triggerStart });
 }
 

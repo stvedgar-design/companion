@@ -13,6 +13,7 @@ import { sanitizeMailbox, withInteraction, MAILBOX_TOUCH_THROTTLE_MS } from './a
 import { sanitizePersonalityTags } from './personality-tags.js';
 import { sanitizeGender } from './pronoun-substitution.js';
 import { sanitizeFeeling } from './api/feeling.js';
+import { sanitizeMood } from './api/presence.js';
 
 /**
  * @typedef {Object} Card  Card normalizada: todos los campos siempre presentes.
@@ -79,6 +80,8 @@ import { sanitizeFeeling } from './api/feeling.js';
  * @property {{ lastInteractionAt: number, lastNoteFor: number, attemptedAt: number, notes: object[] }} mailbox  // PROACT-001: buzón del personaje. `lastInteractionAt` =
  *   última vez que el usuario abrió su chat/episodios/ficha (la actividad de mensajes se lee de las fechas de sus chats); `notes` = notas que el personaje dejó
  *   (`new|read|answered|dismissed`, tope 10), escritas SOLO desde su identidad y recuerdos, nunca desde un episodio; vacío por defecto. Ver api/mailbox.js
+ * @property {{ id: string, updated: number }} mood  // HUM-001: ánimo persistente del personaje (`calm|playful|cozy|tired|wistful|lively`; '' = sin ánimo guardado, se calcula solo por la hora).
+ *   Se escribe SOLO cuando cambia (el registro lleva imágenes). Ver api/presence.js
  * @property {string} chatBackground           // data URL JPEG del fondo de SUS chats, '' si no hay
  * @property {number} chatBackgroundBrightness // 20 a 180 (%), 100 = sin cambios
  * @property {boolean} chatBackgroundFade      // fundido a negro en la mitad inferior de la imagen
@@ -158,6 +161,7 @@ import { sanitizeFeeling } from './api/feeling.js';
  * @property {boolean} lorebookAuto // MEM-002: extracción automática de memoria cada ~20 mensajes; false por defecto (cada extracción encarece la SIGUIENTE respuesta ~20 s)
  * @property {boolean} continuityAuto // MEM-007: resumen de continuidad automático del chat (ver api/continuity.js)
  * @property {boolean} varietyAssist // FMT-004: nota de variedad al final del prompt cuando el personaje se repite
+ * @property {boolean} humanTouch // HUM-001: ánimo persistente, largo/ritmo variable, observaciones, pausa de "escribiendo" y mensajes partidos (api/presence.js); true por defecto
  * @property {boolean} personalityAdapts // CCC-006: la cabecera del prompt suma una línea que trata la personalidad como punto de partida que evoluciona con la escena (api/prompt.js); true por defecto
  * @property {boolean} formatAssist // FMT-002: la respuesta del personaje arranca ya dentro de una acción (`*`); true por defecto
  * @property {boolean} splitTypography // UI-023 (experimental): en los mensajes del personaje con acciones en cursiva, el diálogo usa una tipografía sans y la acción la del skin; false por defecto
@@ -188,6 +192,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   continuityAuto: false,
   varietyAssist: false,
   personalityAdapts: true,
+  humanTouch: true,
   formatAssist: true,
   splitTypography: false,
   messageFontSize: 17,
@@ -273,6 +278,7 @@ function sanitizeSettings(raw) {
     continuityAuto: typeof merged.continuityAuto === 'boolean' ? merged.continuityAuto : DEFAULT_SETTINGS.continuityAuto,
     varietyAssist: merged.varietyAssist === true,
     personalityAdapts: merged.personalityAdapts !== false,
+    humanTouch: merged.humanTouch !== false,
     formatAssist: merged.formatAssist !== false,
     splitTypography: merged.splitTypography === true,
     messageFontSize: migrateMessageFontSize(merged.messageFontSize),
@@ -449,6 +455,7 @@ function sanitizeCharacterExtras(raw) {
     relationship: sanitizeRelationship(raw.relationship),
     identity: sanitizeIdentity(raw.identity),
     mailbox: sanitizeMailbox(raw.mailbox),
+    mood: sanitizeMood(raw.mood),
     ...sanitizeCharacterBackground(raw),
     formatStyle,
     personalityTags,
@@ -711,6 +718,20 @@ export function createState(backend) {
     const updated = { ...character, mailbox };
     await backend.put('characters', characterId, updated);
     return updated;
+  }
+
+  // HUM-001: guarda el ánimo del personaje. Igual que el buzón: se lee el registro recién escrito y solo se cambia `mood`, así no pisa un guardado
+  // de memoria o de apariencia hecho en paralelo. El que llama solo lo invoca cuando el ánimo CAMBIÓ (el registro lleva imágenes).
+  async function saveCharacterMood(characterId, mood) {
+    return withChatLock('char:' + characterId, async () => {
+      const character = await getCharacter(characterId);
+      if (!character) return null;
+      const next = sanitizeMood(mood);
+      if (next.id === character.mood.id) return character;
+      const updated = { ...character, mood: next };
+      await backend.put('characters', characterId, updated);
+      return updated;
+    });
   }
 
   // PROACT-001: «el usuario estuvo con este personaje» (abrir su chat, episodios o ficha). Escribe el registro como mucho una vez cada
@@ -1025,6 +1046,7 @@ export function createState(backend) {
     saveCharacterRelationship,
     saveCharacterIdentity,
     saveCharacterMailbox,
+    saveCharacterMood,
     touchCharacterInteraction,
     deleteCharacter,
     listChats,
@@ -1165,6 +1187,7 @@ export const saveCharacterAppearance = (...args) => getDefaultInstance().saveCha
 export const saveCharacterRelationship = (...args) => getDefaultInstance().saveCharacterRelationship(...args);
 export const saveCharacterIdentity = (...args) => getDefaultInstance().saveCharacterIdentity(...args);
 export const saveCharacterMailbox = (...args) => getDefaultInstance().saveCharacterMailbox(...args);
+export const saveCharacterMood = (...args) => getDefaultInstance().saveCharacterMood(...args);
 export const touchCharacterInteraction = (...args) => getDefaultInstance().touchCharacterInteraction(...args);
 export const deleteCharacter = (...args) => getDefaultInstance().deleteCharacter(...args);
 export const listChats = (...args) => getDefaultInstance().listChats(...args);
