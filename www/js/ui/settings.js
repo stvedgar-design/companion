@@ -123,6 +123,13 @@ export function openSettings(app) {
       <div class="field__hint">La foto del personaje que aparece al lado de sus mensajes. Crece o se achica junto con el tamaño del texto.</div>
     </div>
     <div class="field">
+      <label class="field__label" style="display:flex;align-items:center;gap:var(--space-2, 8px)">
+        <input type="checkbox" id="settings-stream" style="accent-color:var(--color-accent, #8b1fe0)">
+        <span>Ver la respuesta mientras se escribe</span>
+      </label>
+      <div class="field__hint">Encendido: el texto va apareciendo poco a poco. Apagado: ves los puntos de "escribiendo…" y la respuesta llega completa de una vez, como en una app de mensajería. El botón de detener sigue funcionando y no cambia la velocidad.</div>
+    </div>
+    <div class="field">
       <label class="field__label">Aspecto de la app</label>
       <div class="settings-row">
         <button class="btn btn--ghost btn--sm" id="settings-appearance" type="button">Modo claro/oscuro y tipografía</button>
@@ -183,6 +190,7 @@ export function openSettings(app) {
     humanTouch: q('#settings-human-touch'),
     personalityAdapts: q('#settings-personality-adapts'),
     format: q('#settings-format'),
+    stream: q('#settings-stream'),
     feelings: q('#settings-feelings'),
     pinBody: q('#settings-pin-body'),
     fontSizeBtns: Array.from(node.querySelectorAll('#settings-fontsize [data-size-value]')),
@@ -208,6 +216,7 @@ export function openSettings(app) {
     els.humanTouch.checked = settings.humanTouch !== false;
     els.personalityAdapts.checked = settings.personalityAdapts !== false;
     els.format.checked = settings.formatAssist !== false;
+    els.stream.checked = settings.streamReplies !== false;
     els.feelings.checked = settings.feelingsEnabled === true;
     renderPinBody(settings);
     renderFontSize(settings.messageFontSize);
@@ -325,6 +334,10 @@ export function openSettings(app) {
   els.personalityAdapts.addEventListener('change', () => {
     saveSettings({ personalityAdapts: els.personalityAdapts.checked });
     logEvent(TEL_EVENTS.EXPERIMENTAL_SETTING_CHANGED, { setting: 'personalityAdapts', enabled: els.personalityAdapts.checked });
+  });
+
+  els.stream.addEventListener('change', () => {
+    saveSettings({ streamReplies: els.stream.checked });
   });
 
   els.format.addEventListener('change', () => {

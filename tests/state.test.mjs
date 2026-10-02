@@ -64,6 +64,7 @@ test('getSettings devuelve valores por defecto cuando no hay nada guardado', asy
     varietyAssist: false,
     personalityAdapts: true, // CCC-006
     humanTouch: true, // HUM-001
+    streamReplies: true,
     formatAssist: true,
     splitTypography: false, // UI-023
     messageFontSize: 17, // UI-026
@@ -1240,4 +1241,15 @@ test('CCC-006: personalityAdapts es true por defecto, solo un false estricto lo 
   const old = await createState(backend).getSettings();
   assert.equal(old.personalityAdapts, true);
   assert.equal(old.user, 'Ana');
+});
+
+test('streamReplies es true por defecto, solo un false estricto lo apaga y ajustes anteriores cargan con true', async () => {
+  const state = createState(createMemoryBackend());
+  assert.equal((await state.getSettings()).streamReplies, true);
+  assert.equal((await state.saveSettings({ streamReplies: 0 })).streamReplies, true);
+  assert.equal((await state.saveSettings({ streamReplies: false })).streamReplies, false);
+  assert.equal((await state.saveSettings({ streamReplies: true })).streamReplies, true);
+  const backend = createMemoryBackend();
+  await backend.put('settings', 'main', { url: 'http://x', user: 'Ana' });
+  assert.equal((await createState(backend).getSettings()).streamReplies, true);
 });

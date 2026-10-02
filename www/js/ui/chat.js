@@ -1122,6 +1122,11 @@ function paintStreamingBubble() {
   // HUM-001: pausa natural de "escribiendo…": si el servidor contesta tan rápido que parece instantáneo, el texto espera hasta `streamHoldUntil`
   // (los puntos siguen a la vista). Nunca suma latencia cuando el servidor ya tardó más que eso.
   const wait = streamHoldUntil - performance.now();
+  // Con "Ver la respuesta mientras se escribe" apagado el texto no se pinta hasta que termina: se ven los puntos y la fila se rehace completa al final.
+  if (streamReply.text && settings && settings.streamReplies === false) {
+    if (!streamBubble.querySelector('.chat-dots')) streamBubble.replaceChildren(buildDots());
+    return;
+  }
   if (streamReply.text && wait > 0) {
     if (!streamBubble.querySelector('.chat-dots')) streamBubble.replaceChildren(buildDots());
     if (!streamHoldTimer) streamHoldTimer = setTimeout(() => { streamHoldTimer = 0; paintStreamingBubble(); }, wait + 5);

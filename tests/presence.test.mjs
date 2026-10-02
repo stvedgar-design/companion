@@ -310,3 +310,13 @@ test('HUM-001: el chat usa la pausa, la cabecera con ánimo/"escribiendo…" y j
   assert.match(src, /last\.cont && before/);
   assert.match(src, /streamHoldUntil/);
 });
+
+test('streamReplies apagado: el chat no pinta el texto parcial (solo puntos) y el ajuste está en Apariencia, junto a los tamaños', () => {
+  const chat = readFileSync(new URL('../www/js/ui/chat.js', import.meta.url), 'utf8');
+  assert.match(chat, /settings\.streamReplies === false/);
+  const ui = readFileSync(new URL('../www/js/ui/settings.js', import.meta.url), 'utf8');
+  const iAvatar = ui.indexOf('Tamaño de la foto junto a los mensajes');
+  const iStream = ui.indexOf('Ver la respuesta mientras se escribe');
+  const iAspect = ui.indexOf('Aspecto de la app');
+  assert.ok(iAvatar > 0 && iAvatar < iStream && iStream < iAspect, 'justo después del tamaño de la foto, antes de "Aspecto de la app"');
+});

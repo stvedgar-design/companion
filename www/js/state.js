@@ -162,6 +162,7 @@ import { sanitizeMood } from './api/presence.js';
  * @property {boolean} continuityAuto // MEM-007: resumen de continuidad automático del chat (ver api/continuity.js)
  * @property {boolean} varietyAssist // FMT-004: nota de variedad al final del prompt cuando el personaje se repite
  * @property {boolean} humanTouch // HUM-001: ánimo persistente, largo/ritmo variable, observaciones, pausa de "escribiendo" y mensajes partidos (api/presence.js); true por defecto
+ * @property {boolean} streamReplies // la respuesta se ve aparecer mientras se escribe (true, por defecto) o llega completa de una vez (false); solo cambia lo que se pinta, no la petición al servidor
  * @property {boolean} personalityAdapts // CCC-006: la cabecera del prompt suma una línea que trata la personalidad como punto de partida que evoluciona con la escena (api/prompt.js); true por defecto
  * @property {boolean} formatAssist // FMT-002: la respuesta del personaje arranca ya dentro de una acción (`*`); true por defecto
  * @property {boolean} splitTypography // UI-023 (experimental): en los mensajes del personaje con acciones en cursiva, el diálogo usa una tipografía sans y la acción la del skin; false por defecto
@@ -193,6 +194,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   varietyAssist: false,
   personalityAdapts: true,
   humanTouch: true,
+  streamReplies: true,
   formatAssist: true,
   splitTypography: false,
   messageFontSize: 17,
@@ -279,6 +281,7 @@ function sanitizeSettings(raw) {
     varietyAssist: merged.varietyAssist === true,
     personalityAdapts: merged.personalityAdapts !== false,
     humanTouch: merged.humanTouch !== false,
+    streamReplies: merged.streamReplies !== false,
     formatAssist: merged.formatAssist !== false,
     splitTypography: merged.splitTypography === true,
     messageFontSize: migrateMessageFontSize(merged.messageFontSize),
