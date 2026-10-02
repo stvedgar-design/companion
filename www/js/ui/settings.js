@@ -5,12 +5,12 @@
 // UI-011: los deslizadores de longitud (Settings.maxLen) y creatividad (Settings.temp) se quitaron
 // de la pantalla; los campos siguen en state.js y api/kobold.js los sigue enviando igual.
 
-import { getSettings, saveSettings, exportBackup, MESSAGE_FONT_SIZES } from '../state.js';
+import { getSettings, saveSettings, exportBackup, MESSAGE_FONT_SIZES, CHAT_AVATAR_SIZES } from '../state.js';
 import { connect } from '../api/kobold.js';
 import { pickFiles, saveBlob } from '../platform.js';
 import { createPinHash, verifyPin } from '../lock.js';
 import { openAppearance } from './appearance.js';
-import { applyMessageFontSize } from './shell.js';
+import { applyMessageFontSize, applyChatAvatarSize } from './shell.js';
 import { APP_VERSION } from '../version.js';
 import { runFluencyTest, FLUENCY_SECONDS } from './fluency.js';
 import { openDiagnostics } from './diagnostics.js';
@@ -18,6 +18,10 @@ import { logEvent, TEL_EVENTS } from '../telemetry.js';
 import { openUsageReport } from './usage-report.js';
 import { startImport } from './backup-import.js';
 import { getPersistenceResult, describePersistence } from '../persist.js';
+
+// UI-038: los dos controles de tamaño (texto y foto junto a los mensajes) usan las mismas tres etiquetas, en el orden de
+// MESSAGE_FONT_SIZES (state.js: 15, 17, 19) y CHAT_AVATAR_SIZES (small, medium, large).
+const SIZE_LABELS = ['Pequeño', 'Mediano', 'Grande'];
 
 export function openSettings(app) {
   const node = document.createElement('div');
@@ -91,9 +95,16 @@ export function openSettings(app) {
     <div class="field">
       <div class="field__label">Tamaño del texto de los mensajes</div>
       <div class="appearance-skins" id="settings-fontsize">
-        ${MESSAGE_FONT_SIZES.map((px) => `<button class="appearance-skin" type="button" data-size-value="${px}">${px}</button>`).join('')}
+        ${MESSAGE_FONT_SIZES.map((px, i) => `<button class="appearance-skin" type="button" data-size-value="${px}">${SIZE_LABELS[i]}</button>`).join('')}
       </div>
       <div class="field__hint">Solo cambia el tamaño de la letra; el ancho de las burbujas no cambia.</div>
+    </div>
+    <div class="field">
+      <div class="field__label">Tamaño de la foto junto a los mensajes</div>
+      <div class="appearance-skins" id="settings-avatarsize">
+        ${CHAT_AVATAR_SIZES.map((size, i) => `<button class="appearance-skin" type="button" data-avatar-size="${size}">${SIZE_LABELS[i]}</button>`).join('')}
+      </div>
+      <div class="field__hint">La foto del personaje que aparece al lado de sus mensajes. Crece o se achica junto con el tamaño del texto.</div>
     </div>
     <div class="field">
       <label class="field__label">Aspecto de la app</label>
@@ -157,6 +168,7 @@ export function openSettings(app) {
     feelings: q('#settings-feelings'),
     pinBody: q('#settings-pin-body'),
     fontSizeBtns: Array.from(node.querySelectorAll('#settings-fontsize [data-size-value]')),
+    avatarSizeBtns: Array.from(node.querySelectorAll('#settings-avatarsize [data-avatar-size]')),
     appearanceBtn: q('#settings-appearance'),
     exportBtn: q('#settings-export'),
     importBtn: q('#settings-import'),
@@ -179,6 +191,7 @@ export function openSettings(app) {
     els.feelings.checked = settings.feelingsEnabled === true;
     renderPinBody(settings);
     renderFontSize(settings.messageFontSize);
+    renderAvatarSize(settings.chatAvatarSize);
   });
 
   function renderFontSize(px) {
@@ -193,6 +206,21 @@ export function openSettings(app) {
       renderFontSize(messageFontSize); // vista previa inmediata, antes de que termine de guardar
       applyMessageFontSize(messageFontSize);
       await saveSettings({ messageFontSize });
+    });
+  });
+
+  function renderAvatarSize(size) {
+    els.avatarSizeBtns.forEach((btn) => {
+      btn.classList.toggle('appearance-skin--active', btn.dataset.avatarSize === size);
+    });
+  }
+
+  els.avatarSizeBtns.forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const chatAvatarSize = btn.dataset.avatarSize;
+      renderAvatarSize(chatAvatarSize); // vista previa inmediata, antes de que termine de guardar
+      applyChatAvatarSize(chatAvatarSize);
+      await saveSettings({ chatAvatarSize });
     });
   });
 

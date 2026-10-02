@@ -1,7 +1,7 @@
 // tests/state.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createState, sanitizeLoreUsed, sanitizeContinuity, MESSAGE_FONT_SIZES } from '../www/js/state.js';
+import { createState, sanitizeLoreUsed, sanitizeContinuity, MESSAGE_FONT_SIZES, CHAT_AVATAR_SIZES, migrateMessageFontSize } from '../www/js/state.js';
 import { cleanStoredLorebook } from '../www/js/api/lorebook.js';
 
 // ---------- backend en memoria, implementa el mismo contrato que el backend de IndexedDB ----------
@@ -65,6 +65,7 @@ test('getSettings devuelve valores por defecto cuando no hay nada guardado', asy
     formatAssist: true,
     splitTypography: false, // UI-023
     messageFontSize: 17, // UI-026
+    chatAvatarSize: 'medium', // UI-038
     feelingsEnabled: false, // MEM-015
   });
 });
@@ -1049,9 +1050,10 @@ test('UI-023: splitTypography es false por defecto, solo acepta true y las copia
 
 // ---------- UI-026: Settings.messageFontSize ----------
 
-test('UI-026: messageFontSize es 17 por defecto, solo acepta 15-19 y las copias previas (o valores raros) caen en 17', async () => {
+test('UI-026/UI-038: messageFontSize es 17 por defecto, ofrece exactamente 3 tamaños (15/17/19) y las copias previas (o valores raros) caen en 17', async () => {
   const state = createState(createMemoryBackend());
   assert.equal((await state.getSettings()).messageFontSize, 17);
+  assert.deepEqual([...MESSAGE_FONT_SIZES], [15, 17, 19]);
   for (const px of MESSAGE_FONT_SIZES) {
     assert.equal((await state.saveSettings({ messageFontSize: px })).messageFontSize, px);
   }
@@ -1061,6 +1063,32 @@ test('UI-026: messageFontSize es 17 por defecto, solo acepta 15-19 y las copias 
   const backend = createMemoryBackend();
   await backend.put('settings', 'main', { url: 'http://x:5001', user: 'Sam' }); // copia de antes de UI-026
   assert.equal((await createState(backend).getSettings()).messageFontSize, 17);
+});
+
+test('UI-038: los tamaños de texto guardados con las 5 opciones de UI-026 migran al más cercano, conservando la dirección', async () => {
+  assert.deepEqual([15, 16, 17, 18, 19].map(migrateMessageFontSize), [15, 15, 17, 19, 19]);
+  const state = createState(createMemoryBackend());
+  for (const [before, after] of [[15, 15], [16, 15], [17, 17], [18, 19], [19, 19]]) {
+    assert.equal((await state.saveSettings({ messageFontSize: before })).messageFontSize, after, `${before} → ${after}`);
+    assert.equal((await state.getSettings()).messageFontSize, after);
+  }
+  // una copia (o ajuste guardado) de antes de UI-038, con el 16 o el 18, se lee ya migrada y sin error
+  const backend = createMemoryBackend();
+  await backend.put('settings', 'main', { url: 'http://x:5001', user: 'Sam', messageFontSize: 18 });
+  assert.equal((await createState(backend).getSettings()).messageFontSize, 19);
+});
+
+test('UI-038: chatAvatarSize es "medium" por defecto, solo acepta small/medium/large y una copia anterior carga "medium"', async () => {
+  const state = createState(createMemoryBackend());
+  assert.equal((await state.getSettings()).chatAvatarSize, 'medium');
+  assert.deepEqual([...CHAT_AVATAR_SIZES], ['small', 'medium', 'large']);
+  for (const v of CHAT_AVATAR_SIZES) assert.equal((await state.saveSettings({ chatAvatarSize: v })).chatAvatarSize, v);
+  for (const bad of ['huge', 'Large', 34, null, undefined, '']) {
+    assert.equal((await state.saveSettings({ chatAvatarSize: bad })).chatAvatarSize, 'medium', String(bad));
+  }
+  const backend = createMemoryBackend();
+  await backend.put('settings', 'main', { url: 'http://x:5001', user: 'Sam' }); // copia de antes de UI-038
+  assert.equal((await createState(backend).getSettings()).chatAvatarSize, 'medium');
 });
 
 // ---------- MEM-007: resumen de continuidad por chat ----------

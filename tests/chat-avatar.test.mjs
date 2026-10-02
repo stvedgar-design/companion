@@ -39,6 +39,29 @@ test('UI-028/UI-031: cambiar la foto o editar el personaje (ambos ahora solo des
 });
 
 test('UI-028: el ancho de la burbuja del personaje se compensa EXACTAMENTE con el tamaño del avatar + el hueco (no un número suelto)', () => {
-  assert.match(chatCss, /max-width:\s*calc\(88% \+ var\(--char-avatar-size\) \+ var\(--space-2\)\)/);
-  assert.match(chatCss, /--char-avatar-size:\s*34px/);
+  // UI-038: el tamaño ya no es fijo (34px) sino veces el texto, y la fila no puede pasar del 100 % del chat
+  assert.match(chatCss, /max-width:\s*min\(100%, calc\(88% \+ var\(--char-avatar-size\) \+ var\(--space-2\)\)\)/);
+  assert.match(chatCss, /--char-avatar-size:\s*calc\(var\(--msg-font-size, 17px\) \* var\(--char-avatar-k\)\)/);
+});
+
+test('UI-038: Ajustes ofrece 3 opciones nombradas para el texto y 3 para la foto, juntas en "Apariencia"', () => {
+  const settings = readFileSync(new URL('../www/js/ui/settings.js', import.meta.url), 'utf8');
+  assert.match(settings, /const SIZE_LABELS = \['Pequeño', 'Mediano', 'Grande'\]/);
+  const iText = settings.indexOf('id="settings-fontsize"');
+  const iAvatar = settings.indexOf('id="settings-avatarsize"');
+  const iAppearance = settings.indexOf('<div class="menu-group" aria-hidden="true">Apariencia</div>');
+  const iNext = settings.indexOf('<div class="menu-group" aria-hidden="true">Datos</div>');
+  assert.ok(iAppearance < iText && iText < iAvatar && iAvatar < iNext, 'los dos controles están seguidos, dentro de la sección Apariencia');
+  assert.match(settings, /Tamaño del texto de los mensajes/);
+  assert.match(settings, /Tamaño de la foto junto a los mensajes/);
+  const shell = readFileSync(new URL('../www/js/ui/shell.js', import.meta.url), 'utf8');
+  assert.match(shell, /export function applyChatAvatarSize/);
+  const main = readFileSync(new URL('../www/js/main.js', import.meta.url), 'utf8');
+  assert.match(main, /shell\.applyChatAvatarSize\(settings\.chatAvatarSize\)/, 'se aplica al arrancar');
+});
+
+test('UI-038: chat.css define los tres tamaños de foto como veces el texto (no píxeles sueltos)', () => {
+  assert.match(chatCss, /--char-avatar-k:\s*2\.6;/);
+  assert.match(chatCss, /:root\[data-chat-avatar="small"\]\s*\{\s*--char-avatar-k:\s*2;/);
+  assert.match(chatCss, /:root\[data-chat-avatar="large"\]\s*\{\s*--char-avatar-k:\s*3\.3;/);
 });

@@ -159,7 +159,8 @@ import { sanitizeFeeling } from './api/feeling.js';
  * @property {boolean} varietyAssist // FMT-004: nota de variedad al final del prompt cuando el personaje se repite
  * @property {boolean} formatAssist // FMT-002: la respuesta del personaje arranca ya dentro de una acción (`*`); true por defecto
  * @property {boolean} splitTypography // UI-023 (experimental): en los mensajes del personaje con acciones en cursiva, el diálogo usa una tipografía sans y la acción la del skin; false por defecto
- * @property {15|16|17|18|19} messageFontSize // UI-026: tamaño del texto de los mensajes del chat (px); 17 por defecto. El ancho de las burbujas NO depende de este valor.
+ * @property {15|17|19} messageFontSize // UI-026/UI-038: tamaño del texto de los mensajes del chat (px): Pequeño 15, Mediano 17 (por defecto), Grande 19. Un valor guardado de antes de UI-038 (15-19) migra al más cercano, ver `migrateMessageFontSize`. El ancho de las burbujas NO depende de este valor.
+ * @property {'small'|'medium'|'large'} chatAvatarSize // UI-038: tamaño de la foto del personaje junto a sus burbujas (ajuste global): Pequeño = 2×, Mediano = 2,6× (por defecto) y Grande = 3,3× el tamaño del texto (34/44/56 px con el texto Mediano)
  * @property {boolean} feelingsEnabled // MEM-015: el personaje elige una palabra de sentimiento (api/feeling.js) tras una respuesta con 3+ recuerdos; false por defecto (Paso 0 no encontró motivo para encenderlo solo: ver docs/HISTORIAL.md, "MEM-015")
  */
 
@@ -187,11 +188,31 @@ const DEFAULT_SETTINGS = Object.freeze({
   formatAssist: true,
   splitTypography: false,
   messageFontSize: 17,
+  chatAvatarSize: 'medium',
   feelingsEnabled: false,
 });
 
-// UI-026: pasos permitidos del tamaño de texto de los mensajes.
-export const MESSAGE_FONT_SIZES = Object.freeze([15, 16, 17, 18, 19]);
+// UI-026/UI-038: tamaños permitidos del texto de los mensajes (Pequeño, Mediano, Grande). UI-026 ofrecía cinco
+// (15-19); UI-038 los dejó en tres sin cambiar el campo ni sus valores, así que los guardados 15, 17 y 19 siguen valiendo.
+export const MESSAGE_FONT_SIZES = Object.freeze([15, 17, 19]);
+const LEGACY_MESSAGE_FONT_SIZES = Object.freeze([15, 16, 17, 18, 19]);
+
+/**
+ * UI-038: lleva un tamaño de texto guardado con las cinco opciones de UI-026 a una de las tres nuevas, conservando la
+ * DIRECCIÓN que el usuario eligió (16 era "algo más chico que lo normal" → Pequeño; 18 "algo más grande" → Grande).
+ * Cualquier otro valor (fuera de 15-19, texto, null…) cae en el Mediano de siempre, como antes. Pura.
+ * @param {unknown} px
+ * @returns {15|17|19}
+ */
+export function migrateMessageFontSize(px) {
+  if (!LEGACY_MESSAGE_FONT_SIZES.includes(px)) return DEFAULT_SETTINGS.messageFontSize;
+  if (px <= 16) return 15;
+  if (px >= 18) return 19;
+  return 17;
+}
+
+// UI-038: tamaños de la foto del personaje junto a las burbujas.
+export const CHAT_AVATAR_SIZES = Object.freeze(['small', 'medium', 'large']);
 
 // Por defecto de los campos de fondo de chat en Character (ver
 // sanitizeCharacterExtras): mismos valores que tenía Settings antes de que
@@ -246,7 +267,8 @@ function sanitizeSettings(raw) {
     varietyAssist: merged.varietyAssist === true,
     formatAssist: merged.formatAssist !== false,
     splitTypography: merged.splitTypography === true,
-    messageFontSize: MESSAGE_FONT_SIZES.includes(merged.messageFontSize) ? merged.messageFontSize : DEFAULT_SETTINGS.messageFontSize,
+    messageFontSize: migrateMessageFontSize(merged.messageFontSize),
+    chatAvatarSize: CHAT_AVATAR_SIZES.includes(merged.chatAvatarSize) ? merged.chatAvatarSize : DEFAULT_SETTINGS.chatAvatarSize,
     feelingsEnabled: merged.feelingsEnabled === true,
   };
 }

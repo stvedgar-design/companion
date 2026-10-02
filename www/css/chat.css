@@ -88,13 +88,23 @@
    max-width crece EXACTAMENTE lo que ocupan el avatar y el hueco entre avatar y burbuja, así la burbuja en
    sí conserva el mismo ancho útil que antes (88 % del contenedor) en vez de perder ese espacio — el hueco
    que se "gasta" es el margen vacío que antes quedaba sin usar a la derecha, nunca el de la burbuja. */
-:root { --char-avatar-size: 34px; }
+/* UI-038: el tamaño de la foto se mide en veces el tamaño del texto (--msg-font-size), así escala junto con él:
+   Pequeño 2× (34 px con el texto Mediano, el tamaño de antes), Mediano 2,6× (44 px) y Grande 3,3× (56 px). La
+   elección (Ajustes → Apariencia) es global y viaja en `<html data-chat-avatar>` (shell.js). */
+:root {
+  --char-avatar-k: 2.6;
+  --char-avatar-size: calc(var(--msg-font-size, 17px) * var(--char-avatar-k));
+}
+:root[data-chat-avatar="small"] { --char-avatar-k: 2; }
+:root[data-chat-avatar="large"] { --char-avatar-k: 3.3; }
 .chat-row--char {
   align-self: flex-start;
   align-items: flex-start;
   flex-direction: row;
   gap: var(--space-2);
-  max-width: calc(88% + var(--char-avatar-size) + var(--space-2));
+  /* min(100%, …): con la foto Grande en una pantalla angosta, la fila nunca se sale del chat (la burbuja cede
+     unos píxeles de ancho en vez de desbordar). */
+  max-width: min(100%, calc(88% + var(--char-avatar-size) + var(--space-2)));
 }
 .chat-row__avatar,
 .chat-row__avatarspace {
@@ -102,7 +112,7 @@
   width: var(--char-avatar-size);
   height: var(--char-avatar-size);
 }
-.chat-row__avatar { font-size: 13px; }
+.chat-row__avatar { font-size: calc(var(--char-avatar-size) * 0.38); } /* la inicial, cuando el personaje no tiene foto */
 .chat-row__body {
   display: flex;
   flex-direction: column;

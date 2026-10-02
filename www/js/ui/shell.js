@@ -87,11 +87,17 @@ export function applySplitTypography(on) {
   else delete document.documentElement.dataset.splitFont;
 }
 
-// UI-026: tamaño del texto de los mensajes (15-19px; 17 por defecto). Solo una variable CSS que
+// UI-026/UI-038: tamaño del texto de los mensajes (15, 17 o 19px; 17 por defecto). Solo una variable CSS que
 // lee `.chat-bubble` (chat.css) — el ancho de las burbujas no depende de ella (ver tokens.css).
 export function applyMessageFontSize(px) {
   const n = Number(px);
   document.documentElement.style.setProperty('--msg-font-size', `${Number.isFinite(n) ? n : 17}px`);
+}
+
+// UI-038: tamaño de la foto del personaje junto a sus burbujas ('small'|'medium'|'large'). Solo un atributo en <html>;
+// chat.css convierte cada valor en veces el tamaño del texto (--char-avatar-k). Sin valor válido, 'medium'.
+export function applyChatAvatarSize(size) {
+  document.documentElement.dataset.chatAvatar = ['small', 'medium', 'large'].includes(size) ? size : 'medium';
 }
 
 // Claro/oscuro, aplica sobre cualquier skin (ver themes.css).
