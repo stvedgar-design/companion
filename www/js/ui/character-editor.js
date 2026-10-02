@@ -1,7 +1,7 @@
 // www/js/ui/character-editor.js
 // CCC-001: creador y editor de personajes propios. EDITAR (`opts.character` presente) sigue siendo una
 // sola pantalla con todos los campos a la vez, sin cambios. CREAR (CCC-004) es un asistente guiado en
-// pasos, con una pantalla de arquetipos (plantillas) para no empezar de cero. Los dos flujos comparten
+// pasos, con una pantalla de personalidades de partida (plantillas) para no empezar de cero. Los dos flujos comparten
 // EXACTAMENTE los mismos campos, guías, botones "Ejemplo" y función de guardado (`buildCharacterCard`):
 // el wizard solo reorganiza su presentación (ver `buildFormFields()` más abajo), no reescribe el
 // formulario (docs/CONTRACT-HANDOFF.md, sección CCC-001: "no un pipeline de datos paralelo").
@@ -192,7 +192,7 @@ function buildFormFields(app, { editing, source }) {
   // ---------- personalidad (pills o texto libre) ----------
   const personalityWrap = el('div', 'field');
   personalityWrap.appendChild(el('div', 'field__label', 'Personalidad'));
-  personalityWrap.appendChild(el('div', 'field__hint', 'Cómo es: unas pocas palabras bastan. Elige etiquetas o descríbelo con tus propias palabras.'));
+  personalityWrap.appendChild(el('div', 'field__hint', 'Cómo es y cómo cambia. Puedes elegir una personalidad ya hecha, etiquetas sueltas, o escribirla con tus propias palabras.'));
   const personalityExamplePanel = el('div', 'field-example__panel');
   personalityExamplePanel.hidden = true;
   function renderPersonalityExample() {
@@ -238,13 +238,66 @@ function buildFormFields(app, { editing, source }) {
     personalityExampleBtn.textContent = show ? 'Ocultar ejemplo' : 'Ejemplo';
     if (show) renderPersonalityExample();
   });
-  personalityWrap.append(personalityExampleBtn, personalityExamplePanel);
+  // CCC-006: elegir una de las personalidades de partida (con capas) también para un personaje que ya existe.
+  // Solo reemplaza el campo Personalidad del formulario; nada se guarda hasta pulsar Guardar/Crear.
+  const pickBtn = el('button', 'btn btn--ghost btn--sm', 'Elegir una personalidad');
+  pickBtn.type = 'button';
+  pickBtn.setAttribute('aria-expanded', 'false');
+  const pickPanel = el('div', 'field-example__panel');
+  pickPanel.hidden = true;
+  function renderPickPanel(pending) {
+    pickPanel.replaceChildren();
+    if (pending) {
+      pickPanel.appendChild(el('p', 'field-example__text', `Esto va a reemplazar la personalidad que ya tienes con la de "${pending.label}". ¿Reemplazar?`));
+      const row = el('div', 'wizard-overwrite__actions');
+      const cancel = el('button', 'btn btn--ghost btn--sm', 'Cancelar');
+      cancel.type = 'button';
+      cancel.addEventListener('click', () => renderPickPanel(null));
+      const ok = el('button', 'btn btn--sm', 'Reemplazar');
+      ok.type = 'button';
+      ok.addEventListener('click', () => { applyPickedPersonality(pending); });
+      row.append(cancel, ok);
+      pickPanel.appendChild(row);
+      return;
+    }
+    pickPanel.appendChild(el('p', 'field-example__text', 'Cada una describe cómo es al principio, qué la hace cambiar y cómo actúa después. Solo cambia el campo Personalidad.'));
+    for (const archetype of CHARACTER_ARCHETYPES) {
+      const item = el('button', 'archetype-card');
+      item.type = 'button';
+      item.appendChild(el('div', 'archetype-card__label', archetype.label));
+      item.appendChild(el('div', 'archetype-card__tagline', archetype.tagline));
+      item.addEventListener('click', () => {
+        if (hasPersonalityContent()) renderPickPanel(archetype);
+        else applyPickedPersonality(archetype);
+      });
+      pickPanel.appendChild(item);
+    }
+  }
+  function applyPickedPersonality(archetype) {
+    applyPersonalityText(applyGender(archetype.personality, gender));
+    pickPanel.hidden = true;
+    pickBtn.setAttribute('aria-expanded', 'false');
+    pickBtn.textContent = 'Elegir una personalidad';
+    renderPickPanel(null);
+  }
+  pickBtn.addEventListener('click', () => {
+    const show = pickPanel.hidden;
+    pickPanel.hidden = !show;
+    pickBtn.setAttribute('aria-expanded', String(show));
+    pickBtn.textContent = show ? 'Ocultar personalidades' : 'Elegir una personalidad';
+    if (show) renderPickPanel(null);
+  });
+  personalityWrap.append(personalityExampleBtn, personalityExamplePanel, pickBtn, pickPanel);
   const personalityBody = el('div');
   personalityWrap.appendChild(personalityBody);
 
   let usingTags = editing ? (source.personalityTags && source.personalityTags.length > 0) : true;
   let selectedTags = editing ? sanitizePersonalityTags(source.personalityTags) : [];
-  const freeTextInitial = editing && !usingTags ? (card.personality || '') : '';
+  let freeTextInitial = editing && !usingTags ? (card.personality || '') : '';
+  const currentFreeText = () => (personalityBody._getFreeText ? personalityBody._getFreeText() : freeTextInitial);
+  const hasPersonalityContent = () => (usingTags ? selectedTags.length > 0 : !!currentFreeText().trim());
+  // CCC-006: una personalidad con capas es texto libre (no etiquetas): se carga en el campo de texto.
+  function applyPersonalityText(text) { usingTags = false; freeTextInitial = text; personalityBody._getFreeText = null; renderPersonality(); }
 
   function renderPersonality() {
     personalityBody.replaceChildren();
@@ -272,11 +325,14 @@ function buildFormFields(app, { editing, source }) {
       personalityBody.append(picker, hint);
     } else {
       const area = el('textarea', 'inp');
-      area.rows = 2;
+      area.rows = 6;
       area.maxLength = PERSONALITY_TEXT_MAX;
       area.value = freeTextInitial;
       area.setAttribute('aria-label', 'Personalidad');
-      area.addEventListener('input', () => { freeTextValue = area.value; });
+      const counter = el('div', 'field__hint');
+      const refreshCounter = () => { counter.textContent = `${area.value.length} / ${PERSONALITY_TEXT_MAX} caracteres`; };
+      refreshCounter();
+      area.addEventListener('input', () => { freeTextValue = area.value; refreshCounter(); });
       let freeTextValue = area.value;
       personalityBody._getFreeText = () => freeTextValue;
       const convertBtn = el('button', 'btn btn--ghost btn--sm', 'Convertir a etiquetas');
@@ -289,9 +345,9 @@ function buildFormFields(app, { editing, source }) {
       const hint = el(
         'div',
         'field__hint',
-        'Esta card no usa etiquetas: se muestra como texto libre, tal cual la trajo. Puedes editarla aquí, o convertirla a etiquetas (empieza sin ninguna elegida, para no inventar matices que el texto original no tenía).'
+        'Texto libre. Una buena personalidad tiene tres partes: cómo es al principio, qué hace que cambie (algo que haces tú) y cómo actúa después. Así se adapta a la escena en vez de repetirse. "Convertir a etiquetas" empieza sin ninguna elegida y descarta este texto.'
       );
-      personalityBody.append(area, hint, convertBtn);
+      personalityBody.append(area, counter, hint, convertBtn);
     }
     if (!personalityExamplePanel.hidden) renderPersonalityExample();
   }
@@ -424,11 +480,12 @@ function buildFormFields(app, { editing, source }) {
     formatStyle,
     getGender: () => gender,
     getAvatar: () => ({ avatarDataUrl, avatarLargeDataUrl }),
-    // Estado de personalidad, para que el wizard pueda aplicar un arquetipo o leerlo al guardar.
+    // Estado de personalidad, para que el wizard pueda aplicar una personalidad de partida o leerla al guardar.
     getPersonalityTags: () => (usingTags ? selectedTags : []),
-    getPersonalityText: () => (usingTags ? '' : (personalityBody._getFreeText ? personalityBody._getFreeText() : freeTextInitial)),
+    getPersonalityText: () => (usingTags ? '' : currentFreeText()),
     applyPersonalityTags: (tags) => { usingTags = true; selectedTags = [...tags]; renderPersonality(); },
-    hasPersonalityContent: () => (usingTags ? selectedTags.length > 0 : !!(personalityBody._getFreeText ? personalityBody._getFreeText() : freeTextInitial).trim()),
+    applyPersonalityText,
+    hasPersonalityContent,
   };
 }
 
@@ -534,7 +591,7 @@ function renderEditScreen(app, fields, ctx) {
 }
 
 /**
- * CCC-004: wizard de creación, en pasos, con selección de arquetipo (plantilla) como paso 2. Reutiliza
+ * CCC-004: wizard de creación, en pasos, con selección de personalidad de partida (plantilla) como paso 2. Reutiliza
  * los mismos `fields` que la edición (ver `buildFormFields`) — solo cambia cómo se agrupan y se muestran.
  * El botón/gesto "atrás" de Android retrocede un paso (ver `companion:wizard-back` en main.js), salvo en
  * el primer paso, donde sale de la creación (mismo comportamiento que tenía el creador de antes: sin
@@ -551,15 +608,15 @@ function renderWizard(app, fields, ctx) {
   const identityStatus = el('div', 'field__label');
   step1.append(fields.avatarRow, fields.nameField.field, fields.genderField, identityStatus);
 
-  // ---------- paso 2: elegir un punto de partida ----------
+  // ---------- paso 2: elegir una personalidad de partida ----------
   const step2 = el('div', 'wizard-step');
-  step2.appendChild(el('div', 'field__hint', 'Puedes partir de un arquetipo (lo editas todo después) o empezar en blanco.'));
+  step2.appendChild(el('div', 'field__hint', 'Elige una personalidad para partir de ella (lo editas todo después) o empieza en blanco.'));
   const archetypeGrid = el('div', 'wizard-archetypes');
   const overwriteBanner = el('div', 'field-example__panel wizard-overwrite');
   overwriteBanner.hidden = true;
   step2.append(archetypeGrid, overwriteBanner);
 
-  let selectedStartId = null; // id de arquetipo, o 'blank' para "Desde cero"
+  let selectedStartId = null; // id de la personalidad de partida, o 'blank' para "Desde cero"
 
   function fieldsHaveDownstreamContent() {
     return fields.hasPersonalityContent()
@@ -573,7 +630,7 @@ function renderWizard(app, fields, ctx) {
     // CCC-005: el texto base es neutro; se convierte al género elegido en el paso 1.
     const archetype = chosen ? archetypeForGender(chosen, fields.getGender()) : null;
     if (archetype) {
-      fields.applyPersonalityTags(archetype.personalityTags);
+      fields.applyPersonalityText(archetype.personality);
       fields.description.input.value = archetype.description;
       fields.scenario.input.value = archetype.scenario;
       fields.firstMes.input.value = archetype.firstMes;

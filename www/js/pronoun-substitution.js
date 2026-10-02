@@ -90,8 +90,9 @@ export function applyGender(text, gender) {
 }
 
 /**
- * Aplica `applyGender` a los campos de texto de un arquetipo (no toca id, label, tagline ni etiquetas).
- * @template {{ description: string, scenario: string, firstMes: string, mesExample: string }} T
+ * Aplica `applyGender` a los campos de texto de una personalidad de partida (no toca id, label ni tagline).
+ * CCC-006: `personality` también se convierte (si la trae).
+ * @template {{ description: string, scenario: string, firstMes: string, mesExample: string, personality?: string }} T
  * @param {T} archetype
  * @param {'female'|'male'|'neutral'} gender
  * @returns {T}
@@ -99,6 +100,7 @@ export function applyGender(text, gender) {
 export function archetypeForGender(archetype, gender) {
   return {
     ...archetype,
+    ...(typeof archetype.personality === 'string' ? { personality: applyGender(archetype.personality, gender) } : {}),
     description: applyGender(archetype.description, gender),
     scenario: applyGender(archetype.scenario, gender),
     firstMes: applyGender(archetype.firstMes, gender),

@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PERSONALITY_TAGS, MAX_PERSONALITY_TAGS, sanitizePersonalityTags, personalityTextFromTags } from '../www/js/personality-tags.js';
-import { buildCharacterCard, cleanText, normalizeField, NAME_MAX, DESCRIPTION_MAX, SCENARIO_MAX, FIRST_MES_MAX, MES_EXAMPLE_MAX, INSTRUCTIONS_MAX } from '../www/js/cards/build.js';
+import { buildCharacterCard, cleanText, normalizeField, PERSONALITY_TEXT_MAX, NAME_MAX, DESCRIPTION_MAX, SCENARIO_MAX, FIRST_MES_MAX, MES_EXAMPLE_MAX, INSTRUCTIONS_MAX } from '../www/js/cards/build.js';
 import { normCard } from '../www/js/cards/parse.js';
 import { createState } from '../www/js/state.js';
 import { CHARACTER_ARCHETYPES } from '../www/js/data/character-archetypes.js';
@@ -239,26 +239,72 @@ test('CCC-004: cada arquetipo respeta los topes reales de cards/build.js (los mi
   }
 });
 
-test('CCC-004: las personalityTags de cada arquetipo son todas válidas (sobreviven sanitizePersonalityTags intactas)', () => {
+// CCC-006: la personalidad de cada arquetipo es un texto en tres capas, no una lista de adjetivos.
+test('CCC-006: la personalidad de cada arquetipo es texto (no etiquetas) y cabe en PERSONALITY_TEXT_MAX', () => {
   for (const a of CHARACTER_ARCHETYPES) {
-    assert.deepEqual(sanitizePersonalityTags(a.personalityTags), a.personalityTags, `${a.id}: alguna etiqueta no es válida o sobra`);
-    assert.ok(a.personalityTags.length > 0 && a.personalityTags.length <= MAX_PERSONALITY_TAGS);
+    assert.equal(a.personalityTags, undefined, `${a.id}: ya no usa etiquetas`);
+    assert.equal(typeof a.personality, 'string');
+    assert.ok(a.personality.length > 150, `${a.id}: demasiado corta para tener tres capas`);
+    assert.ok(a.personality.length <= PERSONALITY_TEXT_MAX, `${a.id}: ${a.personality.length} > ${PERSONALITY_TEXT_MAX}`);
+    // La card la guarda tal cual (cleanText no recorta nada si cabe).
+    assert.equal(cleanText(a.personality, PERSONALITY_TEXT_MAX), a.personality, `${a.id}: cleanText la altera`);
   }
 });
 
-test('CCC-004: un arquetipo aplicado produce la MISMA card que si el usuario hubiera escrito esos campos a mano (misma buildCharacterCard)', () => {
-  const a = CHARACTER_ARCHETYPES[0];
+test('CCC-006: cada personalidad tiene las tres capas (base, transición con condición del usuario, evolución) en tres oraciones', () => {
+  for (const a of CHARACTER_ARCHETYPES) {
+    const sentences = a.personality.split(/(?<=\.)\s+/);
+    assert.equal(sentences.length, 3, `${a.id}: debe tener exactamente 3 oraciones (base, transición, evolución)`);
+    assert.match(sentences[0], /^Starts out /, `${a.id}: la capa 1 describe el estado base`);
+    assert.match(sentences[1], /\b(you|your)\b/i, `${a.id}: la capa 2 nombra qué hace el usuario para que cambie`);
+    assert.match(sentences[1], /\b(once|when|as)\b/i, `${a.id}: la capa 2 es una condición`);
+  }
+});
+
+test('CCC-006: ninguna personalidad usa lenguaje prohibitivo (se redacta en positivo)', () => {
+  const PROHIBITIVE = /\b(never|not|no|nothing|nobody|without|avoid|refuse|refuses|stop|stops|stall|stalls|reject|rejects|cannot|can't)\b|n't\b|\binstead of\b/i;
+  for (const a of CHARACTER_ARCHETYPES) {
+    assert.doesNotMatch(a.personality, PROHIBITIVE, `${a.id}: ${a.personality.match(PROHIBITIVE)?.[0]}`);
+  }
+});
+
+test('CCC-006: los arquetipos cautelosos separan lo que se dice de lo que se hace (el diálogo puede dudar, la acción avanza)', () => {
+  for (const id of ['calm-companion', 'reserved-protector']) {
+    const a = CHARACTER_ARCHETYPES.find((x) => x.id === id);
+    const evolved = a.personality.split(/(?<=\.)\s+/)[2];
+    assert.match(evolved, /\b(words|voice)\b.*\b(soft|hesitant)\b.*\b(while)\b.*\bactions?\b/i, `${id}: falta el contraste diálogo/acción en la capa 3`);
+  }
+});
+
+test('CCC-006: la personalidad de partida tiene verbos de acción en la capa 3 de los seis', () => {
+  for (const a of CHARACTER_ARCHETYPES) {
+    const evolved = a.personality.split(/(?<=\.)\s+/)[2];
+    assert.match(evolved, /\b(sets|takes|brings|opens|shields|leans|stays|moves|walks|drops|answers|says)\b|[a-z]+s you\b/i, `${a.id}: la capa 3 no dice qué hace`);
+  }
+});
+
+test('CCC-006: un arquetipo aplicado produce la MISMA card que si el usuario hubiera escrito esos campos a mano (personalidad como texto libre)', () => {
+  const a = CHARACTER_ARCHETYPES[3];
   const card = buildCharacterCard({
     name: 'Prueba',
-    personalityTags: a.personalityTags,
+    personalityTags: [],
+    personalityText: a.personality,
     description: a.description,
     scenario: a.scenario,
     firstMes: a.firstMes,
     mesExample: a.mesExample,
   });
-  assert.equal(card.personality, personalityTextFromTags(a.personalityTags));
+  assert.equal(card.personality, a.personality);
   assert.equal(card.description, normalizeField(a.description, DESCRIPTION_MAX));
   assert.equal(card.first_mes, normalizeField(a.firstMes, FIRST_MES_MAX));
+});
+
+test('CCC-006: el wizard y el editor aplican la personalidad como texto libre y ofrecen elegirla también al editar', () => {
+  const src = readFileSync(new URL('../www/js/ui/character-editor.js', import.meta.url), 'utf8');
+  assert.match(src, /fields\.applyPersonalityText\(archetype\.personality\)/, 'el wizard carga el texto con capas');
+  assert.doesNotMatch(src, /archetype\.personalityTags/, 'ya no se aplican etiquetas desde el arquetipo');
+  assert.match(src, /Elegir una personalidad/, 'botón para elegir una personalidad en un personaje existente');
+  assert.doesNotMatch(src, /arquetipo/i, 'la interfaz habla de "personalidad", no de "arquetipo"');
 });
 
 test('CCC-004: crear sigue siendo el wizard y editar sigue siendo la pantalla única (no se tocó el flujo de edición)', () => {

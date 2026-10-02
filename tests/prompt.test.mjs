@@ -17,7 +17,8 @@ import {
   formatRelationshipBlock,
   RELATIONSHIP_LABEL,
   RELATIONSHIP_EARLY_PROMPT_TEXT,
-  RELATIONSHIP_EARLY_GUIDE
+  RELATIONSHIP_EARLY_GUIDE,
+  formatPersonalityAdaptLine
 } from '../www/js/api/prompt.js';
 
 function makeCard(overrides = {}) {
@@ -733,4 +734,41 @@ test('MEM-014: la línea cuenta en el presupuesto — estimateContextUsage e his
     assert.ok(idx > 0);
     assert.ok(sent.includes(`#${idx}# `) && !sent.includes(`#${idx - 1}# `), mode);
   }
+});
+
+// ---------- CCC-006: línea "la personalidad es el punto de partida" ----------
+
+test('CCC-006: con personalityAdapts la cabecera suma la línea justo después de la personalidad (texto simple y plantilla)', () => {
+  const card = makeCard({ personality: 'Calm and reserved.', scenario: 'Una torre' });
+  const msgs = [{ role: 'user', text: 'Hola', ts: 1 }];
+  const line = formatPersonalityAdaptLine('Luna', 'Edgar');
+  const plain = buildPlainPrompt(card, msgs, makeSettings({ personalityAdapts: true })).prompt;
+  assert.ok(plain.includes(`Luna's personality: Calm and reserved.\n\n${line}\n\nScenario: Una torre`), plain);
+  const chat = buildChatMessages(card, msgs, makeSettings({ mode: 'chat', personalityAdapts: true }));
+  assert.ok(chat.messages[0].content.includes(`Luna's personality: Calm and reserved.\n\n${line}`), chat.messages[0].content);
+});
+
+test('CCC-006: sin personalityAdapts (apagado o ausente) o sin personalidad en la card, el prompt queda idéntico al de antes', () => {
+  const msgs = [{ role: 'user', text: 'Hola', ts: 1 }];
+  const withP = makeCard({ personality: 'Calm.' });
+  const base = buildPlainPrompt(withP, msgs, makeSettings()).prompt;
+  assert.equal(buildPlainPrompt(withP, msgs, makeSettings({ personalityAdapts: false })).prompt, base);
+  assert.doesNotMatch(base, /is where Luna starts/);
+  const noP = makeCard({ personality: '' });
+  assert.equal(buildPlainPrompt(noP, msgs, makeSettings({ personalityAdapts: true })).prompt, buildPlainPrompt(noP, msgs, makeSettings()).prompt);
+});
+
+test('CCC-006: la línea usa solo nombres (sin pronombres), va en positivo y es estable entre turnos (no rompe la caché del servidor)', () => {
+  const line = formatPersonalityAdaptLine('Luna', 'Edgar');
+  assert.match(line, /Luna/);
+  assert.match(line, /Edgar/);
+  assert.doesNotMatch(line, /\b(he|she|they|him|her|them|his|their)\b/i, 'sin pronombres: sirve para cualquier género');
+  assert.doesNotMatch(line, /\b(never|not|no|without|avoid|stop|stall|reject|refuse)\b|n't\b/i, 'redactada en positivo');
+  assert.ok(line.length < 460, `larga: ${line.length}`);
+  const card = makeCard({ personality: 'Calm.' });
+  const s = makeSettings({ personalityAdapts: true });
+  const a = buildPlainPrompt(card, [{ role: 'user', text: 'Hola', ts: 1 }], s).prompt;
+  const b = buildPlainPrompt(card, [{ role: 'user', text: 'Hola', ts: 1 }, { role: 'char', text: 'Hey', ts: 2 }, { role: 'user', text: 'Qué tal', ts: 3 }], s).prompt;
+  const head = (p) => p.slice(0, p.indexOf('[Start of chat]'));
+  assert.equal(head(a), head(b), 'la cabecera no cambia entre turnos');
 });

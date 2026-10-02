@@ -62,6 +62,7 @@ test('getSettings devuelve valores por defecto cuando no hay nada guardado', asy
     lorebookAuto: false,
     continuityAuto: false, // MEM-007
     varietyAssist: false,
+    personalityAdapts: true, // CCC-006
     formatAssist: true,
     splitTypography: false, // UI-023
     messageFontSize: 17, // UI-026
@@ -1221,4 +1222,21 @@ test('MEM-007: una escritura fallida no bloquea las siguientes del mismo chat, y
   const other = await state.createChat('x');
   await Promise.allSettled([state.deleteChat(other.id), state.saveChatContinuity(other.id, { text: 'Resumen.', coveredUntil: 1, updated: 1 })]);
   assert.equal(await state.getChat(other.id), null);                                          // nada quedó recreado
+});
+
+// ---------- CCC-006: Settings.personalityAdapts ----------
+
+test('CCC-006: personalityAdapts es true por defecto, solo un false estricto lo apaga y copias previas cargan con true', async () => {
+  const state = createState(createMemoryBackend());
+  assert.equal((await state.getSettings()).personalityAdapts, true);
+  assert.equal((await state.saveSettings({ personalityAdapts: 0 })).personalityAdapts, true);
+  assert.equal((await state.saveSettings({ personalityAdapts: 'false' })).personalityAdapts, true);
+  assert.equal((await state.saveSettings({ personalityAdapts: false })).personalityAdapts, false);
+  assert.equal((await state.saveSettings({ personalityAdapts: true })).personalityAdapts, true);
+  // Ajustes guardados antes de este cambio (sin el campo): el personaje se adapta, como pidió el usuario (retroactivo).
+  const backend = createMemoryBackend();
+  await backend.put('settings', 'main', { url: 'http://x', user: 'Ana' });
+  const old = await createState(backend).getSettings();
+  assert.equal(old.personalityAdapts, true);
+  assert.equal(old.user, 'Ana');
 });

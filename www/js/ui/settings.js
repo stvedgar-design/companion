@@ -71,6 +71,14 @@ export function openSettings(app) {
 
     <div class="field">
       <label class="field__label" style="display:flex;align-items:center;gap:var(--space-2, 8px)">
+        <input type="checkbox" id="settings-personality-adapts" style="accent-color:var(--color-accent, #8b1fe0)">
+        <span>Personalidad que se adapta a la escena</span>
+      </label>
+      <div class="field__hint">La personalidad del personaje es su punto de partida, no un guion: a medida que crece la confianza y la escena avanza, se abre, toma la iniciativa o cambia de ritmo, sin dejar de ser quien es. Vale para todos tus personajes, también los que ya tenías. Si prefieres que sigan su personalidad al pie de la letra, apágalo. No hace el chat más lento.</div>
+    </div>
+
+    <div class="field">
+      <label class="field__label" style="display:flex;align-items:center;gap:var(--space-2, 8px)">
         <input type="checkbox" id="settings-format" style="accent-color:var(--color-accent, #8b1fe0)">
         <span>Corregir formato automáticamente</span>
       </label>
@@ -164,6 +172,7 @@ export function openSettings(app) {
     user: q('#settings-user'),
     mode: q('#settings-mode'),
     variety: q('#settings-variety'),
+    personalityAdapts: q('#settings-personality-adapts'),
     format: q('#settings-format'),
     feelings: q('#settings-feelings'),
     pinBody: q('#settings-pin-body'),
@@ -187,6 +196,7 @@ export function openSettings(app) {
     els.user.value = settings.user;
     els.mode.value = settings.mode;
     els.variety.checked = settings.varietyAssist === true;
+    els.personalityAdapts.checked = settings.personalityAdapts !== false;
     els.format.checked = settings.formatAssist !== false;
     els.feelings.checked = settings.feelingsEnabled === true;
     renderPinBody(settings);
@@ -295,6 +305,11 @@ export function openSettings(app) {
   els.variety.addEventListener('change', () => {
     saveSettings({ varietyAssist: els.variety.checked });
     logEvent(TEL_EVENTS.EXPERIMENTAL_SETTING_CHANGED, { setting: 'varietyAssist', enabled: els.variety.checked });
+  });
+
+  els.personalityAdapts.addEventListener('change', () => {
+    saveSettings({ personalityAdapts: els.personalityAdapts.checked });
+    logEvent(TEL_EVENTS.EXPERIMENTAL_SETTING_CHANGED, { setting: 'personalityAdapts', enabled: els.personalityAdapts.checked });
   });
 
   els.format.addEventListener('change', () => {

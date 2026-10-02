@@ -55,7 +55,7 @@ function theyViolations(text) {
   }
   return bad;
 }
-const FIELDS = ['description', 'scenario', 'firstMes', 'mesExample'];
+const FIELDS = ['personality', 'description', 'scenario', 'firstMes', 'mesExample']; // CCC-006: la personalidad en capas también
 
 test('CCC-005: los 6 arquetipos respetan la regla de "they" y no dejan neutros al convertir', () => {
   assert.equal(CHARACTER_ARCHETYPES.length, 6);
@@ -85,12 +85,11 @@ test('CCC-005: revisión manual en los 3 géneros — frases clave de los arquet
   assert.match(archetypeForGender(by('demanding-mentor'), 'male').scenario, /he's reviewing your progress/);
 });
 
-test('CCC-005: archetypeForGender solo toca los 4 campos de texto y deja intactos id, etiquetas y neutro', () => {
+test('CCC-005: archetypeForGender solo toca los campos de texto y deja intactos id, etiquetas y neutro', () => {
   const a = CHARACTER_ARCHETYPES[0];
   const f = archetypeForGender(a, 'female');
   assert.equal(f.id, a.id);
   assert.equal(f.label, a.label);
-  assert.deepEqual(f.personalityTags, a.personalityTags);
   assert.deepEqual(archetypeForGender(a, 'neutral'), a);
   assert.match(f.mesExample, /<START>\n\{\{user\}\}:/, 'conserva <START>, {{user}} y {{char}}');
 });
@@ -129,4 +128,17 @@ test('CCC-005: Character.gender se guarda y se relee; personajes viejos cargan "
   await state.saveCharacter({ ...loaded, gender: 'basura' });
   assert.equal((await state.getCharacter('old')).gender, 'neutral');
   assert.equal((await state.listCharacters())[0].card.description, 'She is shy.');
+});
+
+test('CCC-006: la personalidad en capas se convierte limpia en los 3 géneros (frases clave)', () => {
+  const by = (id) => CHARACTER_ARCHETYPES.find((a) => a.id === id);
+  assert.match(archetypeForGender(by('chaotic-adventurer'), 'female').personality, /she'll pick a bolder idea/);
+  assert.match(archetypeForGender(by('chaotic-adventurer'), 'male').personality, /he'll pick a bolder idea/);
+  assert.match(archetypeForGender(by('direct-flirt'), 'female').personality, /says what's on her mind/);
+  assert.match(archetypeForGender(by('direct-flirt'), 'male').personality, /says what's on his mind.*he'll follow your pace/);
+  assert.match(archetypeForGender(by('reserved-protector'), 'female').personality, /Once you trust her/);
+  assert.match(archetypeForGender(by('reserved-protector'), 'male').personality, /acts on what he's noticed/);
+  assert.match(archetypeForGender(by('confidant'), 'female').personality, /opens up about her own feelings/);
+  assert.match(archetypeForGender(by('calm-companion'), 'neutral').personality, /the actions carry the moment forward/);
+  for (const a of CHARACTER_ARCHETYPES) assert.equal(archetypeForGender(a, 'neutral').personality, a.personality, `${a.id}: neutro queda igual`);
 });

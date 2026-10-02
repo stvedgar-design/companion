@@ -158,6 +158,7 @@ import { sanitizeFeeling } from './api/feeling.js';
  * @property {boolean} lorebookAuto // MEM-002: extracción automática de memoria cada ~20 mensajes; false por defecto (cada extracción encarece la SIGUIENTE respuesta ~20 s)
  * @property {boolean} continuityAuto // MEM-007: resumen de continuidad automático del chat (ver api/continuity.js)
  * @property {boolean} varietyAssist // FMT-004: nota de variedad al final del prompt cuando el personaje se repite
+ * @property {boolean} personalityAdapts // CCC-006: la cabecera del prompt suma una línea que trata la personalidad como punto de partida que evoluciona con la escena (api/prompt.js); true por defecto
  * @property {boolean} formatAssist // FMT-002: la respuesta del personaje arranca ya dentro de una acción (`*`); true por defecto
  * @property {boolean} splitTypography // UI-023 (experimental): en los mensajes del personaje con acciones en cursiva, el diálogo usa una tipografía sans y la acción la del skin; false por defecto
  * @property {15|17|19} messageFontSize // UI-026/UI-038: tamaño del texto de los mensajes del chat (px): Pequeño 15, Mediano 17 (por defecto), Grande 19. Un valor guardado de antes de UI-038 (15-19) migra al más cercano, ver `migrateMessageFontSize`. El ancho de las burbujas NO depende de este valor.
@@ -186,6 +187,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   lorebookAuto: false,
   continuityAuto: false,
   varietyAssist: false,
+  personalityAdapts: true,
   formatAssist: true,
   splitTypography: false,
   messageFontSize: 17,
@@ -270,6 +272,7 @@ function sanitizeSettings(raw) {
     lorebookAuto: merged.lorebookAuto === true,
     continuityAuto: typeof merged.continuityAuto === 'boolean' ? merged.continuityAuto : DEFAULT_SETTINGS.continuityAuto,
     varietyAssist: merged.varietyAssist === true,
+    personalityAdapts: merged.personalityAdapts !== false,
     formatAssist: merged.formatAssist !== false,
     splitTypography: merged.splitTypography === true,
     messageFontSize: migrateMessageFontSize(merged.messageFontSize),

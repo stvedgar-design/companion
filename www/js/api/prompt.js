@@ -196,6 +196,23 @@ export function formatAppearanceCurrent(text, charName, userName) {
 // aceptar una síntesis nueva (rara vez), con el costo de UNA respuesta lenta, como la relación (MEM-014) y la apariencia fija (MEM-009).
 export const IDENTITY_HEAD_LABEL = 'has grown so far';
 
+// CCC-006: la personalidad escrita en la card es el PUNTO DE PARTIDA, no un guion fijo. Con `Settings.personalityAdapts === true`
+// la cabecera suma esta línea (estable: no cambia entre turnos, así que no invalida la caché de prompt del servidor), que le dice
+// al modelo que el rasgo evoluciona con la confianza y la escena, y que la acción siempre avanza aunque el tono se mantenga.
+// Redactada en positivo (qué SÍ hace; nombrar lo que no se quiere lo hace más probable) y solo con el nombre, sin pronombres: sirve
+// igual para cualquier personaje, también tarjetas importadas y personajes creados con etiquetas. Estricto `=== true`: un
+// `settings` sin el campo (tests, llamadas sueltas) deja el prompt exactamente como antes; los Settings reales traen `true`.
+export function formatPersonalityAdaptLine(charName, userName) {
+  const N = charName;
+  const U = userName;
+  return (
+    `${N}'s personality is where ${N} starts, and it grows with the story: as trust, closeness and the scene develop, ` +
+    `${N} opens up, takes the lead or changes pace, always in ${N}'s own voice. ` +
+    `${N}'s words can stay true to character while ${N}'s actions answer what ${U} just did and keep the scene moving ` +
+    `with something new each turn, a gesture, a thought or a small step.`
+  );
+}
+
 // Bloque de cabecera común a ambos formatos de prompt: system_prompt de la
 // card (si existe), una instrucción breve de rol, y los campos de la card
 // con las macros ya resueltas. `chatScenario` es el escenario escrito a
@@ -221,6 +238,7 @@ function headBlock(card, settings, chatScenario, loreBlock, relationship = null,
 
   if (card.description) parts.push(`${N}'s description:\n${sub(card.description)}`);
   if (card.personality) parts.push(`${N}'s personality: ${sub(card.personality)}`);
+  if (card.personality && settings && settings.personalityAdapts === true) parts.push(formatPersonalityAdaptLine(N, U));
   // MEM-019: síntesis de identidad ACEPTADA por el usuario; se suma a la personalidad escrita, nunca la reemplaza. Vacía = nada.
   const identityText = String(identity || '').replace(/\s+/g, ' ').trim();
   if (identityText) parts.push(`${N} ${IDENTITY_HEAD_LABEL}: ${identityText}`);
