@@ -41,6 +41,7 @@ const SETTING_LABELS = {
   humanTouch: 'Detalles de presencia humana',
   emotionResponse: 'Reaccionar a cómo te sientes',
   momentMemories: 'Recordar momentos emocionales',
+  followUps: 'Acordarse de lo que viene y de las fechas',
   splitTypography: 'Tipografía dividida (narración/diálogo)',
   continuityAuto: 'Resumen de continuidad automático',
 };

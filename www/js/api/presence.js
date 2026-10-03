@@ -14,6 +14,7 @@
 
 import { dayPart } from './timeofday.js';
 import { emotionProfile, detectEmotion } from './emotion.js';
+import { dueFollowUp, followUpObservation } from './followups.js';
 
 /**
  * Nota máxima (sin corchetes). La reserva fija en el presupuesto del historial vive en prompt.js (`PRESENCE_RESERVE_CHARS`; mismo motivo que la hora)
@@ -276,11 +277,12 @@ function awayText(gapMs) {
  *   messages: Array<{ role: string, text?: string, ts?: number }>,  // el historial, terminado en el mensaje nuevo del usuario
  *   now?: Date, userName?: string, charName?: string,
  *   lorebook?: Array<{ content?: string }>,
+ *   followUp?: { text: string }|null,  // HUM-004: un pendiente vencido para preguntar (api/followups.js); va PRIMERO y reemplaza al «estaba pensando en…»
  *   rnd?: () => number,
  * }} input
  * @returns {string[]}
  */
-export function observations({ messages = [], now = new Date(), userName = 'User', charName = 'Character', lorebook = [], rnd = Math.random } = {}) {
+export function observations({ messages = [], now = new Date(), userName = 'User', charName = 'Character', lorebook = [], followUp = null, rnd = Math.random } = {}) {
   const U = userName;
   const N = charName;
   const out = [];
@@ -294,9 +296,11 @@ export function observations({ messages = [], now = new Date(), userName = 'User
   // Entre el mensaje anterior y el nuevo del usuario (no contra el reloj: así "regenerar" da la misma lectura).
   const gapMs = before && Number.isFinite(before.ts) && Number.isFinite(last.ts) ? Math.max(0, last.ts - before.ts) : 0;
 
+  if (followUp && followUp.text) out.push(followUpObservation(followUp, U, N));
+
   if (gapMs >= 2 * DAY) out.push(`${U} is back after ${awayText(gapMs)} away; ${N} noticed the time and can say so warmly.`);
 
-  if (gapMs >= 4 * HOUR && rnd() < 0.6) {
+  if (gapMs >= 4 * HOUR && !followUp && rnd() < 0.6) { // con un pendiente por preguntar no se suma otro «volver a algo de antes»
     const candidates = [];
     const memories = (Array.isArray(lorebook) ? lorebook : []).map((e) => clip(e && e.content, 110)).filter(Boolean);
     if (memories.length) candidates.push(memories[Math.floor(rnd() * memories.length)]);
@@ -328,11 +332,13 @@ export function observations({ messages = [], now = new Date(), userName = 'User
  * @param {{
  *   character: { id?: string, name: string, lorebook?: object[], mood?: object, personalityTags?: string[] },
  *   messages: Array<{ role: string, text?: string, ts?: number }>,
- *   settings: { user?: string, emotionResponse?: boolean },
+ *   settings: { user?: string, emotionResponse?: boolean, followUps?: boolean },
  *   now?: Date,
  *   rnd?: () => number,
  * }} input
- * @returns {{ note: string, mood: { id: string, changed: boolean, updated: number }, emotion: string }}
+ * @returns {{ note: string, mood: { id: string, changed: boolean, updated: number }, emotion: string, followUp: { id: string, topicCovered: boolean, askedFor: number }|null }}
+ *   HUM-004: con `settings.followUps === true` y un pendiente vencido (`character.followUps`), la nota suma «puede preguntar cómo le fue» y `followUp` dice cuál (quien llama lo
+ *   marca como preguntado/atendido DESPUÉS de guardar la respuesta). Sin el interruptor o sin pendiente vencido, la nota es idéntica a la de antes.
  *   HUM-002: con `settings.emotionResponse === true` la nota suma la instrucción de registro (`registerLine`) según la emoción del usuario; `emotion` = su id
  *   ('' si no hay o está apagado). Sin emoción detectada (o apagado) la nota es idéntica a la de HUM-001.
  */
@@ -368,14 +374,18 @@ export function buildPresence({ character, messages = [], settings = {}, now = n
     parts.push(register);
     used += register.length + 1;
   }
-  const obs = observations({ messages, now, userName: U, charName: N, lorebook: character && character.lorebook, rnd });
+  // HUM-004: pendiente vencido (con la fecha del mensaje del usuario, no el reloj: «regenerar» lee lo mismo).
+  const due = settings && settings.followUps === true && lastUser ? dueFollowUp(character && character.followUps, { at: Number.isFinite(lastUser.ts) ? lastUser.ts : now.getTime(), text: lastUser.text }) : null;
+  const followUp = due && !due.topicCovered ? due.item : null;
+  const obs = observations({ messages, now, userName: U, charName: N, lorebook: character && character.lorebook, followUp, rnd });
   for (const o of obs) {
     if (used + o.length + 1 > PRESENCE_NOTE_MAX) continue;
     parts.push(o);
     used += o.length + 1;
   }
   parts.push(rhythm.text);
-  return { note: parts.join(' '), mood, emotion: emotionId };
+  const followUpInfo = due ? { id: due.item.id, topicCovered: due.topicCovered, askedFor: Number.isFinite(lastUser.ts) ? lastUser.ts : now.getTime() } : null;
+  return { note: parts.join(' '), mood, emotion: emotionId, followUp: followUpInfo };
 }
 
 /**

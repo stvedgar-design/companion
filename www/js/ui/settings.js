@@ -95,6 +95,14 @@ export function openSettings(app) {
 
     <div class="field">
       <label class="field__label" style="display:flex;align-items:center;gap:var(--space-2, 8px)">
+        <input type="checkbox" id="settings-follow-ups" style="accent-color:var(--color-accent, #8b1fe0)">
+        <span>Acordarse de lo que viene y de las fechas</span>
+      </label>
+      <div class="field__hint">Si le dices que mañana tienes una entrevista o un examen, el personaje lo guarda y, cuando vuelves, puede preguntarte cómo te fue (una sola vez). Si le cuentas la fecha de tu cumpleaños, te deja una nota ese día; también en el aniversario de cuando empezaron a hablar. Solo guarda lo que tú dices, y lo ves reflejado en sus mensajes. No hace el chat más lento.</div>
+    </div>
+
+    <div class="field">
+      <label class="field__label" style="display:flex;align-items:center;gap:var(--space-2, 8px)">
         <input type="checkbox" id="settings-personality-adapts" style="accent-color:var(--color-accent, #8b1fe0)">
         <span>Personalidad que se adapta a la escena</span>
       </label>
@@ -206,6 +214,7 @@ export function openSettings(app) {
     humanTouch: q('#settings-human-touch'),
     emotionResponse: q('#settings-emotion-response'),
     momentMemories: q('#settings-moment-memories'),
+    followUps: q('#settings-follow-ups'),
     personalityAdapts: q('#settings-personality-adapts'),
     format: q('#settings-format'),
     stream: q('#settings-stream'),
@@ -234,6 +243,7 @@ export function openSettings(app) {
     els.humanTouch.checked = settings.humanTouch !== false;
     els.emotionResponse.checked = settings.emotionResponse !== false;
     els.momentMemories.checked = settings.momentMemories !== false;
+    els.followUps.checked = settings.followUps !== false;
     els.personalityAdapts.checked = settings.personalityAdapts !== false;
     els.format.checked = settings.formatAssist !== false;
     els.stream.checked = settings.streamReplies !== false;
@@ -349,6 +359,11 @@ export function openSettings(app) {
   els.humanTouch.addEventListener('change', () => {
     saveSettings({ humanTouch: els.humanTouch.checked });
     logEvent(TEL_EVENTS.EXPERIMENTAL_SETTING_CHANGED, { setting: 'humanTouch', enabled: els.humanTouch.checked });
+  });
+
+  els.followUps.addEventListener('change', () => {
+    saveSettings({ followUps: els.followUps.checked });
+    logEvent(TEL_EVENTS.EXPERIMENTAL_SETTING_CHANGED, { setting: 'followUps', enabled: els.followUps.checked });
   });
 
   els.momentMemories.addEventListener('change', () => {

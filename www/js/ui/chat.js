@@ -1,7 +1,7 @@
 // www/js/ui/chat.js
 // Pantalla de chat: burbujas, streaming, avatar en 3 modos, composer, menú.
 
-import { getChat, getChatMessages, saveChatMessages, getCharacter, getSettings, saveSettings, markChatExported, saveCharacterLorebook, markChatLorebookProgress, saveChatContinuity, sanitizeContinuity, sanitizeMessage, saveCharacterRelationship, saveCharacterIdentity, saveCharacterMood, saveCharacterMoment, saveChatArchive, isChatArchived, isChatArchivePending } from '../state.js';
+import { getChat, getChatMessages, saveChatMessages, getCharacter, getSettings, saveSettings, markChatExported, saveCharacterLorebook, markChatLorebookProgress, saveChatContinuity, sanitizeContinuity, sanitizeMessage, saveCharacterRelationship, saveCharacterIdentity, saveCharacterMood, saveCharacterMoment, saveCharacterFollowUps, saveChatArchive, isChatArchived, isChatArchivePending } from '../state.js';
 import { generateReplyNonEmpty, completeOnce, completeChatOnce } from '../api/kobold.js';
 import { initialMessages, scenarioGreeting, estimateContextUsage } from '../api/prompt.js';
 import {
@@ -35,6 +35,7 @@ import { identityForPrompt } from '../api/identity-synthesis.js';
 import { moodText } from '../api/mood.js';
 import { computeMood, moodHeadText, planSplit, typingHoldMs } from '../api/presence.js';
 import { momentCandidate, withMoment } from '../api/moments.js';
+import { detectFollowUps, detectUserDates, withFollowUps, withUserDates, markAsked, markDone } from '../api/followups.js';
 import { createFeelingUpdater, feelingDisplayText } from '../api/feeling.js';
 import { formatMessageTime, formatMessageFullTime } from '../msgtime.js';
 import { createContinuityUpdater, coveredCount, CONTINUITY_TOTAL_CHARS, CONTINUITY_ON_OPEN_DELAY_MS, cleanRecap, verifyRecap } from '../api/continuity.js';
@@ -938,6 +939,7 @@ async function onSendClick() {
   sendInFlight = true;
   try {
     messages.push({ role: 'user', text, ts: Date.now() });
+    captureFollowUps(text); // HUM-004: pendientes y fechas del mensaje (sin modelo; solo escribe si detecta algo)
     appendMessageRow(messages.length - 1);
     scrollToBottom(true);
     logMessageEvent('user');
@@ -987,6 +989,7 @@ async function generate(opts = {}) {
   let firstChunkAt = 0;
   let replyMeta = null;
   let moodResult = null; // HUM-001: ánimo usado en este turno (se guarda si cambió)
+  let followUpUsed = null; // HUM-004: pendiente que se preguntó en este turno (se marca después de guardar la respuesta)
   let wasAborted = false;
   const humanTouch = !!settings && settings.humanTouch === true;
   streamHoldUntil = humanTouch ? startedAt + typingHoldMs(Math.random, character.mood && character.mood.id) : 0;
@@ -1007,6 +1010,7 @@ async function generate(opts = {}) {
     reply.text = (result && result.text) || '';
     wasAborted = !!(result && result.aborted);
     moodResult = (result && result.mood) || null;
+    followUpUsed = (result && result.followUp) || null;
     // Una respuesta completa (no cortada por el usuario) guarda sus tiempos.
     if (reply.text && firstChunkAt && !(result && result.aborted)) {
       replyMeta = { ttftMs: firstChunkAt - startedAt, totalMs: performance.now() - startedAt, chars: reply.text.length };
@@ -1069,6 +1073,8 @@ async function generate(opts = {}) {
         .then((updated) => { if (updated && character && character.id === updated.id) { character = updated; syncHeadSub(); } })
         .catch(() => {});
     }
+    // HUM-004: lo que se preguntó (o el usuario ya cubrió) no se repite: se marca bajo el candado del personaje, solo si la respuesta quedó guardada.
+    if (followUpUsed && character && reply.text) markFollowUp(followUpUsed);
     // HUM-003: si el mensaje del usuario fue un pico emocional, se guarda un recuerdo del MOMENTO (sin modelo; solo escribe el personaje si hay algo que guardar).
     if (character && chat && reply.text && !previous) maybeSaveMoment(history);
     // MEM-015: después de mostrar y guardar la respuesta, en segundo plano (apagado por defecto; ver
@@ -1076,6 +1082,29 @@ async function generate(opts = {}) {
     if (idx >= 0 && messages[idx] && messages[idx].role === 'char' && messages[idx].text) maybeUpdateFeeling(idx);
     if (tail) await showContinuation(tail);
   }
+}
+
+// HUM-004: pendientes («mañana tengo la entrevista») y cumpleaños dichos por el usuario, detectados sin modelo al enviar. Escribe el personaje SOLO si detectó
+// algo y con el registro recién leído (el registro lleva imágenes). Con `Settings.followUps` apagado no hace nada. Mejor esfuerzo.
+function captureFollowUps(text) {
+  if (!character || !settings || settings.followUps !== true) return;
+  const now = new Date();
+  const found = detectFollowUps(text, now);
+  const dates = detectUserDates(text);
+  if (!found.length && !dates.length) return;
+  saveCharacterFollowUps(character.id, (fu) => withUserDates(withFollowUps(fu, found, now.getTime()), dates, now.getTime()))
+    .then((updated) => {
+      if (updated && character && character.id === updated.id) character = updated;
+    })
+    .catch(() => {});
+}
+
+function markFollowUp(info) {
+  saveCharacterFollowUps(character.id, (fu) => (info.topicCovered ? markDone(fu, info.id) : markAsked(fu, info.id, info.askedFor)))
+    .then((updated) => {
+      if (updated && character && character.id === updated.id) character = updated;
+    })
+    .catch(() => {});
 }
 
 // HUM-003: detector sin modelo (api/moments.js). Calcula el candidato con el personaje que hay en pantalla y lo vuelve a verificar y escribe bajo el candado del

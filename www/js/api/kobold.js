@@ -391,6 +391,7 @@ export async function generateReply({ character, chat, messages, settings, signa
   const presence = settings.humanTouch === true ? buildPresence({ character, messages, settings, now, rnd }) : null;
   const extras = { ...(continuity ? { continuity } : {}), relationship, ...(appearance ? { appearance } : {}), ...(timeOfDay ? { timeOfDay } : {}), ...(identity ? { identity } : {}), ...(presence ? { presence: presence.note } : {}) };
   const moodInfo = presence ? presence.mood : null;
+  const followUpInfo = presence ? presence.followUp : null; // HUM-004: el pendiente que se preguntó en este turno (chat.js lo marca después de guardar)
   const genkey = makeGenKey();
   const mode = settings.mode === 'chat' ? 'chat' : 'plain';
   const maxLen = settings.maxLen || 220;
@@ -483,13 +484,13 @@ export async function generateReply({ character, chat, messages, settings, signa
     const wasAborted = (signal && signal.aborted) || (err && err.name === 'AbortError');
     if (wasAborted) {
       notifyAbort();
-      return { text: cleanReply(fullText, card.name), truncated: false, aborted: true, loreUsed, mood: moodInfo };
+      return { text: cleanReply(fullText, card.name), truncated: false, aborted: true, loreUsed, mood: moodInfo, followUp: followUpInfo };
     }
     if (err && KNOWN_CODES.has(err.code)) throw err;
     // Fallo de red genérico: fetch rechazado, o el stream se cortó a mitad
     // de camino. Si ya había texto recibido, no se pierde.
     if (fullText) {
-      return { text: trimPartial(cleanReply(fullText, card.name)), truncated: true, aborted: false, loreUsed, mood: moodInfo };
+      return { text: trimPartial(cleanReply(fullText, card.name)), truncated: true, aborted: false, loreUsed, mood: moodInfo, followUp: followUpInfo };
     }
     throw makeError(STREAM_NETWORK_MSG, 'NETWORK');
   }
@@ -502,7 +503,7 @@ export async function generateReply({ character, chat, messages, settings, signa
     text = trimPartial(text);
     truncated = true;
   }
-  return { text, truncated, aborted: false, loreUsed, mood: moodInfo };
+  return { text, truncated, aborted: false, loreUsed, mood: moodInfo, followUp: followUpInfo };
 }
 
 /**

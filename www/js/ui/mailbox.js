@@ -26,6 +26,7 @@ import { formatMessage } from './format.js';
 import {
   createMailboxWriter,
   mailboxDue,
+  dateNoteDue,
   lastInteractionAt,
   markAllRead,
   setNoteStatus,
@@ -62,7 +63,7 @@ export async function maybeWriteMailboxNotes() {
     for (const character of await listCharacters()) {
       if (stopRequested) break;
       const last = lastInteractionAt(character.mailbox, await listChats(character.id));
-      if (!mailboxDue(character, last, Date.now()).due) continue;
+      if (!mailboxDue(character, last, Date.now()).due && !dateNoteDue(character, new Date())) continue; // HUM-004: o una fecha de hoy
       const result = await writer.maybeRun(character.id);
       if (result.kind === 'ok') written.push(character.id);
       else if (result.kind === 'aborted' || result.kind === 'error') break; // servidor caído o el usuario abrió un chat: no insistir con los demás
@@ -129,6 +130,8 @@ export async function openMailbox(app, characterRef, opts = {}) {
     card.appendChild(body);
     const age = relationshipAgeText(note.createdAt);
     card.appendChild(el('div', 'field__hint', age ? `Dejada ${age}.` : 'Dejada hace un tiempo.'));
+    if (note.reason === 'birthday') card.appendChild(el('div', 'field__hint', 'Por tu cumpleaños.'));
+    else if (note.reason === 'anniversary') card.appendChild(el('div', 'field__hint', 'Por el aniversario de cuando empezaron a hablar.'));
     const actions = el('div', 'mem-actions');
     const reply = el('button', 'btn btn--sm', 'Responder');
     reply.type = 'button';
@@ -168,7 +171,7 @@ export async function openMailbox(app, characterRef, opts = {}) {
     el(
       'div',
       'field__hint',
-      `Estas notas nacen de quién es ${character.name} y de lo que sabe de ti en general, no de ninguna conversación en particular. ` +
+      `Estas notas nacen de quién es ${character.name}, de lo que sabe de ti en general o de una fecha especial, no de ninguna conversación en particular. ` +
         'No hay que contestarlas ni pasa nada si las ignoras.'
     )
   );

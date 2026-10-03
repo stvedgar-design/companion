@@ -26,6 +26,7 @@ import { identityForPrompt } from './identity-synthesis.js';
 import { timeOfDayNote } from './timeofday.js';
 import { fitToChars } from './continuity.js';
 import { isMoment } from './moment-tones.js';
+import { dateOccasion, occasionText, DATE_NOTES_MAX } from './followups.js';
 
 export const MAILBOX_MIN_ABSENCE_MS = 8 * 60 * 60 * 1000;
 export const MAILBOX_MIN_MEMORIES = 5;
@@ -41,6 +42,8 @@ export const MAILBOX_MAX_TOKENS = 130;
 export const MAILBOX_MAX_ATTEMPTS = 2;
 
 const STATUSES = ['new', 'read', 'answered', 'dismissed'];
+// HUM-004: por qué se dejó la nota. 'absence' = la de siempre (PROACT-001); 'birthday'/'anniversary' = una fecha (api/followups.js). Ausente = 'absence'.
+const REASONS = ['absence', 'birthday', 'anniversary'];
 
 function collapse(text) {
   return typeof text === 'string' ? text.replace(/\s+/g, ' ').trim() : '';
@@ -53,7 +56,7 @@ function posNum(n) {
 /* ---------- datos ---------- */
 
 export function defaultMailbox() {
-  return { lastInteractionAt: 0, lastNoteFor: 0, attemptedAt: 0, notes: [] };
+  return { lastInteractionAt: 0, lastNoteFor: 0, attemptedAt: 0, notes: [], dateNotes: [] };
 }
 
 function sanitizeNote(raw) {
@@ -66,6 +69,7 @@ function sanitizeNote(raw) {
     createdAt: posNum(raw.createdAt),
     status: STATUSES.includes(raw.status) ? raw.status : 'new',
     readAt: posNum(raw.readAt),
+    reason: REASONS.includes(raw.reason) ? raw.reason : 'absence',
   };
 }
 
@@ -81,6 +85,7 @@ export function sanitizeMailbox(raw) {
     lastNoteFor: posNum(src.lastNoteFor),
     attemptedAt: posNum(src.attemptedAt),
     notes: (Array.isArray(src.notes) ? src.notes : []).map(sanitizeNote).filter(Boolean).slice(0, MAILBOX_NOTES_MAX),
+    dateNotes: (Array.isArray(src.dateNotes) ? src.dateNotes : []).filter((k) => typeof k === 'string' && /^[a-z]+:\d{4}$/.test(k)).slice(-DATE_NOTES_MAX), // HUM-004: «birthday:2026»
   };
 }
 
@@ -104,7 +109,7 @@ export function withInteraction(mailbox, now = Date.now()) {
 /** Añade una nota nueva; para no crecer sin fin, descarta primero las ya descartadas/leídas más viejas. */
 export function withNote(mailbox, note, now, forInteraction) {
   const cur = sanitizeMailbox(mailbox);
-  const created = { id: 'n' + now.toString(36) + Math.random().toString(36).slice(2, 6), text: note, createdAt: now, status: 'new', readAt: 0 };
+  const created = { id: 'n' + now.toString(36) + Math.random().toString(36).slice(2, 6), text: note, createdAt: now, status: 'new', readAt: 0, reason: 'absence' };
   let notes = [created, ...cur.notes];
   while (notes.length > MAILBOX_NOTES_MAX) {
     const idx = [...notes].reverse().findIndex((n) => n.status !== 'new');
@@ -112,6 +117,35 @@ export function withNote(mailbox, note, now, forInteraction) {
     else notes.splice(notes.length - 1 - idx, 1);
   }
   return { ...cur, notes, lastNoteFor: forInteraction, attemptedAt: 0 };
+}
+
+/**
+ * HUM-004: añade una nota por FECHA (cumpleaños o aniversario) y anota su clave (`birthday:2026`) para no repetirla ese año. No toca `lastNoteFor` ni
+ * `attemptedAt`: la nota por ausencia sigue su propio ritmo. Misma limpieza del tope de notas que `withNote`.
+ */
+export function withDateNote(mailbox, note, now, occasion) {
+  const cur = sanitizeMailbox(mailbox);
+  const created = { id: 'n' + now.toString(36) + Math.random().toString(36).slice(2, 6), text: note, createdAt: now, status: 'new', readAt: 0, reason: occasion.reason };
+  let notes = [created, ...cur.notes];
+  while (notes.length > MAILBOX_NOTES_MAX) {
+    const idx = [...notes].reverse().findIndex((n) => n.status !== 'new');
+    if (idx === -1) notes.pop();
+    else notes.splice(notes.length - 1 - idx, 1);
+  }
+  return { ...cur, notes, dateNotes: [...cur.dateNotes.filter((k) => k !== occasion.key), occasion.key].slice(-DATE_NOTES_MAX) };
+}
+
+/**
+ * HUM-004: ¿toca una nota por FECHA hoy? (cumpleaños dicho por el usuario o aniversario del primer chat, una vez al año; si un intento reciente falló la
+ * verificación, se espera como en la nota por ausencia.) Pura.
+ * @returns {{ reason: 'birthday'|'anniversary', years: number, key: string }|null}
+ */
+export function dateNoteDue(character, now = new Date()) {
+  const occasion = dateOccasion(character, now);
+  if (!occasion) return null;
+  const mb = sanitizeMailbox(character && character.mailbox);
+  if (mb.attemptedAt && now.getTime() - mb.attemptedAt < MAILBOX_RETRY_AFTER_FAILED_MS) return null;
+  return occasion;
 }
 
 export function withFailedAttempt(mailbox, now = Date.now()) {
@@ -208,20 +242,23 @@ export function pickMailboxMemories(entries, rnd = Math.random, budget = MAILBOX
 /**
  * Instrucción para el modelo. La entrada es la identidad y los recuerdos; nunca un episodio.
  */
-export function mailboxInstruction({ charName, userName, personality, description, identity, relationship, memories, elapsed, timeNote, cap = MAILBOX_NOTE_MAX_CHARS }) {
+export function mailboxInstruction({ charName, userName, personality, description, identity, relationship, memories, elapsed, timeNote, occasion = '', cap = MAILBOX_NOTE_MAX_CHARS }) {
   const lines = [
     `Original personality: ${personality || '(not specified)'}`,
     description ? `Description: ${description}` : '',
     identity ? `How ${charName} has grown so far: ${identity}` : '',
     relationship ? `How ${charName} sees the relationship: ${relationship}` : '',
-    `Things ${charName} remembers about ${userName}:\n${memories.map((e) => `- ${e.content}`).join('\n')}`,
+    memories.length ? `Things ${charName} remembers about ${userName}:\n${memories.map((e) => `- ${e.content}`).join('\n')}` : '',
   ].filter(Boolean);
   return (
     `[Task: write a short note that ${charName} leaves for ${userName} to find later. Format: a brief *action in asterisks* followed by ` +
     `1 or 2 short spoken sentences, one single paragraph, under ${cap} characters, in ${charName}'s own first-person voice, same language as the memories. ` +
     `Speak from who ${charName} is and what ${charName} generally knows about ${userName}. Do NOT refer to any specific earlier conversation, scene or ` +
     `topic, do not continue anything, do not ask a question that expects ${userName} to answer a specific thing, and never mention being ignored, ` +
-    `waiting, missing a reply, or ${userName} owing anything. You may lightly feel that time has passed (${elapsed}; ${timeNote}) but do not quote it exactly, ` +
+    `waiting, missing a reply, or ${userName} owing anything. ` +
+    (occasion
+      ? `Special day: ${occasion} Mention it warmly in one short line, in ${charName}'s own words, and `
+      : `You may lightly feel that time has passed (${elapsed}; ${timeNote}) but do not quote it exactly, `) +
     `never count hours or minutes, and never reproach. Warm, light, no pressure. Use ONLY what is below: no new names, no new facts, nothing invented.\n\n` +
     `${lines.join('\n\n')}\n\nEnd of notes.]`
   );
@@ -299,7 +336,8 @@ export function createMailboxWriter(deps) {
   const clock = deps.now || Date.now;
   const rnd = deps.random || Math.random;
 
-  async function run(character, settings, last, due) {
+  // `occasion` (HUM-004): una nota por FECHA. Recibe SOLO el motivo y los nombres (`occasionText`); sin ausencia, sin mínimo de recuerdos.
+  async function run(character, settings, last, due, occasion = null) {
     const controller = new AbortController();
     running = { controller };
     try {
@@ -316,11 +354,12 @@ export function createMailboxWriter(deps) {
         identity,
         relationship: rel.level === 'early' ? '' : rel.text,
         memories,
-        elapsed: elapsedPhrase(due.elapsedMs),
+        elapsed: occasion ? '' : elapsedPhrase(due.elapsedMs),
         timeNote: timeOfDayNote(new Date(now)) || 'some time of day',
+        occasion: occasion ? occasionText(occasion, names.charName, names.userName) : '',
       };
       const request = buildMailboxRequest({ character, settings, instruction: mailboxInstruction(parts) });
-      const sourceText = [parts.personality, parts.description, identity, parts.relationship, memories.map((e) => e.content).join(' ')].join(' ');
+      const sourceText = [parts.personality, parts.description, identity, parts.relationship, memories.map((e) => e.content).join(' '), parts.occasion].join(' ');
 
       let note = '';
       let answered = false;
@@ -342,6 +381,16 @@ export function createMailboxWriter(deps) {
         return { kind: 'unverified' };
       }
       let saved = false;
+      if (occasion) {
+        // Fecha: se vuelve a mirar sobre el registro recién leído (no se repite el mismo año aunque dos chequeos se crucen).
+        await deps.updateMailbox(character.id, (mb) => {
+          const cur = sanitizeMailbox(mb);
+          if (cur.dateNotes.includes(occasion.key)) return cur;
+          saved = true;
+          return withDateNote(cur, note, now, occasion);
+        });
+        return saved ? { kind: 'ok', reason: occasion.reason } : { kind: 'skipped' };
+      }
       await deps.updateMailbox(character.id, (mb) => {
         const cur = sanitizeMailbox(mb);
         // Si mientras tanto el usuario volvió (interactuó) o ya se escribió una para este período, no se deja nada.
@@ -364,6 +413,12 @@ export function createMailboxWriter(deps) {
       try {
         const character = await deps.loadCharacter(characterId);
         if (!character || !character.card) return { kind: 'skipped' };
+        // HUM-004: una fecha especial de hoy va primero (un cumpleaños importa más que una ausencia). Solo con `Settings.followUps === true`.
+        const occasion = dateNoteDue(character, new Date(clock()));
+        if (occasion) {
+          const settings = await deps.loadSettings();
+          if (settings && settings.followUps === true) return await run(character, settings, 0, { elapsedMs: 0 }, occasion);
+        }
         const last = lastInteractionAt(character.mailbox, await deps.listChatDates(characterId));
         const due = mailboxDue(character, last, clock());
         if (!due.due) return { kind: 'skipped', reason: due.reason };

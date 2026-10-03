@@ -9,6 +9,7 @@
 import { saveCharacter, getCharacter } from '../state.js';
 import { relationshipDisplayText, relationshipSummary } from '../api/relationship.js';
 import { defaultIdentity, sanitizeIdentity } from '../api/identity-synthesis.js';
+import { defaultFollowUps } from '../api/followups.js';
 import { defaultMailbox, unreadCount, sanitizeMailbox } from '../api/mailbox.js';
 import { openMailbox, touchInteraction } from './mailbox.js';
 import { sanitizeAppearance } from '../character-appearance.js';
@@ -69,6 +70,7 @@ export function duplicateCharacterData(character) {
     relationship: { text: '', level: 'early', updated: 0, source: 'auto' },
     mailbox: defaultMailbox(), // PROACT-001: el buzón y la marca de interacción son de ESE personaje
     identity: defaultIdentity(), // MEM-019: la síntesis nace de SUS recuerdos; el duplicado no tiene ninguno
+    followUps: defaultFollowUps(), // HUM-004: los pendientes y el cumpleaños que dijo el usuario son de ESE personaje
   };
 }
 
