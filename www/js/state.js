@@ -162,6 +162,7 @@ import { sanitizeMood } from './api/presence.js';
  * @property {boolean} continuityAuto // MEM-007: resumen de continuidad automático del chat (ver api/continuity.js)
  * @property {boolean} varietyAssist // FMT-004: nota de variedad al final del prompt cuando el personaje se repite
  * @property {boolean} humanTouch // HUM-001: ánimo persistente, largo/ritmo variable, observaciones, pausa de "escribiendo" y mensajes partidos (api/presence.js); true por defecto
+ * @property {boolean} emotionResponse // HUM-002: el personaje cambia de registro según lo que el usuario siente (tristeza, estrés, enojo, alegría, logro, miedo, cansancio, cariño; api/emotion.js); true por defecto, solo cambia la nota al final del prompt
  * @property {boolean} streamReplies // la respuesta se ve aparecer mientras se escribe (true, por defecto) o llega completa de una vez (false); solo cambia lo que se pinta, no la petición al servidor
  * @property {boolean} personalityAdapts // CCC-006: la cabecera del prompt suma una línea que trata la personalidad como punto de partida que evoluciona con la escena (api/prompt.js); true por defecto
  * @property {boolean} formatAssist // FMT-002: la respuesta del personaje arranca ya dentro de una acción (`*`); true por defecto
@@ -194,6 +195,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   varietyAssist: false,
   personalityAdapts: true,
   humanTouch: true,
+  emotionResponse: true,
   streamReplies: true,
   formatAssist: true,
   splitTypography: false,
@@ -281,6 +283,7 @@ function sanitizeSettings(raw) {
     varietyAssist: merged.varietyAssist === true,
     personalityAdapts: merged.personalityAdapts !== false,
     humanTouch: merged.humanTouch !== false,
+    emotionResponse: merged.emotionResponse !== false,
     streamReplies: merged.streamReplies !== false,
     formatAssist: merged.formatAssist !== false,
     splitTypography: merged.splitTypography === true,

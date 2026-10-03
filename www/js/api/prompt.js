@@ -322,8 +322,9 @@ function continuityPadding(continuity) {
 // se reserva un espacio fijo, tenga la frase el largo que tenga (la más larga posible ronda los 30 caracteres con corchetes).
 export const TIME_RESERVE_CHARS = 48;
 
-// HUM-001: reserva fija de la nota de presencia (ánimo + ritmo + observaciones; tope de la nota en api/presence.js: 430 + corchetes y salto).
-export const PRESENCE_RESERVE_CHARS = 440;
+// HUM-001: reserva fija de la nota de presencia (ánimo + ritmo + observaciones; tope de la nota en api/presence.js: `PRESENCE_NOTE_MAX` + 10 de corchetes y
+// salto). HUM-002 la subió de 440 a 650 (nota de hasta 640) para sumar la instrucción de registro emocional, los pendientes y la vida propia; un test ata ambas.
+export const PRESENCE_RESERVE_CHARS = 650;
 
 // Relleno que completa la reserva fija de la hora; 0 si no hay frase.
 function timePadding(timeNote) {

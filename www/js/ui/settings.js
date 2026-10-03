@@ -79,6 +79,14 @@ export function openSettings(app) {
 
     <div class="field">
       <label class="field__label" style="display:flex;align-items:center;gap:var(--space-2, 8px)">
+        <input type="checkbox" id="settings-emotion-response" style="accent-color:var(--color-accent, #8b1fe0)">
+        <span>Reaccionar a cómo te sientes</span>
+      </label>
+      <div class="field__hint">Si estás triste, estresado, enojado, feliz, orgulloso, asustado, cansado o cariñoso, el personaje lo nota por lo que escribes y cambia de registro a su manera: te acompaña de cerca si estás mal, celebra contigo si estás bien. No hace el chat más lento. Funciona junto con "Detalles de presencia humana".</div>
+    </div>
+
+    <div class="field">
+      <label class="field__label" style="display:flex;align-items:center;gap:var(--space-2, 8px)">
         <input type="checkbox" id="settings-personality-adapts" style="accent-color:var(--color-accent, #8b1fe0)">
         <span>Personalidad que se adapta a la escena</span>
       </label>
@@ -188,6 +196,7 @@ export function openSettings(app) {
     mode: q('#settings-mode'),
     variety: q('#settings-variety'),
     humanTouch: q('#settings-human-touch'),
+    emotionResponse: q('#settings-emotion-response'),
     personalityAdapts: q('#settings-personality-adapts'),
     format: q('#settings-format'),
     stream: q('#settings-stream'),
@@ -214,6 +223,7 @@ export function openSettings(app) {
     els.mode.value = settings.mode;
     els.variety.checked = settings.varietyAssist === true;
     els.humanTouch.checked = settings.humanTouch !== false;
+    els.emotionResponse.checked = settings.emotionResponse !== false;
     els.personalityAdapts.checked = settings.personalityAdapts !== false;
     els.format.checked = settings.formatAssist !== false;
     els.stream.checked = settings.streamReplies !== false;
@@ -329,6 +339,11 @@ export function openSettings(app) {
   els.humanTouch.addEventListener('change', () => {
     saveSettings({ humanTouch: els.humanTouch.checked });
     logEvent(TEL_EVENTS.EXPERIMENTAL_SETTING_CHANGED, { setting: 'humanTouch', enabled: els.humanTouch.checked });
+  });
+
+  els.emotionResponse.addEventListener('change', () => {
+    saveSettings({ emotionResponse: els.emotionResponse.checked });
+    logEvent(TEL_EVENTS.EXPERIMENTAL_SETTING_CHANGED, { setting: 'emotionResponse', enabled: els.emotionResponse.checked });
   });
 
   els.personalityAdapts.addEventListener('change', () => {

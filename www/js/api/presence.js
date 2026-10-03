@@ -13,9 +13,15 @@
 // sin pronombres (solo nombres), así sirve igual con cualquier género. La etiqueta que ve el usuario va en español y SIN género: "ánimo tranquilo".
 
 import { dayPart } from './timeofday.js';
+import { emotionProfile, detectEmotion } from './emotion.js';
 
-/** Nota máxima (sin corchetes). La reserva fija en el presupuesto del historial vive en prompt.js (`PRESENCE_RESERVE_CHARS`; mismo motivo que la hora). */
-export const PRESENCE_NOTE_MAX = 430;
+/**
+ * Nota máxima (sin corchetes). La reserva fija en el presupuesto del historial vive en prompt.js (`PRESENCE_RESERVE_CHARS`; mismo motivo que la hora)
+ * y siempre es esta cifra + 10 (corchetes y salto de línea): un test las ata. HUM-001 la dejó en 430; HUM-002/004/005 suman la instrucción de
+ * registro emocional, los pendientes y la vida propia, así que sube a 640 (≈ +60 tokens de reserva en un contexto de 6144). Lo que no cabe se omite
+ * por prioridad (ver `buildPresence`), nunca se recorta a la mitad.
+ */
+export const PRESENCE_NOTE_MAX = 640;
 
 /** Probabilidad de que una respuesta larga llegue partida en dos mensajes. */
 export const SPLIT_CHANCE = 0.12;
@@ -66,14 +72,20 @@ function dateKey(date) {
   return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
 }
 
-function norm(text) {
-  return String(text || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-}
-
-const SAD = /\b(sad|cry(ing)?|lonely|alone|stress(ed)?|anxious|worried|bad day|rough day|awful|depress\w*|hurts?|triste|llor\w*|sol[oa]|estres\w*|ansios\w*|preocupad\w*|mal dia|horrible|duele)\b/;
-const JOY = /\b(haha+|hehe+|lol|lmao|awesome|amazing|yay|excited|jaja+|jeje+|genial|increible|feliz|emocionad\w*|divertid\w*)\b|!{2,}|[😂😄😁🤣😆🎉]/u;
-const AFFECTION = /\b(love you|miss you|missed you|hug|kiss|cuddle|babe|darling|te quiero|te amo|te extrano|abrazo|beso|carino|mi amor)\b|[❤💕😘🥰]/u;
-const TIRED = /\b(tired|sleepy|exhausted|bedtime|cansad\w*|sueno|dormir|agotad\w*)\b/;
+// HUM-002: lo que el usuario siente lo lee `emotion.js` (una sola lista de palabras para el ánimo y para la instrucción de registro). Cada emoción
+// del usuario empuja el ánimo del personaje hacia lo que le sale natural responder (tristeza → melancólico y cariñoso; enojo → tranquilo…).
+const EMOTION_MOOD = {
+  sad: { wistful: 3.2, cozy: 0.8 },
+  happy: { playful: 3, lively: 0.8 },
+  affectionate: { cozy: 3.6 },
+  tired: { tired: 0.8, calm: 0.4 },
+  stressed: { wistful: 1.2, cozy: 1, calm: 0.6 },
+  angry: { calm: 1.6 },
+  scared: { cozy: 1.4, calm: 1 },
+  proud: { lively: 2, playful: 0.6 },
+};
+/** Tope de fuerza por emoción al empujar el ánimo (un mensaje muy intenso no desborda a los demás factores). */
+const EMOTION_MOOD_CAP = 1.5;
 
 const HOUR_BASE = {
   'small-hours': { tired: 2, wistful: 1.5, cozy: 1 },
@@ -127,16 +139,10 @@ export function computeMood({ prev, now = new Date(), characterId = '', tags = [
   const day = dateKey(now);
   add(scores, MOOD_IDS[hash(`${characterId}|${day}|a`) % MOOD_IDS.length], 1.2);
   add(scores, MOOD_IDS[hash(`${characterId}|${day}|b`) % MOOD_IDS.length], 0.6);
-  // Lo que el usuario escribe (el último pesa más).
-  const weights = [1, 0.5, 0.3];
-  userTexts.slice(0, 3).forEach((text, i) => {
-    const w = weights[i];
-    const n = norm(text);
-    if (SAD.test(n)) { add(scores, 'wistful', 3.2 * w); add(scores, 'cozy', 0.8 * w); }
-    if (JOY.test(n) || JOY.test(String(text || ''))) { add(scores, 'playful', 3 * w); add(scores, 'lively', 0.8 * w); }
-    if (AFFECTION.test(n) || AFFECTION.test(String(text || ''))) add(scores, 'cozy', 3.6 * w);
-    if (TIRED.test(n)) { add(scores, 'tired', 0.8 * w); add(scores, 'calm', 0.4 * w); }
-  });
+  // Lo que el usuario escribe (el último pesa más; ver emotion.js).
+  for (const [emotion, strength] of Object.entries(emotionProfile(userTexts))) {
+    for (const [id, v] of Object.entries(EMOTION_MOOD[emotion] || {})) add(scores, id, v * Math.min(strength, EMOTION_MOOD_CAP));
+  }
   if (gapMs >= 2 * DAY) { add(scores, 'wistful', 0.8); add(scores, 'cozy', 0.6); }
   // Inercia: el ánimo anterior pesa y se desvanece con las horas (vida media de 8 h).
   if (before.id) {
@@ -155,6 +161,19 @@ const RHYTHMS = {
   brief: 'Make this reply a single short paragraph of one or two sentences.',
   medium: 'Make this reply a single paragraph of about three or four sentences.',
   full: 'Make this reply a single, fuller paragraph of about five or six sentences, since the moment has room for it.',
+};
+
+// HUM-002: cuánto se inclina el largo de la respuesta según lo que siente el usuario (factores sobre los pesos base; nunca deja de ser un párrafo).
+// Con tristeza, estrés, miedo o cansancio el párrafo "más lleno" no se elige nunca (la frase del ritmo lleno dice "el momento tiene espacio"; sería desatinada).
+const EMOTION_RHYTHM = {
+  sad: { brief: 1.3, medium: 1.15, full: 0 },
+  stressed: { brief: 1.3, medium: 1.1, full: 0 },
+  scared: { brief: 1.3, medium: 1.1, full: 0 },
+  tired: { brief: 1.4, medium: 1, full: 0 },
+  angry: { brief: 1, medium: 1.2, full: 0.7 },
+  happy: { brief: 0.8, medium: 1, full: 1.4 },
+  proud: { brief: 0.8, medium: 1, full: 1.4 },
+  affectionate: { brief: 1, medium: 1.2, full: 1 },
 };
 
 function wordCount(text) {
@@ -181,16 +200,20 @@ function pickWeighted(weights, rnd) {
 /**
  * Elige el largo de ESTA respuesta (siempre un solo párrafo). Con mensajes cortos del usuario sale más corto; con mensajes largos, más lleno;
  * el cansancio acorta, la energía y el cariño alargan. Si saldría igual que la respuesta anterior, se vuelve a tirar una vez.
- * @param {{ userText?: string, lastCharText?: string, moodId?: string, rnd?: () => number }} input
+ * HUM-002: `emotionId` (la emoción del usuario, `emotion.js`) ajusta el largo: con tristeza, estrés, miedo o cansancio sale más corta (acompañar sin abrumar);
+ * con alegría o logro puede ser más llena; siempre un solo párrafo. Vacío = como en HUM-001.
+ * @param {{ userText?: string, lastCharText?: string, moodId?: string, emotionId?: string, rnd?: () => number }} input
  * @returns {{ id: 'brief'|'medium'|'full', text: string }}
  */
-export function pickRhythm({ userText = '', lastCharText = '', moodId = '', rnd = Math.random } = {}) {
+export function pickRhythm({ userText = '', lastCharText = '', moodId = '', emotionId = '', rnd = Math.random } = {}) {
   const words = wordCount(userText);
   const base = words <= 4 ? { brief: 0.6, medium: 0.35, full: 0.05 } : words <= 20 ? { brief: 0.25, medium: 0.55, full: 0.2 } : { brief: 0.1, medium: 0.45, full: 0.45 };
   const w = { ...base };
   if (moodId === 'tired') w.brief *= 1.5;
   if (moodId === 'lively' || moodId === 'cozy') w.full *= 1.3;
   if (moodId === 'calm') w.medium *= 1.15;
+  const lean = EMOTION_RHYTHM[emotionId];
+  if (lean) for (const [k, f] of Object.entries(lean)) w[k] *= f;
   let id = pickWeighted(w, rnd);
   const last = lengthCategory(lastCharText);
   if (last && id === last && rnd() < 0.6) {
@@ -199,6 +222,40 @@ export function pickRhythm({ userText = '', lastCharText = '', moodId = '', rnd 
     id = pickWeighted(rest, rnd);
   }
   return { id, text: RHYTHMS[id] };
+}
+
+/**
+ * HUM-002: instrucción de REGISTRO para la respuesta, según lo que el usuario siente. Inglés, redactada en positivo (qué SÍ hace el personaje), solo
+ * con nombres (sin pronombres: sirve con cualquier género) y siempre "en la voz propia" del personaje, para que respete su personalidad (un mentor seco
+ * consuela a su manera). Una sola oración corta por emoción. '' si la emoción no se conoce.
+ * @param {string} emotionId
+ * @param {string} charName
+ * @param {string} userName
+ * @returns {string}
+ */
+export function registerLine(emotionId, charName, userName) {
+  const N = charName;
+  const U = userName;
+  switch (emotionId) {
+    case 'sad':
+      return `${U} sounds low right now. ${N} slows the pace, moves closer with one concrete gesture in ${N}'s own way, and asks ONE gentle question.`;
+    case 'stressed':
+      return `${U} sounds under pressure. ${N} steadies the moment with a calm, grounding gesture in ${N}'s own way, one short reassuring line, and ONE simple question about what would help most.`;
+    case 'angry':
+      return `${U} sounds frustrated. ${N} listens first, stays steady and on ${U}'s side in ${N}'s own voice, and lets ${U} say more before offering any advice.`;
+    case 'happy':
+      return `${U} sounds happy. ${N} celebrates with real enthusiasm in ${N}'s own voice and asks ${U} to tell the whole story.`;
+    case 'proud':
+      return `${U} just shared a win. ${N} shows genuine pride in ${N}'s own voice, names what ${U} did well, and asks how it felt.`;
+    case 'scared':
+      return `${U} sounds frightened. ${N} becomes a steady presence: a close, protective gesture in ${N}'s own way, a calm voice, and ONE question about what ${U} needs right now.`;
+    case 'tired':
+      return `${U} sounds worn out. ${N} keeps everything soft and easy in ${N}'s own voice, offers comfort or rest, and keeps the reply gentle and easy to read.`;
+    case 'affectionate':
+      return `${U} is being tender. ${N} answers with matching warmth and one small affectionate gesture in ${N}'s own way.`;
+    default:
+      return '';
+  }
 }
 
 function clip(text, n) {
@@ -271,11 +328,13 @@ export function observations({ messages = [], now = new Date(), userName = 'User
  * @param {{
  *   character: { id?: string, name: string, lorebook?: object[], mood?: object, personalityTags?: string[] },
  *   messages: Array<{ role: string, text?: string, ts?: number }>,
- *   settings: { user?: string },
+ *   settings: { user?: string, emotionResponse?: boolean },
  *   now?: Date,
  *   rnd?: () => number,
  * }} input
- * @returns {{ note: string, mood: { id: string, changed: boolean, updated: number } }}
+ * @returns {{ note: string, mood: { id: string, changed: boolean, updated: number }, emotion: string }}
+ *   HUM-002: con `settings.emotionResponse === true` la nota suma la instrucción de registro (`registerLine`) según la emoción del usuario; `emotion` = su id
+ *   ('' si no hay o está apagado). Sin emoción detectada (o apagado) la nota es idéntica a la de HUM-001.
  */
 export function buildPresence({ character, messages = [], settings = {}, now = new Date(), rnd = Math.random } = {}) {
   const N = (character && character.name) || 'Character';
@@ -295,19 +354,28 @@ export function buildPresence({ character, messages = [], settings = {}, now = n
   const mood = computeMood({ prev: character && character.mood, now, characterId: (character && character.id) || N, tags: character && character.personalityTags, userTexts, gapMs });
   const moodDef = MOODS.find((m) => m.id === mood.id);
   const lastChar = [...messages].reverse().find((m) => m && m.role === 'char' && m.text);
-  const rhythm = pickRhythm({ userText: userTexts[0] || '', lastCharText: lastChar ? lastChar.text : '', moodId: mood.id, rnd });
+  const emotionOn = !!settings && settings.emotionResponse === true;
+  const detected = emotionOn ? detectEmotion(userTexts) : null;
+  const emotionId = detected ? detected.id : '';
+  const rhythm = pickRhythm({ userText: userTexts[0] || '', lastCharText: lastChar ? lastChar.text : '', moodId: mood.id, emotionId, rnd });
 
   const head = `${N} feels ${moodDef.prompt} right now.`;
   const parts = [head];
-  const obs = observations({ messages, now, userName: U, charName: N, lorebook: character && character.lorebook, rnd });
   let used = head.length + rhythm.text.length + 2;
+  // Prioridad cuando no cabe todo: el registro emocional (lo que el usuario siente AHORA) va primero, después las observaciones (ver `observations`).
+  const register = registerLine(emotionId, N, U);
+  if (register && used + register.length + 1 <= PRESENCE_NOTE_MAX) {
+    parts.push(register);
+    used += register.length + 1;
+  }
+  const obs = observations({ messages, now, userName: U, charName: N, lorebook: character && character.lorebook, rnd });
   for (const o of obs) {
     if (used + o.length + 1 > PRESENCE_NOTE_MAX) continue;
     parts.push(o);
     used += o.length + 1;
   }
   parts.push(rhythm.text);
-  return { note: parts.join(' '), mood };
+  return { note: parts.join(' '), mood, emotion: emotionId };
 }
 
 /**
