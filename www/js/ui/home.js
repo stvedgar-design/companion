@@ -5,6 +5,7 @@ import { getSettings, listCharacters, listChats, deleteCharacter, activeChats } 
 import { retryPendingArchives } from './chat-archive.js';
 import { maybeSynthesizeIdentities } from './identity.js';
 import { maybeWriteMailboxNotes, openMailbox, unreadCount } from './mailbox.js';
+import { maybeWriteLife } from './life.js';
 import { importCardFile } from '../cards/import.js';
 import { connect } from '../api/kobold.js';
 import { pickFiles } from '../platform.js';
@@ -352,6 +353,8 @@ async function checkConnection(myToken) {
       .then(() => maybeSynthesizeIdentities())
       // PROACT-001: notas del buzón para quien estuvo ausente un buen rato; sin aviso emergente ni notificación: se descubren por el indicador de la tarjeta.
       .then(() => maybeWriteMailboxNotes())
+      // HUM-005: «su día» de hoy para quien no lo tenga (una llamada corta por personaje y día; sin aviso: se ve en la ficha y a veces en lo que cuenta).
+      .then(async (r) => { await maybeWriteLife(); return r; })
       .then(async (r) => {
         if (r && r.written.length && myToken === viewToken) {
           characters = await listCharacters();

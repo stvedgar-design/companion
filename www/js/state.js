@@ -15,6 +15,7 @@ import { sanitizeGender } from './pronoun-substitution.js';
 import { sanitizeFeeling } from './api/feeling.js';
 import { sanitizeMood } from './api/presence.js';
 import { sanitizeFollowUps } from './api/followups.js';
+import { sanitizeLife } from './api/life.js';
 import { sanitizeMomentFields } from './api/moment-tones.js';
 
 /**
@@ -89,6 +90,8 @@ import { sanitizeMomentFields } from './api/moment-tones.js';
  *   Se escribe SOLO cuando cambia (el registro lleva imágenes). Ver api/presence.js
  * @property {{ items: object[], dates: object[] }} followUps  // HUM-004: `items` = pendientes que el usuario dijo («mañana tengo la entrevista»; tope 5; `pending|asked|done|expired`, con fecha en que toca y caducidad);
  *   `dates` = el cumpleaños que dijo explícitamente (como mucho uno). Solo se usan en el chat y para notas por FECHA, nunca para notas de ausencia. `{items:[],dates:[]}` por defecto. Ver api/followups.js
+ * @property {{ entries: { date: string, text: string }[], attemptedAt: number, mentionedOn: string }} life  // HUM-005: "su día": una frase corta por día (`YYYY-MM-DD`; tope 5 días)
+ *   que el modelo escribe en segundo plano desde la personalidad, el ánimo y la hora (nunca del usuario); `mentionedOn` = el día en que ya la sacó en el chat. `{entries:[],attemptedAt:0,mentionedOn:''}` por defecto. Ver api/life.js
  * @property {string} chatBackground           // data URL JPEG del fondo de SUS chats, '' si no hay
  * @property {number} chatBackgroundBrightness // 20 a 180 (%), 100 = sin cambios
  * @property {boolean} chatBackgroundFade      // fundido a negro en la mitad inferior de la imagen
@@ -172,6 +175,7 @@ import { sanitizeMomentFields } from './api/moment-tones.js';
  * @property {boolean} emotionResponse // HUM-002: el personaje cambia de registro según lo que el usuario siente (tristeza, estrés, enojo, alegría, logro, miedo, cansancio, cariño; api/emotion.js); true por defecto, solo cambia la nota al final del prompt
  * @property {boolean} momentMemories // HUM-003: guarda MOMENTOS emocionales como recuerdos (con tono y fecha) cuando el usuario tiene un pico emocional (api/moments.js); true por defecto, sin llamadas al modelo en el chat
  * @property {boolean} followUps // HUM-004: el personaje se acuerda de lo que dices que va a pasar («mañana tengo la entrevista») y pregunta cómo te fue al volver; y deja una nota en tu cumpleaños y en el aniversario del primer chat; true por defecto, sin llamadas al modelo en el chat
+ * @property {boolean} ownLife // HUM-005: el personaje tiene su propio día (una frase al día, escrita en segundo plano por el modelo cuando el hub ve el servidor encendido: UNA llamada corta por personaje y día) y puede contarlo; true por defecto
  * @property {boolean} streamReplies // la respuesta se ve aparecer mientras se escribe (true, por defecto) o llega completa de una vez (false); solo cambia lo que se pinta, no la petición al servidor
  * @property {boolean} personalityAdapts // CCC-006: la cabecera del prompt suma una línea que trata la personalidad como punto de partida que evoluciona con la escena (api/prompt.js); true por defecto
  * @property {boolean} formatAssist // FMT-002: la respuesta del personaje arranca ya dentro de una acción (`*`); true por defecto
@@ -207,6 +211,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   emotionResponse: true,
   momentMemories: true,
   followUps: true,
+  ownLife: true,
   streamReplies: true,
   formatAssist: true,
   splitTypography: false,
@@ -297,6 +302,7 @@ function sanitizeSettings(raw) {
     emotionResponse: merged.emotionResponse !== false,
     momentMemories: merged.momentMemories !== false,
     followUps: merged.followUps !== false,
+    ownLife: merged.ownLife !== false,
     streamReplies: merged.streamReplies !== false,
     formatAssist: merged.formatAssist !== false,
     splitTypography: merged.splitTypography === true,
@@ -477,6 +483,7 @@ function sanitizeCharacterExtras(raw) {
     mailbox: sanitizeMailbox(raw.mailbox),
     mood: sanitizeMood(raw.mood),
     followUps: sanitizeFollowUps(raw.followUps),
+    life: sanitizeLife(raw.life),
     ...sanitizeCharacterBackground(raw),
     formatStyle,
     personalityTags,
@@ -750,6 +757,19 @@ export function createState(backend) {
       const next = sanitizeMood(mood);
       if (next.id === character.mood.id) return character;
       const updated = { ...character, mood: next };
+      await backend.put('characters', characterId, updated);
+      return updated;
+    });
+  }
+
+  // HUM-005: igual que `saveCharacterFollowUps` (transformación sobre el registro recién leído, bajo el candado, escribe solo si cambió).
+  async function saveCharacterLife(characterId, mutator) {
+    return withChatLock('char:' + characterId, async () => {
+      const character = await getCharacter(characterId);
+      if (!character) return null;
+      const next = sanitizeLife(mutator(character.life));
+      if (JSON.stringify(next) === JSON.stringify(character.life)) return character;
+      const updated = { ...character, life: next };
       await backend.put('characters', characterId, updated);
       return updated;
     });
@@ -1098,6 +1118,7 @@ export function createState(backend) {
     saveCharacterMood,
     saveCharacterMoment,
     saveCharacterFollowUps,
+    saveCharacterLife,
     touchCharacterInteraction,
     deleteCharacter,
     listChats,
@@ -1241,6 +1262,7 @@ export const saveCharacterMailbox = (...args) => getDefaultInstance().saveCharac
 export const saveCharacterMood = (...args) => getDefaultInstance().saveCharacterMood(...args);
 export const saveCharacterMoment = (...args) => getDefaultInstance().saveCharacterMoment(...args);
 export const saveCharacterFollowUps = (...args) => getDefaultInstance().saveCharacterFollowUps(...args);
+export const saveCharacterLife = (...args) => getDefaultInstance().saveCharacterLife(...args);
 export const touchCharacterInteraction = (...args) => getDefaultInstance().touchCharacterInteraction(...args);
 export const deleteCharacter = (...args) => getDefaultInstance().deleteCharacter(...args);
 export const listChats = (...args) => getDefaultInstance().listChats(...args);

@@ -42,6 +42,7 @@ const SETTING_LABELS = {
   emotionResponse: 'Reaccionar a cómo te sientes',
   momentMemories: 'Recordar momentos emocionales',
   followUps: 'Acordarse de lo que viene y de las fechas',
+  ownLife: 'El personaje tiene su propio día',
   splitTypography: 'Tipografía dividida (narración/diálogo)',
   continuityAuto: 'Resumen de continuidad automático',
 };

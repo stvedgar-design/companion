@@ -15,6 +15,7 @@
 import { dayPart } from './timeofday.js';
 import { emotionProfile, detectEmotion } from './emotion.js';
 import { dueFollowUp, followUpObservation } from './followups.js';
+import { lifeToday, lifeObservation, dayKey, sanitizeLife, LIFE_MENTION_CHANCE } from './life.js';
 
 /**
  * Nota máxima (sin corchetes). La reserva fija en el presupuesto del historial vive en prompt.js (`PRESENCE_RESERVE_CHARS`; mismo motivo que la hora)
@@ -277,12 +278,13 @@ function awayText(gapMs) {
  *   messages: Array<{ role: string, text?: string, ts?: number }>,  // el historial, terminado en el mensaje nuevo del usuario
  *   now?: Date, userName?: string, charName?: string,
  *   lorebook?: Array<{ content?: string }>,
+ *   life?: { text: string }|null,      // HUM-005: lo que hizo el personaje hoy (api/life.js); con probabilidad baja y una vez por día, «Earlier today, Luna …»
  *   followUp?: { text: string }|null,  // HUM-004: un pendiente vencido para preguntar (api/followups.js); va PRIMERO y reemplaza al «estaba pensando en…»
  *   rnd?: () => number,
  * }} input
  * @returns {string[]}
  */
-export function observations({ messages = [], now = new Date(), userName = 'User', charName = 'Character', lorebook = [], followUp = null, rnd = Math.random } = {}) {
+export function observations({ messages = [], now = new Date(), userName = 'User', charName = 'Character', lorebook = [], followUp = null, life = null, rnd = Math.random } = {}) {
   const U = userName;
   const N = charName;
   const out = [];
@@ -324,6 +326,8 @@ export function observations({ messages = [], now = new Date(), userName = 'User
   }
 
   if (dayPart(now.getHours()) === 'small-hours' && rnd() < 0.35) out.push(`${U} is up very late; ${N} may mention it.`);
+  // HUM-005: lo último en prioridad (es un extra): su día, con probabilidad baja; el azar solo se consume si hay algo que contar.
+  if (life && life.text && rnd() < LIFE_MENTION_CHANCE) out.push(lifeObservation(life, N));
   return out;
 }
 
@@ -332,11 +336,12 @@ export function observations({ messages = [], now = new Date(), userName = 'User
  * @param {{
  *   character: { id?: string, name: string, lorebook?: object[], mood?: object, personalityTags?: string[] },
  *   messages: Array<{ role: string, text?: string, ts?: number }>,
- *   settings: { user?: string, emotionResponse?: boolean, followUps?: boolean },
+ *   settings: { user?: string, emotionResponse?: boolean, followUps?: boolean, ownLife?: boolean },
  *   now?: Date,
  *   rnd?: () => number,
  * }} input
  * @returns {{ note: string, mood: { id: string, changed: boolean, updated: number }, emotion: string, followUp: { id: string, topicCovered: boolean, askedFor: number }|null }}
+ *   HUM-005: `life` = `{date}` si la nota suma «su día» de hoy (quien llama anota que ya se sacó ese día; con `settings.ownLife === true`).
  *   HUM-004: con `settings.followUps === true` y un pendiente vencido (`character.followUps`), la nota suma «puede preguntar cómo le fue» y `followUp` dice cuál (quien llama lo
  *   marca como preguntado/atendido DESPUÉS de guardar la respuesta). Sin el interruptor o sin pendiente vencido, la nota es idéntica a la de antes.
  *   HUM-002: con `settings.emotionResponse === true` la nota suma la instrucción de registro (`registerLine`) según la emoción del usuario; `emotion` = su id
@@ -377,15 +382,21 @@ export function buildPresence({ character, messages = [], settings = {}, now = n
   // HUM-004: pendiente vencido (con la fecha del mensaje del usuario, no el reloj: «regenerar» lee lo mismo).
   const due = settings && settings.followUps === true && lastUser ? dueFollowUp(character && character.followUps, { at: Number.isFinite(lastUser.ts) ? lastUser.ts : now.getTime(), text: lastUser.text }) : null;
   const followUp = due && !due.topicCovered ? due.item : null;
-  const obs = observations({ messages, now, userName: U, charName: N, lorebook: character && character.lorebook, followUp, rnd });
+  // HUM-005: su día de hoy, si lo hay, no se sacó ya hoy y el usuario no está pasando un mal rato (tristeza, miedo, estrés, enojo: ahí se acompaña, no se cuenta nada).
+  const turnAt = lastUser && Number.isFinite(lastUser.ts) ? new Date(lastUser.ts) : now;
+  const todayEntry = settings && settings.ownLife === true ? lifeToday(character && character.life, turnAt) : null;
+  const heavy = ['sad', 'scared', 'stressed', 'angry'].includes((detectEmotion(userTexts) || {}).id);
+  const lifeCandidate = todayEntry && sanitizeLife(character.life).mentionedOn !== dayKey(turnAt) && !heavy ? todayEntry : null;
+  const obs = observations({ messages, now, userName: U, charName: N, lorebook: character && character.lorebook, followUp, life: lifeCandidate, rnd });
   for (const o of obs) {
     if (used + o.length + 1 > PRESENCE_NOTE_MAX) continue;
     parts.push(o);
     used += o.length + 1;
   }
   parts.push(rhythm.text);
+  const lifeUsed = lifeCandidate && parts.includes(lifeObservation(lifeCandidate, N)) ? { date: lifeCandidate.date } : null;
   const followUpInfo = due ? { id: due.item.id, topicCovered: due.topicCovered, askedFor: Number.isFinite(lastUser.ts) ? lastUser.ts : now.getTime() } : null;
-  return { note: parts.join(' '), mood, emotion: emotionId, followUp: followUpInfo };
+  return { note: parts.join(' '), mood, emotion: emotionId, followUp: followUpInfo, life: lifeUsed };
 }
 
 /**

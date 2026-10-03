@@ -1,7 +1,7 @@
 // www/js/ui/chat.js
 // Pantalla de chat: burbujas, streaming, avatar en 3 modos, composer, menú.
 
-import { getChat, getChatMessages, saveChatMessages, getCharacter, getSettings, saveSettings, markChatExported, saveCharacterLorebook, markChatLorebookProgress, saveChatContinuity, sanitizeContinuity, sanitizeMessage, saveCharacterRelationship, saveCharacterIdentity, saveCharacterMood, saveCharacterMoment, saveCharacterFollowUps, saveChatArchive, isChatArchived, isChatArchivePending } from '../state.js';
+import { getChat, getChatMessages, saveChatMessages, getCharacter, getSettings, saveSettings, markChatExported, saveCharacterLorebook, markChatLorebookProgress, saveChatContinuity, sanitizeContinuity, sanitizeMessage, saveCharacterRelationship, saveCharacterIdentity, saveCharacterMood, saveCharacterMoment, saveCharacterFollowUps, saveCharacterLife, saveChatArchive, isChatArchived, isChatArchivePending } from '../state.js';
 import { generateReplyNonEmpty, completeOnce, completeChatOnce } from '../api/kobold.js';
 import { initialMessages, scenarioGreeting, estimateContextUsage } from '../api/prompt.js';
 import {
@@ -42,6 +42,8 @@ import { createContinuityUpdater, coveredCount, CONTINUITY_TOTAL_CHARS, CONTINUI
 import { openCharacterSheet } from './character-sheet.js';
 import { archiveChat, archiveResultMessage, cancelBackgroundArchive } from './chat-archive.js';
 import { cancelBackgroundIdentity } from './identity.js';
+import { cancelBackgroundLife } from './life.js';
+import { withLifeMentioned } from '../api/life.js';
 import { cancelBackgroundMailbox, touchInteraction } from './mailbox.js';
 import { memoryDashboardModel, buildRelationshipHero, buildContinuityCard, buildMemoryCards, buildIdentityCard } from './character-memory.js';
 import { acceptProposal, discardProposal, revertIdentity } from '../api/identity-synthesis.js';
@@ -198,6 +200,7 @@ export async function show({ chatId } = {}) {
   // sigue pendiente para la próxima vez que el hub vea el servidor encendido.
   cancelBackgroundArchive();
   cancelBackgroundMailbox(); // PROACT-001: igual que lo anterior
+  cancelBackgroundLife(); // HUM-005: igual que lo anterior
   cancelBackgroundIdentity(); // MEM-019: si el hub dejó una síntesis de identidad corriendo, se corta (se reintenta en el próximo chequeo)
   archiving = false;
   chat = await getChat(chatId);
@@ -989,6 +992,7 @@ async function generate(opts = {}) {
   let firstChunkAt = 0;
   let replyMeta = null;
   let moodResult = null; // HUM-001: ánimo usado en este turno (se guarda si cambió)
+  let lifeUsed = null; // HUM-005: si el personaje sacó su día en este turno (se anota que ese día ya se contó)
   let followUpUsed = null; // HUM-004: pendiente que se preguntó en este turno (se marca después de guardar la respuesta)
   let wasAborted = false;
   const humanTouch = !!settings && settings.humanTouch === true;
@@ -1011,6 +1015,7 @@ async function generate(opts = {}) {
     wasAborted = !!(result && result.aborted);
     moodResult = (result && result.mood) || null;
     followUpUsed = (result && result.followUp) || null;
+    lifeUsed = (result && result.life) || null;
     // Una respuesta completa (no cortada por el usuario) guarda sus tiempos.
     if (reply.text && firstChunkAt && !(result && result.aborted)) {
       replyMeta = { ttftMs: firstChunkAt - startedAt, totalMs: performance.now() - startedAt, chars: reply.text.length };
@@ -1075,6 +1080,12 @@ async function generate(opts = {}) {
     }
     // HUM-004: lo que se preguntó (o el usuario ya cubrió) no se repite: se marca bajo el candado del personaje, solo si la respuesta quedó guardada.
     if (followUpUsed && character && reply.text) markFollowUp(followUpUsed);
+    // HUM-005: una vez por día: si sacó su día en esta respuesta (ya guardada), se anota para no repetirlo hoy.
+    if (lifeUsed && character && reply.text) {
+      saveCharacterLife(character.id, (l) => withLifeMentioned(l, lifeUsed.date))
+        .then((updated) => { if (updated && character && character.id === updated.id) character = updated; })
+        .catch(() => {});
+    }
     // HUM-003: si el mensaje del usuario fue un pico emocional, se guarda un recuerdo del MOMENTO (sin modelo; solo escribe el personaje si hay algo que guardar).
     if (character && chat && reply.text && !previous) maybeSaveMoment(history);
     // MEM-015: después de mostrar y guardar la respuesta, en segundo plano (apagado por defecto; ver

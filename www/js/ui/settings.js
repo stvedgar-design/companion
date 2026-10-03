@@ -103,6 +103,14 @@ export function openSettings(app) {
 
     <div class="field">
       <label class="field__label" style="display:flex;align-items:center;gap:var(--space-2, 8px)">
+        <input type="checkbox" id="settings-own-life" style="accent-color:var(--color-accent, #8b1fe0)">
+        <span>El personaje tiene su propio día</span>
+      </label>
+      <div class="field__hint">Una vez al día, cuando abres la app con tu servidor encendido, el personaje se inventa en segundo plano algo pequeño que hizo hoy (según su personalidad y su ánimo; nada sobre ti) y a veces te lo cuenta sin que se lo preguntes. Lo ves en su ficha, en «Su día». Cuesta una llamada corta al día por personaje, fuera del chat.</div>
+    </div>
+
+    <div class="field">
+      <label class="field__label" style="display:flex;align-items:center;gap:var(--space-2, 8px)">
         <input type="checkbox" id="settings-personality-adapts" style="accent-color:var(--color-accent, #8b1fe0)">
         <span>Personalidad que se adapta a la escena</span>
       </label>
@@ -215,6 +223,7 @@ export function openSettings(app) {
     emotionResponse: q('#settings-emotion-response'),
     momentMemories: q('#settings-moment-memories'),
     followUps: q('#settings-follow-ups'),
+    ownLife: q('#settings-own-life'),
     personalityAdapts: q('#settings-personality-adapts'),
     format: q('#settings-format'),
     stream: q('#settings-stream'),
@@ -244,6 +253,7 @@ export function openSettings(app) {
     els.emotionResponse.checked = settings.emotionResponse !== false;
     els.momentMemories.checked = settings.momentMemories !== false;
     els.followUps.checked = settings.followUps !== false;
+    els.ownLife.checked = settings.ownLife !== false;
     els.personalityAdapts.checked = settings.personalityAdapts !== false;
     els.format.checked = settings.formatAssist !== false;
     els.stream.checked = settings.streamReplies !== false;
@@ -359,6 +369,11 @@ export function openSettings(app) {
   els.humanTouch.addEventListener('change', () => {
     saveSettings({ humanTouch: els.humanTouch.checked });
     logEvent(TEL_EVENTS.EXPERIMENTAL_SETTING_CHANGED, { setting: 'humanTouch', enabled: els.humanTouch.checked });
+  });
+
+  els.ownLife.addEventListener('change', () => {
+    saveSettings({ ownLife: els.ownLife.checked });
+    logEvent(TEL_EVENTS.EXPERIMENTAL_SETTING_CHANGED, { setting: 'ownLife', enabled: els.ownLife.checked });
   });
 
   els.followUps.addEventListener('change', () => {

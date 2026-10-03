@@ -10,6 +10,7 @@ import { saveCharacter, getCharacter } from '../state.js';
 import { relationshipDisplayText, relationshipSummary } from '../api/relationship.js';
 import { defaultIdentity, sanitizeIdentity } from '../api/identity-synthesis.js';
 import { defaultFollowUps } from '../api/followups.js';
+import { defaultLife, lifeToday, lifeSheetText } from '../api/life.js';
 import { defaultMailbox, unreadCount, sanitizeMailbox } from '../api/mailbox.js';
 import { openMailbox, touchInteraction } from './mailbox.js';
 import { sanitizeAppearance } from '../character-appearance.js';
@@ -71,6 +72,7 @@ export function duplicateCharacterData(character) {
     mailbox: defaultMailbox(), // PROACT-001: el buzón y la marca de interacción son de ESE personaje
     identity: defaultIdentity(), // MEM-019: la síntesis nace de SUS recuerdos; el duplicado no tiene ninguno
     followUps: defaultFollowUps(), // HUM-004: los pendientes y el cumpleaños que dijo el usuario son de ESE personaje
+    life: defaultLife(), // HUM-005: su día es de ESE personaje
   };
 }
 
@@ -117,6 +119,7 @@ export function characterSheetModel(character) {
     appearance,
     memoriesCount,
     identityProposal: !!sanitizeIdentity(character && character.identity).proposal, // MEM-019: hay una propuesta esperando respuesta
+    lifeToday: lifeSheetText(lifeToday(character && character.life, new Date()), name), // HUM-005: «Luna regó las plantas…» o '' si hoy no hay
     mailboxUnread: unreadCount(character), // PROACT-001: notas del buzón sin abrir
     mailboxCount: sanitizeMailbox(character && character.mailbox).notes.filter((n) => n.status !== 'dismissed').length,
   };
@@ -220,6 +223,13 @@ export function openCharacterSheet(app, character, opts = {}) {
     // ---------- 5. creada ----------
     if (m.createdText) {
       node.appendChild(field('Creada', el('div', '', m.createdText)));
+    }
+
+    // ---------- 5b. su día (HUM-005): el texto de hoy tal cual lo escribió el modelo, solo si existe ----------
+    if (m.lifeToday) {
+      const lifeField = field('Su día', el('div', '', m.lifeToday));
+      lifeField.dataset.role = 'life-today';
+      node.appendChild(lifeField);
     }
 
     // ---------- 6. descripción y apariencia ----------
