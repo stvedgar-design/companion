@@ -320,3 +320,23 @@ test('streamReplies apagado: el chat no pinta el texto parcial (solo puntos) y e
   const iAspect = ui.indexOf('Aspecto de la app');
   assert.ok(iAvatar > 0 && iAvatar < iStream && iStream < iAspect, 'justo después del tamaño de la foto, antes de "Aspecto de la app"');
 });
+
+test('HUM-006: los tres textos de ritmo piden palabras dichas, siguen siendo UN párrafo y caben en el tope de la nota', () => {
+  for (const rnd of [0.02, 0.5, 0.97]) {
+    for (const userText of ['hola', 'Hoy fue un día largo, estuve en el trabajo toda la tarde y después salí a caminar un rato por el parque']) {
+      const r = pickRhythm({ userText, moodId: 'calm', rnd: () => rnd });
+      assert.match(r.text, /single/);
+      assert.match(r.text, /spoken/, `${r.id}: pide diálogo`);
+    }
+  }
+  const ids = new Set();
+  for (const rnd of [0.02, 0.5, 0.97]) for (const userText of ['hi', 'una frase de unas diez palabras más o menos para probar', 'x '.repeat(100)]) ids.add(pickRhythm({ userText, rnd: () => rnd }).id);
+  assert.deepEqual([...ids].sort(), ['brief', 'full', 'medium']);
+  // peor caso de nota: cualquier ritmo + cabecera de ánimo cabe en el tope con margen
+  const N = 'Aurelia-Beatriz de la Montaña Dorada';
+  const U = 'Maximiliano Alejandro Fernández';
+  for (const rnd of [0.02, 0.5, 0.97]) {
+    const { note } = buildPresence({ character: { id: 'x', name: N, personalityTags: [] }, messages: [MSG('user', 'x '.repeat(100), at(2026, 10, 2, 12).getTime())], settings: { user: U, emotionResponse: true }, now: at(2026, 10, 2, 12), rnd: () => rnd });
+    assert.ok(note.length <= PRESENCE_NOTE_MAX, `${note.length}`);
+  }
+});

@@ -345,7 +345,7 @@ test('MEM-004: sin entradas el prompt es IDÉNTICO al de antes (modo texto simpl
   const { card, settings, msgs } = fixture();
   // Valores literales producidos por la versión anterior de prompt.js (antes de MEM-004).
   const plain = {
-    prompt: "Roleplay chat between Luna and Edgar. Stay in character as Luna. Write only Luna's next reply, using *asterisks* for actions and plain text for speech.\n\nLuna's description:\nUna guardiana de la torre.\n\nLuna's personality: Curiosa\n\nScenario: Una torre junto al mar\n\n[Start of chat]\nLuna: *Sonrío.* Hola.\nEdgar: Hola Luna, ¿cómo estás?\nLuna:",
+    prompt: "Roleplay chat between Luna and Edgar. Stay in character as Luna. Write only Luna's next reply, using *asterisks* for actions and plain text for speech. Luna's replies always include Luna's own spoken words, and Luna's feelings come through mostly in what Luna says.\n\nLuna's description:\nUna guardiana de la torre.\n\nLuna's personality: Curiosa\n\nScenario: Una torre junto al mar\n\n[Start of chat]\nLuna: *Sonrío.* Hola.\nEdgar: Hola Luna, ¿cómo estás?\nLuna:",
     stop: ['\nEdgar:', 'Edgar:', '\nLuna:']
   };
   assert.deepEqual(buildPlainPrompt(card, msgs, settings), plain);
@@ -353,7 +353,7 @@ test('MEM-004: sin entradas el prompt es IDÉNTICO al de antes (modo texto simpl
 
   const chat = {
     messages: [
-      { role: 'system', content: "Roleplay chat between Luna and Edgar. Stay in character as Luna. Write only Luna's next reply, using *asterisks* for actions and plain text for speech.\n\nLuna's description:\nUna guardiana de la torre.\n\nLuna's personality: Curiosa\n\nScenario: Una torre junto al mar" },
+      { role: 'system', content: "Roleplay chat between Luna and Edgar. Stay in character as Luna. Write only Luna's next reply, using *asterisks* for actions and plain text for speech. Luna's replies always include Luna's own spoken words, and Luna's feelings come through mostly in what Luna says.\n\nLuna's description:\nUna guardiana de la torre.\n\nLuna's personality: Curiosa\n\nScenario: Una torre junto al mar" },
       { role: 'user', content: '[Start of roleplay]' },
       { role: 'assistant', content: '*Sonrío.* Hola.' },
       { role: 'user', content: 'Hola Luna, ¿cómo estás?' }
@@ -771,4 +771,22 @@ test('CCC-006: la línea usa solo nombres (sin pronombres), va en positivo y es 
   const b = buildPlainPrompt(card, [{ role: 'user', text: 'Hola', ts: 1 }, { role: 'char', text: 'Hey', ts: 2 }, { role: 'user', text: 'Qué tal', ts: 3 }], s).prompt;
   const head = (p) => p.slice(0, p.indexOf('[Start of chat]'));
   assert.equal(head(a), head(b), 'la cabecera no cambia entre turnos');
+});
+
+test('HUM-006: la instrucción base pide diálogo en toda respuesta, en positivo, sin depender de ningún interruptor (texto simple y plantilla)', () => {
+  const card = makeCard({ personality: '' });
+  const msgs = [{ role: 'user', text: 'Hola', ts: 1 }];
+  const off = { personalityAdapts: false, humanTouch: false, emotionResponse: false, formatAssist: false };
+  for (const s of [makeSettings(off), makeSettings({ ...off, mode: 'chat' }), makeSettings({ personalityAdapts: undefined, humanTouch: undefined, formatAssist: undefined })]) {
+    const text = s.mode === 'chat' ? buildChatMessages(card, msgs, s).messages[0].content : buildPlainPrompt(card, msgs, s).prompt;
+    assert.match(text, /using \*asterisks\* for actions and plain text for speech\. Luna's replies always include Luna's own spoken words, and Luna's feelings come through mostly in what Luna says\./);
+    // se conserva el formato de siempre (acciones en asteriscos): el diálogo se SUMA, no reemplaza
+    assert.match(text, /\*asterisks\* for actions/);
+  }
+});
+
+test('HUM-006: la línea de adaptación nombra el habla como una forma válida de avanzar la escena', () => {
+  const line = formatPersonalityAdaptLine('Luna', 'Edgar');
+  assert.match(line, /a gesture, a line of dialogue or a small step/);
+  assert.doesNotMatch(line, /a gesture, a thought/);
 });

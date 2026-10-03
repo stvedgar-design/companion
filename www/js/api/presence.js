@@ -160,9 +160,9 @@ export function computeMood({ prev, now = new Date(), characterId = '', tags = [
 }
 
 const RHYTHMS = {
-  brief: 'Make this reply a single short paragraph of one or two sentences.',
-  medium: 'Make this reply a single paragraph of about three or four sentences.',
-  full: 'Make this reply a single, fuller paragraph of about five or six sentences, since the moment has room for it.',
+  brief: 'Make this reply a single short paragraph of one or two sentences, with some spoken words in it.',
+  medium: 'Make this reply a single paragraph of about three or four sentences, with a few spoken lines in it.',
+  full: 'Make this reply a single, fuller paragraph of about five or six sentences, with most of it spoken aloud, since the moment has room for it.',
 };
 
 // HUM-002: cuánto se inclina el largo de la respuesta según lo que siente el usuario (factores sobre los pesos base; nunca deja de ser un párrafo).

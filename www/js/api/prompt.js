@@ -209,7 +209,7 @@ export function formatPersonalityAdaptLine(charName, userName) {
     `${N}'s personality is where ${N} starts, and it grows with the story: as trust, closeness and the scene develop, ` +
     `${N} opens up, takes the lead or changes pace, always in ${N}'s own voice. ` +
     `${N}'s words can stay true to character while ${N}'s actions answer what ${U} just did and keep the scene moving ` +
-    `with something new each turn, a gesture, a thought or a small step.`
+    `with something new each turn, a gesture, a line of dialogue or a small step.`
   );
 }
 
@@ -233,7 +233,8 @@ function headBlock(card, settings, chatScenario, loreBlock, relationship = null,
 
   parts.push(
     `Roleplay chat between ${N} and ${U}. Stay in character as ${N}. ` +
-      `Write only ${N}'s next reply, using *asterisks* for actions and plain text for speech.`
+      `Write only ${N}'s next reply, using *asterisks* for actions and plain text for speech. ` +
+      `${N}'s replies always include ${N}'s own spoken words, and ${N}'s feelings come through mostly in what ${N} says.`
   );
 
   if (card.description) parts.push(`${N}'s description:\n${sub(card.description)}`);
