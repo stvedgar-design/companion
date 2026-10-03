@@ -367,7 +367,7 @@ export async function generateReply({ character, chat, messages, settings, signa
   // MEM-004: dos bloques. `loreBlock` = recuerdos "siempre presentes" (estable, va en la
   // cabecera); `topicBlock` = los "por tema" (varía turno a turno, va al FINAL del prompt
   // para no invalidar la caché de prompt del servidor: ver docs/HISTORIAL.md, "MEM-004").
-  const { always: loreBlock, topic: topicBlock, used: loreUsed } = buildLoreBlocks((character && character.lorebook) || [], messages);
+  const { always: loreBlock, topic: topicBlock, used: loreUsed } = buildLoreBlocks((character && character.lorebook) || [], messages, { now: now.getTime() });
   // FMT-004: con `varietyAssist` activo, si el último turno del personaje ya repitió las palabras de sus
   // turnos anteriores, la respuesta siguiente lleva al FINAL una nota breve de variedad (mismo sitio que el
   // bloque por tema: no invalida la caché del servidor).

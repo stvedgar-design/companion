@@ -40,6 +40,7 @@ const SETTING_LABELS = {
   personalityAdapts: 'Personalidad que se adapta a la escena',
   humanTouch: 'Detalles de presencia humana',
   emotionResponse: 'Reaccionar a cómo te sientes',
+  momentMemories: 'Recordar momentos emocionales',
   splitTypography: 'Tipografía dividida (narración/diálogo)',
   continuityAuto: 'Resumen de continuidad automático',
 };

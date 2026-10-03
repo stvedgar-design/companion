@@ -10,6 +10,8 @@
 // Un personaje con 300 recuerdos abre con 20 tarjetas, no con 300.
 
 import { sanitizeIdentity, IDENTITY_MIN_MEMORIES } from '../api/identity-synthesis.js';
+import { isMoment, momentToneLabel } from '../api/moment-tones.js';
+import { formatDateOnly } from '../msgtime.js';
 import { relationshipSummary, relationshipDisplayText, relationshipAgeText, RELATIONSHIP_GROWING_MIN, RELATIONSHIP_ESTABLISHED_MIN } from '../api/relationship.js';
 
 /** Tarjetas que se dibujan de una vez por grupo; "Mostrar más" agrega otra tanda. */
@@ -274,11 +276,20 @@ export function buildContinuityCard(model, hooks) {
  * @param {import('../state.js').LoreEntry} entry
  * @param {{ onEdit: (id: string) => void, onArchive: (id: string) => void }} hooks
  */
+/** HUM-003: «Momento · tristeza · 3 oct 2026» para un recuerdo de momento; '' para un hecho. Pura. */
+export function momentCardLabel(entry) {
+  if (!isMoment(entry)) return '';
+  const date = formatDateOnly(entry.at);
+  return ['Momento', momentToneLabel(entry.tone), date].filter(Boolean).join(' · ');
+}
+
 export function buildMemoryCard(entry, hooks) {
   const card = el('article', 'mem-card');
   card.dataset.entryId = entry.id;
   card.appendChild(el('div', 'mem-card__text', entry.content));
   const meta = el('div', 'mem-card__meta');
+  const momentText = momentCardLabel(entry);
+  if (momentText) meta.appendChild(el('span', 'chip chip--moment', momentText)); // HUM-003: «Momento · tristeza · 3 oct 2026»
   if (entry.always) meta.appendChild(el('span', 'chip', 'Siempre presente'));
   else for (const key of entry.keys || []) meta.appendChild(el('span', 'chip', key));
   card.appendChild(meta);

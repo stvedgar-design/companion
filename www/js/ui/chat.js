@@ -1,7 +1,7 @@
 // www/js/ui/chat.js
 // Pantalla de chat: burbujas, streaming, avatar en 3 modos, composer, menú.
 
-import { getChat, getChatMessages, saveChatMessages, getCharacter, getSettings, saveSettings, markChatExported, saveCharacterLorebook, markChatLorebookProgress, saveChatContinuity, sanitizeContinuity, sanitizeMessage, saveCharacterRelationship, saveCharacterIdentity, saveCharacterMood, saveChatArchive, isChatArchived, isChatArchivePending } from '../state.js';
+import { getChat, getChatMessages, saveChatMessages, getCharacter, getSettings, saveSettings, markChatExported, saveCharacterLorebook, markChatLorebookProgress, saveChatContinuity, sanitizeContinuity, sanitizeMessage, saveCharacterRelationship, saveCharacterIdentity, saveCharacterMood, saveCharacterMoment, saveChatArchive, isChatArchived, isChatArchivePending } from '../state.js';
 import { generateReplyNonEmpty, completeOnce, completeChatOnce } from '../api/kobold.js';
 import { initialMessages, scenarioGreeting, estimateContextUsage } from '../api/prompt.js';
 import {
@@ -34,6 +34,7 @@ import { appearanceOf } from '../character-appearance.js';
 import { identityForPrompt } from '../api/identity-synthesis.js';
 import { moodText } from '../api/mood.js';
 import { computeMood, moodHeadText, planSplit, typingHoldMs } from '../api/presence.js';
+import { momentCandidate, withMoment } from '../api/moments.js';
 import { createFeelingUpdater, feelingDisplayText } from '../api/feeling.js';
 import { formatMessageTime, formatMessageFullTime } from '../msgtime.js';
 import { createContinuityUpdater, coveredCount, CONTINUITY_TOTAL_CHARS, CONTINUITY_ON_OPEN_DELAY_MS, cleanRecap, verifyRecap } from '../api/continuity.js';
@@ -1068,11 +1069,29 @@ async function generate(opts = {}) {
         .then((updated) => { if (updated && character && character.id === updated.id) { character = updated; syncHeadSub(); } })
         .catch(() => {});
     }
+    // HUM-003: si el mensaje del usuario fue un pico emocional, se guarda un recuerdo del MOMENTO (sin modelo; solo escribe el personaje si hay algo que guardar).
+    if (character && chat && reply.text && !previous) maybeSaveMoment(history);
     // MEM-015: después de mostrar y guardar la respuesta, en segundo plano (apagado por defecto; ver
     // Settings.feelingsEnabled). Nunca sobre un mensaje vacío que se acaba de quitar de `messages`.
     if (idx >= 0 && messages[idx] && messages[idx].role === 'char' && messages[idx].text) maybeUpdateFeeling(idx);
     if (tail) await showContinuation(tail);
   }
+}
+
+// HUM-003: detector sin modelo (api/moments.js). Calcula el candidato con el personaje que hay en pantalla y lo vuelve a verificar y escribe bajo el candado del
+// personaje con el registro RECIÉN leído (nunca pisa un guardado de memoria paralelo). Mejor esfuerzo: un fallo no se nota.
+function maybeSaveMoment(history) {
+  const characterId = character.id;
+  const candidate = momentCandidate({ messages: history, character, settings, now: Date.now() });
+  if (!candidate) return;
+  saveCharacterMoment(characterId, (fresh) => {
+    const again = momentCandidate({ messages: history, character: fresh, settings, now: Date.now() });
+    return again ? withMoment(fresh.lorebook, again, Date.now()) : null;
+  })
+    .then((updated) => {
+      if (updated && character && character.id === updated.id) character = updated;
+    })
+    .catch(() => {});
 }
 
 // HUM-001: la segunda mitad de una respuesta partida. Se guarda YA (nada se pierde si el usuario sale del chat) y se muestra tras una pausa

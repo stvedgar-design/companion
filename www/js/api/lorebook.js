@@ -4,6 +4,9 @@
 // prompt de extracción, parsea/valida la respuesta del modelo y decide qué
 // entradas se inyectan en el prompt real de roleplay.
 
+import { emotionPeak } from './emotion.js';
+import { MOMENT_TONE_IDS, parseMomentTone, isMoment, momentPromptLine, momentToneKeys } from './moment-tones.js';
+
 /**
  * @typedef {Object} LoreEntry
  * @property {string} id
@@ -12,6 +15,9 @@
  * @property {number} updated       // ms desde epoch
  * @property {'auto'|'manual'} source  // 'auto' = generado por este sistema
  * @property {boolean} [always]     // MEM-004: siempre presente (sin keys); implica source:'manual'
+ * @property {'moment'} [kind]      // HUM-003: ausente = un hecho (como siempre); 'moment' = un MOMENTO con tono emocional
+ * @property {string} [tone]        // HUM-003: solo en momentos; una palabra de la lista cerrada de api/moment-tones.js
+ * @property {number} [at]          // HUM-003: solo en momentos; cuándo ocurrió (ms)
  */
 
 // Cada cuántos mensajes nuevos de un chat se dispara una actualización
@@ -158,7 +164,7 @@ const KNOWN_KEYS_MAX_CHARS = 600;
  * @param {LoreEntry[]} [existingEntries]
  * @returns {string}
  */
-export function buildExtractionPrompt(character, settings, windowMessages, existingEntries = []) {
+export function buildExtractionPrompt(character, settings, windowMessages, existingEntries = [], opts = {}) {
   const N = character.card.name;
   const U = (settings && settings.user) || 'User';
   const ctx = (settings && settings.ctx) || 4096;
@@ -169,9 +175,17 @@ export function buildExtractionPrompt(character, settings, windowMessages, exist
     .join(' | ')
     .slice(0, KNOWN_KEYS_MAX_CHARS);
 
+  // HUM-003 (a): solo cuando la ventana tiene un pico emocional del usuario (`opts.moment`) se pide, además, UN momento con tono; sin él el prompt es
+  // idéntico al de siempre. Pide un hecho menos (2 + 1 momento): el servidor corta cada respuesta a 160 tokens.
+  const moment = !!(opts && opts.moment);
+  const momentLine = moment
+    ? `${U} shows a clear emotional moment in the excerpt, so also add ONE extra object for it, with the field "t" set to exactly one of: ${MOMENT_TONE_IDS.join(', ')}. ` +
+      `Its "c" is one third-person sentence naming ${U} that says what ${U} felt and what it was about, in the same language as the conversation, like "${U} was nervous about the job interview". ` +
+      `Its "k" are 1 to 3 lowercase keywords about the topic. Facts have no "t".`
+    : '';
   const head = [
     `You extract long-term memory notes from a roleplay chat between ${N} and ${U}.`,
-    `From the excerpt below, write up to ${LOREBOOK_EXTRACT_MAX_NEW_ENTRIES} NEW concrete facts worth remembering: ` +
+    `From the excerpt below, write up to ${moment ? LOREBOOK_EXTRACT_MAX_NEW_ENTRIES - 1 : LOREBOOK_EXTRACT_MAX_NEW_ENTRIES} NEW concrete facts worth remembering: ` +
       `specific things that happened or that ${U} said about ${U}'s real life (details, tastes, people, pets, places, dates, plans), ` +
       `or a specific moment that changed how ${U} and ${N} relate. ` +
       `Skip small talk, fleeting moments, vague personality traits and anything already known.`,
@@ -187,6 +201,7 @@ export function buildExtractionPrompt(character, settings, windowMessages, exist
       `it is unrelated to this chat and you must NEVER copy its names or its fact: ` +
       `[{"k":["greenhouse","tomatoes"],"c":"Zalika mentioned to Petrov that her neighbor's greenhouse grew record tomatoes this year"}]. ` +
       `Write the REAL facts from the excerpt below, one object per fact. If there is nothing new worth remembering, reply with exactly [] and nothing else.`,
+    momentLine,
     known ? `Already known (keywords only, do not repeat these facts): ${known}` : '',
     'Excerpt:',
   ].filter(Boolean).join('\n\n');
@@ -206,6 +221,7 @@ export function buildExtractionPrompt(character, settings, windowMessages, exist
 
 const KEYS_FIELDS = ['keys', 'k', 'key', 'keywords'];
 const CONTENT_FIELDS = ['content', 'c', 'fact', 'text'];
+const TONE_FIELDS = ['t', 'tone'];
 const WRAPPER_FIELDS = ['entries', 'lorebook', 'facts', 'items'];
 
 function pickField(obj, names) {
@@ -225,7 +241,10 @@ function collectEntries(value) {
   if (Array.isArray(value)) return value.flatMap(collectEntries);
   if (!value || typeof value !== 'object') return [];
   if (isEntryLike(value)) {
-    return [{ keys: pickField(value, KEYS_FIELDS), content: pickField(value, CONTENT_FIELDS) }];
+    const entry = { keys: pickField(value, KEYS_FIELDS), content: pickField(value, CONTENT_FIELDS) };
+    const tone = pickField(value, TONE_FIELDS); // HUM-003: solo si viene (sin él, la forma de siempre)
+    if (tone !== undefined) entry.tone = tone;
+    return [entry];
   }
   for (const w of WRAPPER_FIELDS) {
     if (Array.isArray(value[w])) return collectEntries(value[w]);
@@ -332,6 +351,10 @@ export function parseExtractionResponse(rawText) {
 }
 
 /* ---------- aplicación aditiva ---------- */
+
+// HUM-003: tope de momentos por personaje (cuentan dentro de LOREBOOK_MAX_ENTRIES) y ventana en la que dos momentos del mismo tono son el MISMO momento.
+export const MOMENT_MAX = 8;
+export const MOMENT_SAME_WINDOW_MS = 6 * 60 * 60 * 1000;
 
 const MAX_KEYS_PER_ENTRY = 6;
 const MAX_KEY_CHARS = 40;
@@ -613,6 +636,7 @@ export function mergeNearDuplicates(entries, opts = {}) {
       if (out[i].source === 'manual') continue;
       for (let j = i + 1; j < out.length; j++) {
         if (out[j].source === 'manual') continue;
+        if (isMoment(out[i]) || isMoment(out[j])) continue; // HUM-003: un momento no se fusiona (ni con un hecho ni con otro momento)
         if (!areNearDuplicates(out[i].content, out[j].content, names, { keysA: out[i].keys, keysB: out[j].keys })) continue;
         const content = moreInformative(out[i].content, out[j].content, nameWords);
         const keys = normalizeLoreKeys([...out[i].keys, ...out[j].keys], content, { names });
@@ -818,7 +842,7 @@ export function stripLegacyExampleFacts(entries) {
 
 // Valida y acota UNA entrada cruda del modelo. null si no sirve (incluye los
 // hechos sin nombre, los escritos en primera persona y los de menos de LOREBOOK_MIN_CONTENT_WORDS palabras).
-function normalizeIncoming(raw, names) {
+function normalizeIncoming(raw, names, allowMoments = false) {
   if (!raw || typeof raw !== 'object') return null;
   const rawContent = pickField(raw, CONTENT_FIELDS);
   const content = typeof rawContent === 'string' ? collapse(rawContent).slice(0, LOREBOOK_MAX_ENTRY_CHARS) : '';
@@ -831,7 +855,10 @@ function normalizeIncoming(raw, names) {
   if (typeof rawKeys === 'string') rawKeys = [rawKeys];
   if (!Array.isArray(rawKeys)) return null;
   const keys = normalizeLoreKeys(rawKeys, content, { names });
-  return keys.length ? { keys, content } : null;
+  if (!keys.length) return null;
+  // HUM-003: con un tono válido de la lista cerrada (y los momentos permitidos) es un MOMENTO; un tono inventado o con los momentos apagados la deja como hecho.
+  const tone = allowMoments ? parseMomentTone(raw.tone) : '';
+  return tone ? { keys, content, kind: 'moment', tone } : { keys, content };
 }
 
 /**
@@ -864,7 +891,10 @@ function normalizeIncoming(raw, names) {
  * recuerdo) para telemetría.
  * @param {LoreEntry[]} previousEntries
  * @param {object[]} incomingEntries  Salida de `parseExtractionResponse`.
- * @param {{ now?: number, ignoreKeys?: string[], excerptText?: string, tombstones?: LoreTombstone[] }} [opts]
+ * HUM-003: con `opts.allowMoments` un candidato con `tone` válido entra como MOMENTO (`kind:'moment'`, `at` = `opts.momentAt` o ahora): como mucho UNO por
+ * llamada; si ya hay un momento automático del mismo tono dentro de `MOMENT_SAME_WINDOW_MS`, lo reemplaza (el texto del modelo es más informativo que la plantilla
+ * del detector sin modelo) en vez de duplicar; hay un tope de `MOMENT_MAX` momentos (sale el más antiguo). Un hecho nunca se fusiona con un momento ni al revés.
+ * @param {{ now?: number, ignoreKeys?: string[], excerptText?: string, tombstones?: LoreTombstone[], allowMoments?: boolean, momentAt?: number }} [opts]
  * @returns {{ entries: LoreEntry[], added: number, updated: number, changed: boolean, rejected: {reason: string}[], addedEntries: LoreEntry[] }}
  *   MEM-012: `addedEntries` son las entradas NUEVAS que quedaron (tras el recorte por tope), en el mismo orden en que se agregaron.
  */
@@ -883,7 +913,7 @@ export function applyExtraction(previousEntries, incomingEntries, opts = {}) {
   const rejected = [];
 
   const incoming = (Array.isArray(incomingEntries) ? incomingEntries : [])
-    .map((raw) => normalizeIncoming(raw, names))
+    .map((raw) => normalizeIncoming(raw, names, opts.allowMoments === true))
     .filter(Boolean)
     .filter((inc) => {
       if (typeof opts.excerptText !== 'string' || !opts.excerptText) return true;
@@ -897,18 +927,39 @@ export function applyExtraction(previousEntries, incomingEntries, opts = {}) {
       rejected.push({ reason: 'tombstone' });
       return false;
     })
+    .filter((inc, i, all) => inc.kind !== 'moment' || all.findIndex((x) => x.kind === 'moment') === i) // un solo momento por llamada
     .slice(0, LOREBOOK_EXTRACT_MAX_NEW_ENTRIES);
 
   for (const inc of incoming) {
     const incKey = dedupeKey(inc.content);
     if (entries.some((e) => dedupeKey(e.content) === incKey)) continue;
 
+    if (inc.kind === 'moment') {
+      const at = Number.isFinite(opts.momentAt) && opts.momentAt > 0 ? opts.momentAt : now;
+      const same = entries.find((e) => isMoment(e) && e.source !== 'manual' && e.tone === inc.tone && Math.abs((e.at || 0) - at) < MOMENT_SAME_WINDOW_MS);
+      // Keys: las del tema que dio el modelo + las del tono en los dos idiomas (la emoción vuelve a surgir: «triste»), máximo 4; al reemplazar se suman a las que ya tenía.
+      const keys = [...new Set([...inc.keys.slice(0, 2), ...momentToneKeys(inc.tone), ...(same ? same.keys : [])])].slice(0, 4);
+      if (same) {
+        same.content = inc.content;
+        same.keys = keys;
+        same.updated = now;
+        touched.add(same);
+        updated++;
+        continue;
+      }
+      const entry = { id: newLoreId(), keys, content: inc.content, updated: now, source: 'auto', kind: 'moment', tone: inc.tone, at };
+      entries.push(entry);
+      touched.add(entry);
+      addedIds.push(entry);
+      continue;
+    }
+
     const sharesKey = (e) => e.keys.some((k) => !ignoreKeys.has(normKey(k)) && inc.keys.includes(normKey(k)));
     const byKey = entries.find(
-      (e) => e.source !== 'manual' && sharesKey(e) && wordOverlap(e.content, inc.content, nameWords) >= MERGE_MIN_OVERLAP
+      (e) => e.source !== 'manual' && !isMoment(e) && sharesKey(e) && wordOverlap(e.content, inc.content, nameWords) >= MERGE_MIN_OVERLAP
     );
     const match = byKey || entries.find(
-      (e) => e.source !== 'manual' && areNearDuplicates(e.content, inc.content, names, { keysA: e.keys, keysB: inc.keys })
+      (e) => e.source !== 'manual' && !isMoment(e) && areNearDuplicates(e.content, inc.content, names, { keysA: e.keys, keysB: inc.keys })
     );
     if (match) {
       // Misma key y mismo tema: el hecho nuevo reemplaza al viejo (p. ej. una
@@ -926,6 +977,13 @@ export function applyExtraction(previousEntries, incomingEntries, opts = {}) {
     entries.push(entry);
     touched.add(entry);
     addedIds.push(entry);
+  }
+
+  // HUM-003: tope de momentos (el más antiguo automático sale primero; nunca uno recién tocado ni uno manual).
+  while (entries.filter(isMoment).length > MOMENT_MAX) {
+    const oldest = entries.filter((e) => isMoment(e) && e.source !== 'manual' && !touched.has(e)).sort((a, b) => (a.at || 0) - (b.at || 0))[0];
+    if (!oldest) break;
+    entries.splice(entries.indexOf(oldest), 1);
   }
 
   let added = addedIds.length;
@@ -1059,6 +1117,22 @@ export function removeTombstonesFor(tombstones, entry) {
   return (Array.isArray(tombstones) ? tombstones : []).filter((t) => t && collapse(t.content) !== content);
 }
 
+/**
+ * HUM-003: el mensaje MÁS RECIENTE del usuario en la ventana que sea un pico emocional (api/emotion.js), con su fecha; null si no hay.
+ * @param {{ role?: string, text?: string, ts?: number }[]} messages
+ * @returns {{ emotion: string, ts: number }|null}
+ */
+export function latestEmotionalPeak(messages) {
+  const list = Array.isArray(messages) ? messages : [];
+  for (let i = list.length - 1; i >= 0; i--) {
+    const m = list[i];
+    if (!m || m.role !== 'user') continue;
+    const peak = emotionPeak(m.text);
+    if (peak) return { emotion: peak.emotion, ts: Number.isFinite(m.ts) ? m.ts : 0 };
+  }
+  return null;
+}
+
 /* ---------- actualizador: prioridad al chat, sin competir con él ---------- */
 
 function makeGenKey() {
@@ -1155,7 +1229,9 @@ export function createLoreUpdater(deps) {
         }
       }
 
-      const prompt = buildExtractionPrompt(character, settings, windowMessages, existing);
+      // HUM-003 (a): ¿hay un pico emocional del usuario en la ventana? Solo entonces se pide también un momento (ver `buildExtractionPrompt`).
+      const peak = settings && settings.momentMemories === true ? latestEmotionalPeak(windowMessages) : null;
+      const prompt = buildExtractionPrompt(character, settings, windowMessages, existing, { moment: !!peak });
       let raw;
       try {
         raw = await deps.complete(prompt, {
@@ -1179,6 +1255,8 @@ export function createLoreUpdater(deps) {
             ignoreKeys: [character.card.name, settings && settings.user],
             excerptText,
             tombstones,
+            allowMoments: !!peak,
+            momentAt: peak ? peak.ts : 0,
           });
           if (applied.changed) await deps.saveLorebook(characterId, applied.entries, fresh, tombstones, tombstones);
           if (deps.onFactRejected) {
@@ -1333,9 +1411,17 @@ export function selectLoreEntries(entries, recentMessages, opts = {}) {
  * @param {LoreEntry[]} entries
  * @returns {string} '' si `entries` está vacío.
  */
-export function formatLoreBlock(entries) {
+export function formatLoreBlock(entries, opts = {}) {
   if (!entries || !entries.length) return '';
-  return `Known facts (from memory):\n${entries.map((e) => `- ${e.content}`).join('\n')}`;
+  const facts = entries.filter((e) => !isMoment(e));
+  const moments = entries.filter(isMoment);
+  const parts = [];
+  if (facts.length) parts.push(`Known facts (from memory):\n${facts.map((e) => `- ${e.content}`).join('\n')}`);
+  // HUM-003: los momentos van aparte, en positivo: el personaje puede evocarlos con naturalidad (no recitarlos).
+  if (moments.length) {
+    parts.push(`Shared moments (the character may recall one naturally, in the character's own words, when the moment fits):\n${moments.map((e) => `- ${momentPromptLine(e, opts.now)}`).join('\n')}`);
+  }
+  return parts.join('\n\n');
 }
 
 /* ---------- MEM-004: recuerdos "siempre presentes" y presupuestos ---------- */
@@ -1401,14 +1487,14 @@ export function formatAlwaysBlock(entries) {
  * @param {import('../state.js').Message[]} recentMessages
  * @returns {{ always: string, topic: string, alwaysSelection: ReturnType<typeof selectAlwaysEntries>, used: LoreUsed[] }}
  */
-export function buildLoreBlocks(entries, recentMessages) {
+export function buildLoreBlocks(entries, recentMessages, opts = {}) {
   const alwaysSelection = selectAlwaysEntries(entries);
   const topicEntries = selectLoreEntries(entries, recentMessages, {
     charBudget: loreTopicBudget(alwaysSelection.used),
   });
   // UI-010: `used` = lo que REALMENTE viaja en el prompt (ya recortado por presupuesto), no las candidatas.
   const used = [...toLoreUsed(alwaysSelection.entries, true), ...toLoreUsed(topicEntries, false)];
-  return { always: formatAlwaysBlock(alwaysSelection.entries), topic: formatLoreBlock(topicEntries), alwaysSelection, used };
+  return { always: formatAlwaysBlock(alwaysSelection.entries), topic: formatLoreBlock(topicEntries, { now: opts.now }), alwaysSelection, used };
 }
 
 /* ---------- UI-010: qué recuerdos usó cada mensaje ---------- */

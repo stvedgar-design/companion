@@ -65,6 +65,7 @@ test('getSettings devuelve valores por defecto cuando no hay nada guardado', asy
     personalityAdapts: true, // CCC-006
     humanTouch: true, // HUM-001
     emotionResponse: true, // HUM-002
+    momentMemories: true, // HUM-003
     streamReplies: true,
     formatAssist: true,
     splitTypography: false, // UI-023

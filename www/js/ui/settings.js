@@ -87,6 +87,14 @@ export function openSettings(app) {
 
     <div class="field">
       <label class="field__label" style="display:flex;align-items:center;gap:var(--space-2, 8px)">
+        <input type="checkbox" id="settings-moment-memories" style="accent-color:var(--color-accent, #8b1fe0)">
+        <span>Recordar momentos emocionales</span>
+      </label>
+      <div class="field__hint">Cuando le cuentas algo que te hizo sentir mucho (tristeza, estrés, enojo, alegría, orgullo, miedo, ternura), el personaje guarda ese momento como un recuerdo, con su tono y su fecha, y puede evocarlo después con naturalidad. Los ves, editas o archivas en "Memoria". No hace el chat más lento.</div>
+    </div>
+
+    <div class="field">
+      <label class="field__label" style="display:flex;align-items:center;gap:var(--space-2, 8px)">
         <input type="checkbox" id="settings-personality-adapts" style="accent-color:var(--color-accent, #8b1fe0)">
         <span>Personalidad que se adapta a la escena</span>
       </label>
@@ -197,6 +205,7 @@ export function openSettings(app) {
     variety: q('#settings-variety'),
     humanTouch: q('#settings-human-touch'),
     emotionResponse: q('#settings-emotion-response'),
+    momentMemories: q('#settings-moment-memories'),
     personalityAdapts: q('#settings-personality-adapts'),
     format: q('#settings-format'),
     stream: q('#settings-stream'),
@@ -224,6 +233,7 @@ export function openSettings(app) {
     els.variety.checked = settings.varietyAssist === true;
     els.humanTouch.checked = settings.humanTouch !== false;
     els.emotionResponse.checked = settings.emotionResponse !== false;
+    els.momentMemories.checked = settings.momentMemories !== false;
     els.personalityAdapts.checked = settings.personalityAdapts !== false;
     els.format.checked = settings.formatAssist !== false;
     els.stream.checked = settings.streamReplies !== false;
@@ -339,6 +349,11 @@ export function openSettings(app) {
   els.humanTouch.addEventListener('change', () => {
     saveSettings({ humanTouch: els.humanTouch.checked });
     logEvent(TEL_EVENTS.EXPERIMENTAL_SETTING_CHANGED, { setting: 'humanTouch', enabled: els.humanTouch.checked });
+  });
+
+  els.momentMemories.addEventListener('change', () => {
+    saveSettings({ momentMemories: els.momentMemories.checked });
+    logEvent(TEL_EVENTS.EXPERIMENTAL_SETTING_CHANGED, { setting: 'momentMemories', enabled: els.momentMemories.checked });
   });
 
   els.emotionResponse.addEventListener('change', () => {

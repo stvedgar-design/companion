@@ -25,6 +25,7 @@ import { relationshipSummary, relationshipForPrompt } from './relationship.js';
 import { identityForPrompt } from './identity-synthesis.js';
 import { timeOfDayNote } from './timeofday.js';
 import { fitToChars } from './continuity.js';
+import { isMoment } from './moment-tones.js';
 
 export const MAILBOX_MIN_ABSENCE_MS = 8 * 60 * 60 * 1000;
 export const MAILBOX_MIN_MEMORIES = 5;
@@ -158,7 +159,7 @@ export function mailboxDue(character, last, now = Date.now()) {
   if (elapsedMs < MAILBOX_MIN_ABSENCE_MS) return no('too-soon');
   if (mb.lastNoteFor === last) return no('already-noted'); // una por período de ausencia
   if (mb.attemptedAt && now - mb.attemptedAt < MAILBOX_RETRY_AFTER_FAILED_MS) return no('recent-failure');
-  if (relationshipSummary((character && character.lorebook) || []).total < MAILBOX_MIN_MEMORIES) return no('few-memories');
+  if (relationshipSummary(((character && character.lorebook) || []).filter((e) => !isMoment(e))).total < MAILBOX_MIN_MEMORIES) return no('few-memories');
   return { due: true, reason: 'absence', elapsedMs };
 }
 
@@ -185,7 +186,8 @@ export function elapsedPhrase(ms) {
  * @param {import('../state.js').LoreEntry[]} entries
  */
 export function pickMailboxMemories(entries, rnd = Math.random, budget = MAILBOX_MEMORY_BUDGET_CHARS) {
-  const list = (Array.isArray(entries) ? entries : []).filter((e) => e && typeof e.content === 'string' && e.content.trim());
+  // HUM-003: los recuerdos de MOMENTOS llevan una cita literal de un episodio: la nota nace solo de hechos (regla de oro de PROACT-001).
+  const list = (Array.isArray(entries) ? entries : []).filter((e) => e && typeof e.content === 'string' && e.content.trim() && !isMoment(e));
   const always = list.filter((e) => e.always === true);
   const rest = list.filter((e) => e.always !== true);
   for (let i = rest.length - 1; i > 0; i--) {

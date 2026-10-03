@@ -194,3 +194,25 @@ export function detectEmotion(userTexts) {
   }
   return best;
 }
+
+/** HUM-003: fuerza mínima de UN mensaje para contarlo como pico emocional (un «estoy triste» suelto, 1,0, no alcanza; «estoy muy triste», 1,3, sí). */
+export const PEAK_STRENGTH = 1.2;
+/** HUM-003: palabras mínimas del mensaje de un pico (hace falta algo que citar). */
+export const PEAK_MIN_WORDS = 5;
+
+/**
+ * HUM-003: ¿este mensaje del usuario es un PICO emocional (una emoción clara e intensa, con algo que contar)? El cansancio no es un momento. Pura.
+ * @param {string} text
+ * @returns {{ emotion: string, strength: number }|null}
+ */
+export function emotionPeak(text) {
+  if (String(text || '').trim().split(/\s+/).filter(Boolean).length < PEAK_MIN_WORDS) return null;
+  const strengths = emotionStrengths(text);
+  let best = null;
+  for (const emotion of EMOTIONS) {
+    if (emotion === 'tired') continue;
+    const strength = strengths[emotion] || 0;
+    if (strength >= PEAK_STRENGTH && (!best || strength > best.strength + 1e-9)) best = { emotion, strength };
+  }
+  return best;
+}

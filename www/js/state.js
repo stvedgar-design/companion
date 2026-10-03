@@ -14,6 +14,7 @@ import { sanitizePersonalityTags } from './personality-tags.js';
 import { sanitizeGender } from './pronoun-substitution.js';
 import { sanitizeFeeling } from './api/feeling.js';
 import { sanitizeMood } from './api/presence.js';
+import { sanitizeMomentFields } from './api/moment-tones.js';
 
 /**
  * @typedef {Object} Card  Card normalizada: todos los campos siempre presentes.
@@ -38,6 +39,9 @@ import { sanitizeMood } from './api/presence.js';
  * @property {'auto'|'manual'} source  // 'auto' = generado por el lorebook automático
  * @property {boolean} [always]     // MEM-004: "siempre presente" (se envía en cada turno, sin keys). Ausente = false.
  *   Una entrada `always` es siempre `source:'manual'`; solo se guarda `always:true` (nunca `false`).
+ * @property {'moment'} [kind]  // HUM-003: ausente = un hecho. 'moment' = recuerdo de un MOMENTO con tono emocional (api/moment-tones.js)
+ * @property {string} [tone]    // HUM-003: solo en momentos; una palabra de la lista cerrada (tristeza = 'sadness', …)
+ * @property {number} [at]      // HUM-003: solo en momentos; cuándo ocurrió (ms)
  */
 
 /**
@@ -163,6 +167,7 @@ import { sanitizeMood } from './api/presence.js';
  * @property {boolean} varietyAssist // FMT-004: nota de variedad al final del prompt cuando el personaje se repite
  * @property {boolean} humanTouch // HUM-001: ánimo persistente, largo/ritmo variable, observaciones, pausa de "escribiendo" y mensajes partidos (api/presence.js); true por defecto
  * @property {boolean} emotionResponse // HUM-002: el personaje cambia de registro según lo que el usuario siente (tristeza, estrés, enojo, alegría, logro, miedo, cansancio, cariño; api/emotion.js); true por defecto, solo cambia la nota al final del prompt
+ * @property {boolean} momentMemories // HUM-003: guarda MOMENTOS emocionales como recuerdos (con tono y fecha) cuando el usuario tiene un pico emocional (api/moments.js); true por defecto, sin llamadas al modelo en el chat
  * @property {boolean} streamReplies // la respuesta se ve aparecer mientras se escribe (true, por defecto) o llega completa de una vez (false); solo cambia lo que se pinta, no la petición al servidor
  * @property {boolean} personalityAdapts // CCC-006: la cabecera del prompt suma una línea que trata la personalidad como punto de partida que evoluciona con la escena (api/prompt.js); true por defecto
  * @property {boolean} formatAssist // FMT-002: la respuesta del personaje arranca ya dentro de una acción (`*`); true por defecto
@@ -196,6 +201,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   personalityAdapts: true,
   humanTouch: true,
   emotionResponse: true,
+  momentMemories: true,
   streamReplies: true,
   formatAssist: true,
   splitTypography: false,
@@ -284,6 +290,7 @@ function sanitizeSettings(raw) {
     personalityAdapts: merged.personalityAdapts !== false,
     humanTouch: merged.humanTouch !== false,
     emotionResponse: merged.emotionResponse !== false,
+    momentMemories: merged.momentMemories !== false,
     streamReplies: merged.streamReplies !== false,
     formatAssist: merged.formatAssist !== false,
     splitTypography: merged.splitTypography === true,
@@ -385,6 +392,7 @@ function sanitizeLoreEntry(raw) {
     updated: Number.isFinite(raw.updated) ? raw.updated : Date.now(),
     source: always || raw.source === 'manual' ? 'manual' : 'auto',
     ...(always ? { always: true } : {}),
+    ...sanitizeMomentFields(raw), // HUM-003: `kind:'moment'` + `tone` (lista cerrada) + `at`; sin ellos (o inválidos) es un hecho, como todo recuerdo anterior
   };
 }
 
@@ -740,6 +748,21 @@ export function createState(backend) {
     });
   }
 
+  // HUM-003: guarda un recuerdo de MOMENTO. `build(character) → LoreEntry[] | null` se aplica al registro RECIÉN leído (bajo el candado del personaje) y
+  // devuelve el lorebook nuevo, o null si no hay nada que guardar (entonces NO se escribe: el registro lleva imágenes). Solo cambia `lorebook`: no toca el
+  // "Deshacer" de la última actualización de memoria ni las lápidas.
+  async function saveCharacterMoment(characterId, build) {
+    return withChatLock('char:' + characterId, async () => {
+      const character = await getCharacter(characterId);
+      if (!character) return null;
+      const lorebook = build(character);
+      if (!Array.isArray(lorebook)) return null;
+      const updated = sanitizeCharacterExtras({ ...character, lorebook });
+      await backend.put('characters', characterId, updated);
+      return updated;
+    });
+  }
+
   // PROACT-001: «el usuario estuvo con este personaje» (abrir su chat, episodios o ficha). Escribe el registro como mucho una vez cada
   // MAILBOX_TOUCH_THROTTLE_MS (lleva imágenes: escribirlo en cada apertura sería caro); enviar mensajes ya queda reflejado en las fechas de sus chats.
   async function touchCharacterInteraction(characterId, now = Date.now()) {
@@ -1053,6 +1076,7 @@ export function createState(backend) {
     saveCharacterIdentity,
     saveCharacterMailbox,
     saveCharacterMood,
+    saveCharacterMoment,
     touchCharacterInteraction,
     deleteCharacter,
     listChats,
@@ -1194,6 +1218,7 @@ export const saveCharacterRelationship = (...args) => getDefaultInstance().saveC
 export const saveCharacterIdentity = (...args) => getDefaultInstance().saveCharacterIdentity(...args);
 export const saveCharacterMailbox = (...args) => getDefaultInstance().saveCharacterMailbox(...args);
 export const saveCharacterMood = (...args) => getDefaultInstance().saveCharacterMood(...args);
+export const saveCharacterMoment = (...args) => getDefaultInstance().saveCharacterMoment(...args);
 export const touchCharacterInteraction = (...args) => getDefaultInstance().touchCharacterInteraction(...args);
 export const deleteCharacter = (...args) => getDefaultInstance().deleteCharacter(...args);
 export const listChats = (...args) => getDefaultInstance().listChats(...args);
