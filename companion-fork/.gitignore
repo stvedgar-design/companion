@@ -1,0 +1,16 @@
+node_modules/
+www/
+android/.gradle/
+android/app/build/
+android/build/
+*.apk
+*.aab
+*.jks
+*.keystore
+*.env
+.env.*
+.agents/
+.aws/
+.codex/
+__pycache__/
+tools/.preview-port

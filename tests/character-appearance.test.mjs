@@ -103,18 +103,17 @@ for (const [name, card] of Object.entries(CARDS)) {
   });
 }
 
-test('MEM-009: solo `fixed` o solo `current`: cada uno en su sitio y nada más; junto a la relación y los "siempre presentes"', () => {
-  const only = (a) => buildChatMessages(CARDS.Mia, MSGS, SETTINGS, '', 'Known facts:\n- Sam likes tea', '', '', false, { relationship: 'several', appearance: a }).messages;
+test('MEM-009: solo `fixed` o solo `current`: cada uno en su sitio y nada más; junto a la relación', () => {
+  const only = (a) => buildChatMessages(CARDS.Mia, MSGS, SETTINGS, '', '', '', '', false, { relationship: 'several', appearance: a }).messages;
   const f = only({ fixed: 'tall' });
   assert.ok(f[0].content.includes("Mia's appearance: tall"));
   assert.ok(!f[f.length - 1].content.includes('look right now'));
   const c = only({ current: 'a red scarf' });
   assert.ok(!c[0].content.includes('appearance:'));
   assert.ok(c[c.length - 1].content.includes("[Mia's look right now: a red scarf]"));
-  // en la cabecera queda entre la relación y los recuerdos "siempre presentes"
+  // en la cabecera queda después de la relación
   const head = only({ fixed: 'tall' })[0].content;
   assert.ok(head.indexOf('Relationship so far:') < head.indexOf("Mia's appearance:"));
-  assert.ok(head.indexOf("Mia's appearance:") < head.indexOf('Known facts:'));
 });
 
 test('MEM-009: las macros {{char}}/{{user}} del texto se resuelven; el texto se aplana a una línea', () => {

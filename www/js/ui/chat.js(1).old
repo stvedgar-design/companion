@@ -45,7 +45,7 @@ import { cancelBackgroundIdentity } from './identity.js';
 import { cancelBackgroundLife } from './life.js';
 import { withLifeMentioned } from '../api/life.js';
 import { cancelBackgroundMailbox, touchInteraction } from './mailbox.js';
-import { memoryDashboardModel, buildRelationshipHero, buildContinuityCard, buildMemoryCards, buildGroupedMemoryCards, buildIdentityCard } from './character-memory.js';
+import { memoryDashboardModel, buildRelationshipHero, buildContinuityCard, buildMemoryCards, buildIdentityCard } from './character-memory.js';
 import { acceptProposal, discardProposal, revertIdentity } from '../api/identity-synthesis.js';
 import { logEvent, TEL_EVENTS } from '../telemetry.js';
 import { formatMessage } from './format.js';
@@ -1272,18 +1272,10 @@ function logMessageEvent(role) {
   logEvent(TEL_EVENTS.MESSAGE, { characterId: character.id, role, day: new Date().toISOString().slice(0, 10) });
 }
 
-// REFORMA PARETO: si el usuario configuró una instancia secundaria en CPU (Settings.cpuUrl),
-// las tareas en segundo plano (memorias, resúmenes, relación) van a la CPU para no tocar la GPU ni su caché.
-function bgSettings(s) {
-  if (!s) return s;
-  const cpu = typeof s.cpuUrl === 'string' ? s.cpuUrl.trim() : '';
-  return cpu ? { ...s, url: cpu } : s;
-}
-
 const loreUpdater = createLoreUpdater({
-  getContext: () => (character && chat && settings ? { character, chat, messages, settings: bgSettings(settings) } : null),
+  getContext: () => (character && chat && settings ? { character, chat, messages, settings } : null),
   isChatBusy: () => busy || sendInFlight || continuityUpdater.isRunning() || relationshipUpdater.isRunning() || feelingUpdater.isRunning(),
-  complete: (prompt, opts) => completeOnce(prompt, bgSettings(settings), opts),
+  complete: (prompt, opts) => completeOnce(prompt, settings, opts),
   loadLorebook: async (characterId) => {
     const fresh = await getCharacter(characterId);
     return (fresh && fresh.lorebook) || [];
@@ -1339,10 +1331,10 @@ function notifyNewMemory(name, entries) {
 // Misma prioridad que el lorebook: nunca compite con una respuesta (`busy`/`sendInFlight`) ni con una extracción de
 // memoria en curso, y se cancela si el usuario envía un mensaje. La lógica vive en api/continuity.js.
 const continuityUpdater = createContinuityUpdater({
-  getContext: () => (character && chat && settings ? { character, chat, messages, settings: bgSettings(settings) } : null),
+  getContext: () => (character && chat && settings ? { character, chat, messages, settings } : null),
   isChatBusy: () => busy || sendInFlight || loreUpdater.isRunning() || relationshipUpdater.isRunning() || feelingUpdater.isRunning(),
   complete: (request, opts) =>
-    request.mode === 'chat' ? completeChatOnce(request.messages, bgSettings(settings), opts) : completeOnce(request.prompt, bgSettings(settings), opts),
+    request.mode === 'chat' ? completeChatOnce(request.messages, settings, opts) : completeOnce(request.prompt, settings, opts),
   loadChat: (chatId) => getChat(chatId),
   saveContinuity: async (chatId, summary) => {
     const updated = await saveChatContinuity(chatId, summary);
@@ -1374,10 +1366,10 @@ function maybeUpdateContinuity() {
 // se inyectan en vez de importarse para no crear un ciclo (continuity.js ya importa relationship.js).
 let relationshipLevelBefore = 'early';
 const relationshipUpdater = createRelationshipUpdater({
-  getContext: () => (character && chat && settings ? { character, chat, messages, settings: bgSettings(settings) } : null),
+  getContext: () => (character && chat && settings ? { character, chat, messages, settings } : null),
   isChatBusy: () => busy || sendInFlight || loreUpdater.isRunning() || continuityUpdater.isRunning() || feelingUpdater.isRunning(),
   complete: (request, opts) =>
-    request.mode === 'chat' ? completeChatOnce(request.messages, bgSettings(settings), opts) : completeOnce(request.prompt, bgSettings(settings), opts),
+    request.mode === 'chat' ? completeChatOnce(request.messages, settings, opts) : completeOnce(request.prompt, settings, opts),
   cleanText: cleanRecap,
   verifyText: verifyRecap,
   loadCharacter: (characterId) => getCharacter(characterId),
@@ -1413,10 +1405,10 @@ function maybeUpdateRelationship() {
 // ver `onInputChange`). Apagado por defecto (`Settings.feelingsEnabled`; el propio api/feeling.js
 // respeta el ajuste, no hace falta chequearlo acá). Un solo intento por mensaje, sin reintentos.
 const feelingUpdater = createFeelingUpdater({
-  getContext: () => (character && chat && settings ? { character, chat, messages, settings: bgSettings(settings) } : null),
+  getContext: () => (character && chat && settings ? { character, chat, messages, settings } : null),
   isChatBusy: () => busy || sendInFlight || loreUpdater.isRunning() || continuityUpdater.isRunning() || relationshipUpdater.isRunning(),
   complete: (request, opts) =>
-    request.mode === 'chat' ? completeChatOnce(request.messages, bgSettings(settings), opts) : completeOnce(request.prompt, bgSettings(settings), opts),
+    request.mode === 'chat' ? completeChatOnce(request.messages, settings, opts) : completeOnce(request.prompt, settings, opts),
   loadChatMessages: (chatId) => getChatMessages(chatId),
   saveFeeling: async (chatId, idx, word) => {
     if (!chat || chat.id !== chatId || !messages[idx] || messages[idx].role !== 'char') return;
@@ -1704,37 +1696,8 @@ function openLorebookSheet(note = '') {
     list.appendChild(
       loreEl('div', 'field__hint', `Entran en la conversación solo cuando aparece una de sus palabras clave (hasta ${preview.topicBudget} caracteres por respuesta).`)
     );
-    if (model.topic.length) {
-      const modeBar = loreEl('div', 'settings-row');
-      modeBar.style.marginBottom = 'var(--space-3, 12px)';
-      const btnGrouped = loreEl('button', 'btn btn--ghost btn--sm', 'Agrupados por asunto');
-      const btnChrono = loreEl('button', 'btn btn--ghost btn--sm', 'Cronológico');
-      btnGrouped.type = 'button';
-      btnChrono.type = 'button';
-      modeBar.append(btnGrouped, btnChrono);
-      list.appendChild(modeBar);
-
-      const cardsContainer = loreEl('div');
-      list.appendChild(cardsContainer);
-
-      let isGrouped = true;
-      const renderTopicCards = () => {
-        btnGrouped.classList.toggle('btn--primary', isGrouped);
-        btnChrono.classList.toggle('btn--primary', !isGrouped);
-        cardsContainer.innerHTML = '';
-        if (isGrouped) {
-          cardsContainer.appendChild(buildGroupedMemoryCards(model.topic, cardHooks));
-        } else {
-          cardsContainer.appendChild(buildMemoryCards(model.topic, cardHooks));
-        }
-      };
-
-      btnGrouped.addEventListener('click', () => { isGrouped = true; renderTopicCards(); });
-      btnChrono.addEventListener('click', () => { isGrouped = false; renderTopicCards(); });
-      renderTopicCards();
-    } else {
-      list.appendChild(loreEl('div', 'field__hint', 'Ninguno todavía.'));
-    }
+    if (model.topic.length) list.appendChild(buildMemoryCards(model.topic, cardHooks));
+    else list.appendChild(loreEl('div', 'field__hint', 'Ninguno todavía.'));
   }
   wrap.appendChild(list);
 

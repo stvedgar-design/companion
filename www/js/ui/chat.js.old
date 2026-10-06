@@ -45,7 +45,7 @@ import { cancelBackgroundIdentity } from './identity.js';
 import { cancelBackgroundLife } from './life.js';
 import { withLifeMentioned } from '../api/life.js';
 import { cancelBackgroundMailbox, touchInteraction } from './mailbox.js';
-import { memoryDashboardModel, buildRelationshipHero, buildContinuityCard, buildMemoryCards, buildGroupedMemoryCards, buildIdentityCard } from './character-memory.js';
+import { memoryDashboardModel, buildRelationshipHero, buildContinuityCard, buildMemoryCards, buildIdentityCard } from './character-memory.js';
 import { acceptProposal, discardProposal, revertIdentity } from '../api/identity-synthesis.js';
 import { logEvent, TEL_EVENTS } from '../telemetry.js';
 import { formatMessage } from './format.js';
@@ -1704,37 +1704,8 @@ function openLorebookSheet(note = '') {
     list.appendChild(
       loreEl('div', 'field__hint', `Entran en la conversación solo cuando aparece una de sus palabras clave (hasta ${preview.topicBudget} caracteres por respuesta).`)
     );
-    if (model.topic.length) {
-      const modeBar = loreEl('div', 'settings-row');
-      modeBar.style.marginBottom = 'var(--space-3, 12px)';
-      const btnGrouped = loreEl('button', 'btn btn--ghost btn--sm', 'Agrupados por asunto');
-      const btnChrono = loreEl('button', 'btn btn--ghost btn--sm', 'Cronológico');
-      btnGrouped.type = 'button';
-      btnChrono.type = 'button';
-      modeBar.append(btnGrouped, btnChrono);
-      list.appendChild(modeBar);
-
-      const cardsContainer = loreEl('div');
-      list.appendChild(cardsContainer);
-
-      let isGrouped = true;
-      const renderTopicCards = () => {
-        btnGrouped.classList.toggle('btn--primary', isGrouped);
-        btnChrono.classList.toggle('btn--primary', !isGrouped);
-        cardsContainer.innerHTML = '';
-        if (isGrouped) {
-          cardsContainer.appendChild(buildGroupedMemoryCards(model.topic, cardHooks));
-        } else {
-          cardsContainer.appendChild(buildMemoryCards(model.topic, cardHooks));
-        }
-      };
-
-      btnGrouped.addEventListener('click', () => { isGrouped = true; renderTopicCards(); });
-      btnChrono.addEventListener('click', () => { isGrouped = false; renderTopicCards(); });
-      renderTopicCards();
-    } else {
-      list.appendChild(loreEl('div', 'field__hint', 'Ninguno todavía.'));
-    }
+    if (model.topic.length) list.appendChild(buildMemoryCards(model.topic, cardHooks));
+    else list.appendChild(loreEl('div', 'field__hint', 'Ninguno todavía.'));
   }
   wrap.appendChild(list);
 

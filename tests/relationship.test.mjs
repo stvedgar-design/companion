@@ -223,7 +223,7 @@ test('MEM-014: relationshipInstruction pide primera persona, solo esos recuerdos
 });
 
 test('MEM-014: buildRelationshipRequest — misma técnica de continuación que MEM-007 (mismos mensajes + instrucción + prefill)', () => {
-  const character = makeCharacter({ lorebook: [entry('a', 'Un recuerdo.', { always: true })] });
+  const character = makeCharacter({ lorebook: [entry('a', 'Un recuerdo.')] });
   const chat = { id: 'chat1', scenario: '' };
   const messages = [{ role: 'user', text: 'Hola', ts: 1 }, { role: 'char', text: 'Hola.', ts: 2 }];
   const instruction = '[instrucción de prueba]';
@@ -232,7 +232,7 @@ test('MEM-014: buildRelationshipRequest — misma técnica de continuación que 
   assert.equal(chatMode.mode, 'chat');
   assert.deepEqual(chatMode.messages[chatMode.messages.length - 2], { role: 'user', content: instruction });
   assert.equal(chatMode.messages[chatMode.messages.length - 1].role, 'assistant');
-  assert.match(chatMode.messages[0].content, /Un recuerdo\./); // "siempre presentes" en la cabecera, igual que un turno normal
+  assert.doesNotMatch(chatMode.messages[0].content, /Un recuerdo\./); // MEM-020: ningún recuerdo viaja en la cabecera
 
   const plainMode = buildRelationshipRequest({ character, chat, messages, settings: makeSettings({ mode: 'plain' }) }, instruction);
   assert.equal(plainMode.mode, 'plain');

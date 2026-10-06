@@ -6,7 +6,7 @@ import { createState, sanitizeMessage, sanitizeLoreUsed } from '../www/js/state.
 import { buildPlainPrompt, buildChatMessages } from '../www/js/api/prompt.js';
 import { sanitizeFeeling } from '../www/js/api/feeling.js';
 
-const lore = (c) => [{ id: 'l', keys: ['k'], content: c, always: false }];
+const lore = (c) => [{ id: 'l', keys: ['k'], content: c }];
 
 test('UI-017: un mensaje viejo (sin variants) es una lista de una sola versión y carga igual que siempre', () => {
   const old = { role: 'char', text: 'hola', ts: 1 };

@@ -1,0 +1,11 @@
+{
+  "appId": "com.stvedgar.companionf",
+  "appName": "Companion Fork",
+  "webDir": "www",
+  "bundledWebRuntime": false,
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    }
+  }
+}

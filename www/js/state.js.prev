@@ -192,7 +192,6 @@ const DEFAULT_SETTINGS = Object.freeze({
   url: '',
   cpuUrl: '',
   user: '',
-  userAppearance: '',
   maxLen: 220,
   temp: 0.85,
   // 'chat' (plantilla del modelo) da mejores resultados de roleplay que
@@ -288,7 +287,6 @@ function sanitizeSettings(raw) {
     url: typeof merged.url === 'string' ? merged.url : DEFAULT_SETTINGS.url,
     cpuUrl: typeof merged.cpuUrl === 'string' ? merged.cpuUrl.trim() : DEFAULT_SETTINGS.cpuUrl,
     user: typeof merged.user === 'string' ? merged.user : DEFAULT_SETTINGS.user,
-    userAppearance: typeof merged.userAppearance === 'string' ? merged.userAppearance.replace(/\s+/g, ' ').trim().slice(0, 180) : DEFAULT_SETTINGS.userAppearance,
     maxLen: Math.round(clampNumber(merged.maxLen, 60, 500, DEFAULT_SETTINGS.maxLen)),
     temp: clampNumber(merged.temp, 0.3, 1.4, DEFAULT_SETTINGS.temp),
     mode: (merged.mode === 'plain' || merged.mode === 'chat') ? merged.mode : DEFAULT_SETTINGS.mode,

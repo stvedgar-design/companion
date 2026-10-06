@@ -189,9 +189,9 @@ export function buildExtractionPrompt(character, settings, windowMessages, exist
       `specific things that happened or that ${U} said about ${U}'s real life (details, tastes, people, pets, places, dates, plans), ` +
       `or a specific moment that changed how ${U} and ${N} relate. ` +
       `Skip small talk, fleeting moments, vague personality traits and anything already known.`,
-    `Write each memory as one complete third-person sentence naming BOTH ${U} and ${N}. ` +
-      `Focus on emotional moments, shared values, and personal meaning rather than raw conversational quotes. ` +
-      `NEVER write transcript phrases like "${U} told ${N} that" or "mentioned that"; capture the underlying feeling or truth directly. ` +
+    `Write each fact as one complete third-person sentence that names BOTH who does or feels something and who or what it is about, ` +
+      `using the real names "${U}" and "${N}" (never "I", "my", "he", "she", "they" or "the user", never a single word), ` +
+      `with the concrete detail, like "${U} told ${N} that the dog Bruno is afraid of thunder". ` +
       `At most ${LOREBOOK_EXTRACT_ENTRY_CHARS} characters, in the same language as the conversation.`,
     `For each fact give 1 to 3 keywords about its topic: single lowercase words, never two words joined together (concrete nouns or topics likely to come up again in the chat). ` +
       `Then, if ${U}'s own lines in the excerpt contain a distinctive noun or verb about that fact, add 1 more keyword copied EXACTLY as ${U} wrote it; if there is no clear one, skip it. ` +
@@ -199,7 +199,7 @@ export function buildExtractionPrompt(character, settings, windowMessages, exist
       `Put every keyword in double quotes.`,
     `Reply with ONE line only: a compact JSON array with no line breaks and no markdown. This shows the FORMAT ONLY, ` +
       `it is unrelated to this chat and you must NEVER copy its names or its fact: ` +
-      `[{"k":["mornings","peace"],"c":"Zalika feels deep comfort in peaceful morning routines and cherishes quiet moments with Petrov"}]. ` +
+      `[{"k":["greenhouse","tomatoes"],"c":"Zalika mentioned to Petrov that her neighbor's greenhouse grew record tomatoes this year"}]. ` +
       `Write the REAL facts from the excerpt below, one object per fact. If there is nothing new worth remembering, reply with exactly [] and nothing else.`,
     momentLine,
     known ? `Already known (keywords only, do not repeat these facts): ${known}` : '',

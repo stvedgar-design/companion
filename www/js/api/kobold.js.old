@@ -386,9 +386,7 @@ export async function generateReply({ character, chat, messages, settings, signa
   // TIME-001: referencia temporal gruesa (hora local del dispositivo) como ÚLTIMA línea del bloque final; `now` es inyectable para tests.
   const timeOfDay = timeOfDayNote(now);
   // MEM-019: síntesis de identidad ACEPTADA (la propuesta pendiente nunca viaja); '' = no se envía nada.
-  // REFORMA PARETO: La síntesis de identidad es un registro histórico para el usuario (Ficha),
-  // no una instrucción de comportamiento para el modelo. No viaja en el prompt del chat.
-  const identity = '';
+  const identity = identityForPrompt(character);
   // HUM-001: ánimo + ritmo + observaciones (api/presence.js), una nota corta al FINAL; apagable con `Settings.humanTouch`. `rnd` inyectable para tests.
   const presence = settings.humanTouch === true ? buildPresence({ character, messages, settings, now, rnd }) : null;
   const extras = { ...(continuity ? { continuity } : {}), relationship, ...(appearance ? { appearance } : {}), ...(timeOfDay ? { timeOfDay } : {}), ...(identity ? { identity } : {}), ...(presence ? { presence: presence.note } : {}) };

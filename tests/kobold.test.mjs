@@ -871,7 +871,7 @@ test('generateReply devuelve loreUsed: [] sin coincidencias y las entradas realm
   const { server } = createFakeServer();
   const base = await listen(server);
   const lore = [
-    { id: 'a', keys: ['x'], content: 'Sam le contó a Mia que su perro Bruno le teme a los truenos.', updated: 1, source: 'manual', always: true },
+    { id: 'a', keys: ['x'], content: 'Sam le contó a Mia que su perro Bruno le teme a los truenos.', updated: 1, source: 'manual' },
     { id: 'b', keys: ['café'], content: 'Se conocieron en un café.', updated: 1, source: 'auto' },
     { id: 'c', keys: ['playa'], content: 'Sam nunca fue a la playa.', updated: 1, source: 'auto' },
   ];
@@ -888,8 +888,9 @@ test('generateReply devuelve loreUsed: [] sin coincidencias y las entradas realm
       messages: [{ role: 'user', text: 'Vamos a tomar un café', ts: 1 }],
       settings: makeSettings(base),
     });
-    assert.deepEqual(some.loreUsed.map((u) => [u.id, u.always]), [['a', true], ['b', false]]);
-    assert.equal(some.loreUsed[1].content, 'Se conocieron en un café.');
+    assert.deepEqual(some.loreUsed.map((u) => u.id), ['b']);
+    assert.equal(some.loreUsed[0].content, 'Se conocieron en un café.');
+    assert.ok(!('always' in some.loreUsed[0]));
   } finally {
     server.close();
   }

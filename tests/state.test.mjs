@@ -55,7 +55,7 @@ test('getSettings devuelve valores por defecto cuando no hay nada guardado', asy
   const state = createState(createMemoryBackend());
   const settings = await state.getSettings();
   assert.deepEqual(settings, {
-    url: '', user: '', maxLen: 220, temp: 0.85, mode: 'chat', ctx: 4096,
+    url: '', user: '', userAppearance: '', maxLen: 220, temp: 0.85, mode: 'chat', ctx: 4096,
     pinSalt: '', pinHash: '',
     theme: 'penumbra-claude', themeMode: 'dark', // UI-024: único skin
     glassEffect: 'full', // UI-007 (archivado por UI-024: sin efecto)
@@ -838,7 +838,7 @@ test('Limpiar recuerdos: guarda lorebookPrevious con el estado anterior y "desha
   assert.deepEqual((await state.getCharacter('x')).lorebookPrevious, original);
 });
 
-// ---------- MEM-004: LoreEntry.always ----------
+// ---------- MEM-004 → MEM-020: LoreEntry.always (retirado: se descarta al leer; ver tests/user-appearance.test.mjs) ----------
 
 test('MEM-004: una entrada sin `always` (copias y personajes anteriores) carga idéntica, sin campo nuevo', async () => {
   const state = createState(createMemoryBackend());
@@ -850,23 +850,16 @@ test('MEM-004: una entrada sin `always` (copias y personajes anteriores) carga i
   assert.ok(!('always' in loaded[0]));
 });
 
-test('MEM-004: `always` solo se conserva si es exactamente true; basura o false se descarta', async () => {
+test('MEM-020: `always` (cualquier valor) se descarta al leer; la entrada carga como normal y conserva source y keys', async () => {
   const state = createState(createMemoryBackend());
   await state.saveCharacter(makeCharacter({ id: 'x' }));
-  const e = (id, always) => ({ id, keys: ['k'], content: 'Un recuerdo válido.', updated: 1, source: 'manual', always });
-  await state.saveCharacterLorebook('x', [e('a', true), e('b', false), e('c', 'yes'), e('d', 1), e('e', null), e('f', undefined)]);
+  const e = (id, always, source = 'manual') => ({ id, keys: ['k'], content: 'Un recuerdo válido.', updated: 1, source, always });
+  await state.saveCharacterLorebook('x', [e('a', true), e('b', false), e('c', 'yes'), e('d', 1), e('e', null), e('f', undefined), e('g', true, 'auto')]);
   const byId = Object.fromEntries((await state.getCharacter('x')).lorebook.map((x) => [x.id, x]));
-  assert.equal(byId.a.always, true);
-  for (const id of ['b', 'c', 'd', 'e', 'f']) assert.ok(!('always' in byId[id]), id);
-});
-
-test('MEM-004: una entrada `always` es siempre `manual`, aunque llegue como `auto` (p. ej. de una copia ajena)', async () => {
-  const state = createState(createMemoryBackend());
-  await state.saveCharacter(makeCharacter({ id: 'x' }));
-  await state.saveCharacterLorebook('x', [{ id: 'a', keys: ['k'], content: 'Importante.', updated: 1, source: 'auto', always: true }]);
-  const [entry] = (await state.getCharacter('x')).lorebook;
-  assert.equal(entry.always, true);
-  assert.equal(entry.source, 'manual');
+  for (const id of ['a', 'b', 'c', 'd', 'e', 'f', 'g']) assert.ok(!('always' in byId[id]), id);
+  assert.deepEqual(byId.a.keys, ['k']);
+  assert.equal(byId.a.source, 'manual');
+  assert.equal(byId.g.source, 'manual'); // una que fue `always` era siempre manual: la extracción automática sigue sin tocarla
 });
 
 test('MEM-004: un personaje importado en una copia sin `always` conserva su lorebook tal cual', async () => {
@@ -934,7 +927,7 @@ test('UI-010: un mensaje con loreUsed se guarda y se lee igual; sin el campo car
   const state = createState(createMemoryBackend());
   await state.saveCharacter(makeCharacter({ id: 'x' }));
   const chat = await state.createChat('x', {});
-  const used = [{ id: 'l1', keys: ['café'], content: 'Se conocieron en un café.', always: false }];
+  const used = [{ id: 'l1', keys: ['café'], content: 'Se conocieron en un café.' }];
   await state.saveChatMessages(chat.id, [
     { role: 'user', text: 'hola', ts: 1 },
     { role: 'char', text: 'viejo', ts: 2 },
@@ -952,7 +945,7 @@ test('UI-010: loreUsed malformado se descarta (sin dato) sin tocar el resto del 
   assert.equal(sanitizeLoreUsed(undefined), undefined);
   assert.equal(sanitizeLoreUsed([null, 3, { content: '' }]), undefined); // todo inválido: mejor sin icono que un dato falso
   assert.deepEqual(sanitizeLoreUsed([]), []);
-  assert.deepEqual(sanitizeLoreUsed([{ content: ' Hecho. ' }, null]), [{ id: '', keys: [], content: 'Hecho.', always: false }]);
+  assert.deepEqual(sanitizeLoreUsed([{ content: ' Hecho. ' }, null]), [{ id: '', keys: [], content: 'Hecho.' }]);
   const state = createState(createMemoryBackend());
   await state.saveCharacter(makeCharacter({ id: 'x' }));
   const chat = await state.createChat('x', {});
@@ -981,7 +974,8 @@ test('UI-010: importBackup v2 acepta mensajes con y sin loreUsed', async () => {
   const msgs = await state.getChatMessages('c1');
   assert.equal(msgs.length, 2);
   assert.equal('loreUsed' in msgs[0], false);
-  assert.equal(msgs[1].loreUsed[0].always, true);
+  assert.equal(msgs[1].loreUsed[0].content, 'Un hecho.'); // MEM-020: el `always` viejo se ignora, sin error
+  assert.ok(!('always' in msgs[1].loreUsed[0]));
 });
 
 // ---------- UI-001: `meta` (tiempos por respuesta) en los mensajes ----------

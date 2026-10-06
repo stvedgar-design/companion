@@ -63,18 +63,74 @@ export function openSettings(app) {
 
     <div class="field">
       <label class="field__label" style="display:flex;align-items:center;gap:var(--space-2, 8px)">
-        <input type="checkbox" id="settings-human-touch" style="accent-color:var(--color-accent, #8b1fe0)">
-        <span>Presencia humana y empatía</span>
+        <input type="checkbox" id="settings-variety" style="accent-color:var(--color-accent, #8b1fe0)">
+        <span>Ayuda a que las respuestas no se repitan</span>
       </label>
-      <div class="field__hint">El personaje modula su tono según la hora, la ausencia y lo que escribes, adaptándose con naturalidad a la conversación y respondiendo en un solo párrafo.</div>
+      <div class="field__hint">Si tu personaje empieza a repetir las mismas palabras o temas, la siguiente respuesta lleva una nota breve pidiéndole variar. No hace el chat más lento.</div>
     </div>
 
     <div class="field">
       <label class="field__label" style="display:flex;align-items:center;gap:var(--space-2, 8px)">
-        <input type="checkbox" id="settings-variety" style="accent-color:var(--color-accent, #8b1fe0)">
-        <span>Ayuda para evitar repeticiones</span>
+        <input type="checkbox" id="settings-human-touch" style="accent-color:var(--color-accent, #8b1fe0)">
+        <span>Detalles de presencia humana</span>
       </label>
-      <div class="field__hint">Si tu personaje empieza a repetir las mismas palabras o temas, la siguiente respuesta lleva una nota breve pidiéndole variar. No hace el chat más lento.</div>
+      <div class="field__hint">El personaje tiene un ánimo que cambia con la hora, el día y lo que escribes (se ve bajo su nombre, en el chat). Sus respuestas varían de largo, siempre en un solo párrafo; a veces nota que llevas días sin escribirle, que hoy escribes más corto o que es muy tarde; a veces una respuesta larga llega partida en dos mensajes, y antes de contestar hace una pausa de "escribiendo". No hace el chat más lento (salvo una pausa de uno o dos segundos cuando el servidor responde muy rápido).</div>
+    </div>
+
+    <div class="field">
+      <label class="field__label" style="display:flex;align-items:center;gap:var(--space-2, 8px)">
+        <input type="checkbox" id="settings-emotion-response" style="accent-color:var(--color-accent, #8b1fe0)">
+        <span>Reaccionar a cómo te sientes</span>
+      </label>
+      <div class="field__hint">Si estás triste, estresado, enojado, feliz, orgulloso, asustado, cansado o cariñoso, el personaje lo nota por lo que escribes y cambia de registro a su manera: te acompaña de cerca si estás mal, celebra contigo si estás bien. No hace el chat más lento. Funciona junto con "Detalles de presencia humana".</div>
+    </div>
+
+    <div class="field">
+      <label class="field__label" style="display:flex;align-items:center;gap:var(--space-2, 8px)">
+        <input type="checkbox" id="settings-moment-memories" style="accent-color:var(--color-accent, #8b1fe0)">
+        <span>Recordar momentos emocionales</span>
+      </label>
+      <div class="field__hint">Cuando le cuentas algo que te hizo sentir mucho (tristeza, estrés, enojo, alegría, orgullo, miedo, ternura), el personaje guarda ese momento como un recuerdo, con su tono y su fecha, y puede evocarlo después con naturalidad. Los ves, editas o archivas en "Memoria". No hace el chat más lento.</div>
+    </div>
+
+    <div class="field">
+      <label class="field__label" style="display:flex;align-items:center;gap:var(--space-2, 8px)">
+        <input type="checkbox" id="settings-follow-ups" style="accent-color:var(--color-accent, #8b1fe0)">
+        <span>Acordarse de lo que viene y de las fechas</span>
+      </label>
+      <div class="field__hint">Si le dices que mañana tienes una entrevista o un examen, el personaje lo guarda y, cuando vuelves, puede preguntarte cómo te fue (una sola vez). Si le cuentas la fecha de tu cumpleaños, te deja una nota ese día; también en el aniversario de cuando empezaron a hablar. Solo guarda lo que tú dices, y lo ves reflejado en sus mensajes. No hace el chat más lento.</div>
+    </div>
+
+    <div class="field">
+      <label class="field__label" style="display:flex;align-items:center;gap:var(--space-2, 8px)">
+        <input type="checkbox" id="settings-own-life" style="accent-color:var(--color-accent, #8b1fe0)">
+        <span>El personaje tiene su propio día</span>
+      </label>
+      <div class="field__hint">Una vez al día, cuando abres la app con tu servidor encendido, el personaje se inventa en segundo plano algo pequeño que hizo hoy (según su personalidad y su ánimo; nada sobre ti) y a veces te lo cuenta sin que se lo preguntes. Lo ves en su ficha, en «Su día». Cuesta una llamada corta al día por personaje, fuera del chat.</div>
+    </div>
+
+    <div class="field">
+      <label class="field__label" style="display:flex;align-items:center;gap:var(--space-2, 8px)">
+        <input type="checkbox" id="settings-personality-adapts" style="accent-color:var(--color-accent, #8b1fe0)">
+        <span>Personalidad que se adapta a la escena</span>
+      </label>
+      <div class="field__hint">La personalidad del personaje es su punto de partida, no un guion: a medida que crece la confianza y la escena avanza, se abre, toma la iniciativa o cambia de ritmo, sin dejar de ser quien es. Vale para todos tus personajes, también los que ya tenías. Si prefieres que sigan su personalidad al pie de la letra, apágalo. No hace el chat más lento.</div>
+    </div>
+
+    <div class="field">
+      <label class="field__label" style="display:flex;align-items:center;gap:var(--space-2, 8px)">
+        <input type="checkbox" id="settings-format" style="accent-color:var(--color-accent, #8b1fe0)">
+        <span>Corregir formato automáticamente</span>
+      </label>
+      <div class="field__hint">Cada respuesta empieza ya dentro de una acción en cursiva, y si llega con asteriscos mal puestos pero con el diálogo entre comillas, se muestra bien (diálogo normal, el resto en cursiva). Los mensajes sin asteriscos ni comillas no se tocan. No hace el chat más lento.</div>
+    </div>
+
+    <div class="field">
+      <label class="field__label" style="display:flex;align-items:center;gap:var(--space-2, 8px)">
+        <input type="checkbox" id="settings-feelings" style="accent-color:var(--color-accent, #8b1fe0)">
+        <span>Sentimientos del personaje</span>
+      </label>
+      <div class="field__hint">Cuando una respuesta usa 3 o más recuerdos, el personaje elige en su propia voz una palabra de una lista fija ("sintiendo nostalgia", junto a la hora). Es una llamada corta aparte, después de mostrar la respuesta: no la retrasa. Apagado por defecto.</div>
     </div>
 
     <div class="menu-group" aria-hidden="true">Seguridad</div>
@@ -125,17 +181,6 @@ export function openSettings(app) {
     <div class="menu-group" aria-hidden="true">Avanzado</div>
     <div class="field__hint" id="settings-persist">${describePersistence(getPersistenceResult())}</div>
     <div class="field">
-      <label class="field__label" for="settings-cpu-url">Servidor secundario (CPU — memorias y resúmenes)</label>
-      <div class="settings-row">
-        <input class="inp" id="settings-cpu-url" type="url" inputmode="url"
-               autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false"
-               placeholder="Opcional (p. ej. http://100.x.x.x:5002)">
-        <button class="btn btn--ghost btn--sm" id="settings-cpu-test" type="button">Probar</button>
-      </div>
-      <div class="field__hint">Si configuras una segunda instancia en CPU (como Llama 3B), las memorias y resúmenes se procesan allí sin interrumpir ni quitarle memoria al modelo principal en GPU. Si se deja vacío, usa el servidor principal.</div>
-      <div class="status" id="settings-cpu-status"></div>
-    </div>
-    <div class="field">
       <label class="field__label">Prueba de fluidez</label>
       <div class="settings-row">
         <button class="btn btn--ghost btn--sm" id="settings-fluency" type="button">Medir fluidez (${FLUENCY_SECONDS} s)</button>
@@ -171,14 +216,18 @@ export function openSettings(app) {
     url: q('#settings-url'),
     test: q('#settings-test'),
     status: q('#settings-status'),
-    cpuUrl: q('#settings-cpu-url'),
-    cpuTest: q('#settings-cpu-test'),
-    cpuStatus: q('#settings-cpu-status'),
     user: q('#settings-user'),
     mode: q('#settings-mode'),
     variety: q('#settings-variety'),
     humanTouch: q('#settings-human-touch'),
+    emotionResponse: q('#settings-emotion-response'),
+    momentMemories: q('#settings-moment-memories'),
+    followUps: q('#settings-follow-ups'),
+    ownLife: q('#settings-own-life'),
+    personalityAdapts: q('#settings-personality-adapts'),
+    format: q('#settings-format'),
     stream: q('#settings-stream'),
+    feelings: q('#settings-feelings'),
     pinBody: q('#settings-pin-body'),
     fontSizeBtns: Array.from(node.querySelectorAll('#settings-fontsize [data-size-value]')),
     avatarSizeBtns: Array.from(node.querySelectorAll('#settings-avatarsize [data-avatar-size]')),
@@ -197,12 +246,18 @@ export function openSettings(app) {
 
   getSettings().then((settings) => {
     els.url.value = settings.url;
-    els.cpuUrl.value = settings.cpuUrl || '';
     els.user.value = settings.user;
     els.mode.value = settings.mode;
-    if (els.variety) els.variety.checked = settings.varietyAssist === true;
-    if (els.humanTouch) els.humanTouch.checked = settings.humanTouch !== false;
-    if (els.stream) els.stream.checked = settings.streamReplies !== false;
+    els.variety.checked = settings.varietyAssist === true;
+    els.humanTouch.checked = settings.humanTouch !== false;
+    els.emotionResponse.checked = settings.emotionResponse !== false;
+    els.momentMemories.checked = settings.momentMemories !== false;
+    els.followUps.checked = settings.followUps !== false;
+    els.ownLife.checked = settings.ownLife !== false;
+    els.personalityAdapts.checked = settings.personalityAdapts !== false;
+    els.format.checked = settings.formatAssist !== false;
+    els.stream.checked = settings.streamReplies !== false;
+    els.feelings.checked = settings.feelingsEnabled === true;
     renderPinBody(settings);
     renderFontSize(settings.messageFontSize);
     renderAvatarSize(settings.chatAvatarSize);
@@ -311,52 +366,51 @@ export function openSettings(app) {
     logEvent(TEL_EVENTS.EXPERIMENTAL_SETTING_CHANGED, { setting: 'varietyAssist', enabled: els.variety.checked });
   });
 
-  if (els.humanTouch) {
-    els.humanTouch.addEventListener('change', () => {
-      saveSettings({
-        humanTouch: els.humanTouch.checked,
-        emotionResponse: els.humanTouch.checked,
-      });
-      logEvent(TEL_EVENTS.EXPERIMENTAL_SETTING_CHANGED, { setting: 'humanTouch', enabled: els.humanTouch.checked });
-    });
-  }
+  els.humanTouch.addEventListener('change', () => {
+    saveSettings({ humanTouch: els.humanTouch.checked });
+    logEvent(TEL_EVENTS.EXPERIMENTAL_SETTING_CHANGED, { setting: 'humanTouch', enabled: els.humanTouch.checked });
+  });
 
-  if (els.stream) {
-    els.stream.addEventListener('change', () => {
-      saveSettings({ streamReplies: els.stream.checked });
-    });
-  }
+  els.ownLife.addEventListener('change', () => {
+    saveSettings({ ownLife: els.ownLife.checked });
+    logEvent(TEL_EVENTS.EXPERIMENTAL_SETTING_CHANGED, { setting: 'ownLife', enabled: els.ownLife.checked });
+  });
+
+  els.followUps.addEventListener('change', () => {
+    saveSettings({ followUps: els.followUps.checked });
+    logEvent(TEL_EVENTS.EXPERIMENTAL_SETTING_CHANGED, { setting: 'followUps', enabled: els.followUps.checked });
+  });
+
+  els.momentMemories.addEventListener('change', () => {
+    saveSettings({ momentMemories: els.momentMemories.checked });
+    logEvent(TEL_EVENTS.EXPERIMENTAL_SETTING_CHANGED, { setting: 'momentMemories', enabled: els.momentMemories.checked });
+  });
+
+  els.emotionResponse.addEventListener('change', () => {
+    saveSettings({ emotionResponse: els.emotionResponse.checked });
+    logEvent(TEL_EVENTS.EXPERIMENTAL_SETTING_CHANGED, { setting: 'emotionResponse', enabled: els.emotionResponse.checked });
+  });
+
+  els.personalityAdapts.addEventListener('change', () => {
+    saveSettings({ personalityAdapts: els.personalityAdapts.checked });
+    logEvent(TEL_EVENTS.EXPERIMENTAL_SETTING_CHANGED, { setting: 'personalityAdapts', enabled: els.personalityAdapts.checked });
+  });
+
+  els.stream.addEventListener('change', () => {
+    saveSettings({ streamReplies: els.stream.checked });
+  });
+
+  els.format.addEventListener('change', () => {
+    saveSettings({ formatAssist: els.format.checked });
+    logEvent(TEL_EVENTS.EXPERIMENTAL_SETTING_CHANGED, { setting: 'formatAssist', enabled: els.format.checked });
+  });
+
+  els.feelings.addEventListener('change', () => {
+    saveSettings({ feelingsEnabled: els.feelings.checked });
+  });
 
   els.appearanceBtn.addEventListener('click', () => {
     openAppearance(app);
-  });
-
-  els.cpuUrl.addEventListener('blur', () => {
-    saveSettings({ cpuUrl: els.cpuUrl.value.trim() });
-  });
-
-  els.cpuTest.addEventListener('click', async () => {
-    els.cpuStatus.className = 'status';
-    els.cpuStatus.textContent = 'Conectando…';
-    els.cpuTest.disabled = true;
-    try {
-      const val = els.cpuUrl.value.trim();
-      if (!val) {
-        await saveSettings({ cpuUrl: '' });
-        els.cpuStatus.className = 'status';
-        els.cpuStatus.textContent = 'Servidor secundario desactivado (usa el principal).';
-        return;
-      }
-      const { url, model } = await connect(val);
-      await saveSettings({ cpuUrl: url });
-      els.cpuStatus.className = 'status status--ok';
-      els.cpuStatus.textContent = 'Conectado (CPU): ' + model;
-    } catch (err) {
-      els.cpuStatus.className = 'status status--err';
-      els.cpuStatus.textContent = err.message;
-    } finally {
-      els.cpuTest.disabled = false;
-    }
   });
 
   els.test.addEventListener('click', async () => {

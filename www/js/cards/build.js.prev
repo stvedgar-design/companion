@@ -66,10 +66,6 @@ export function buildCharacterCard(fields = {}) {
     ? personalityTextFromTags(tags)
     : cleanText(fields.personalityText, PERSONALITY_TEXT_MAX);
 
-  const alternateGreetings = Array.isArray(fields.alternateGreetings)
-    ? fields.alternateGreetings.map((g) => normalizeField(g, FIRST_MES_MAX)).filter(Boolean)
-    : [];
-
   return {
     name: cleanText(fields.name, NAME_MAX) || 'Sin nombre',
     description: normalizeField(fields.description, DESCRIPTION_MAX),
@@ -79,7 +75,7 @@ export function buildCharacterCard(fields = {}) {
     mes_example: normalizeField(fields.mesExample, MES_EXAMPLE_MAX),
     system_prompt: '',
     post_history_instructions: normalizeField(fields.instructions, INSTRUCTIONS_MAX),
-    alternate_greetings: alternateGreetings,
+    alternate_greetings: [],
     character_book: null,
   };
 }

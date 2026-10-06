@@ -373,18 +373,6 @@ export function buildPresence({ character, messages = [], settings = {}, now = n
   const head = `${N} feels ${moodDef.prompt} right now.`;
   const parts = [head];
   let used = head.length + rhythm.text.length + 2;
-  // REFORMA PARETO (Fase 4): Presencia temporal sutil para ausencias en el mismo día (6h a 48h).
-  // Informa al companion del paso del tiempo y franja actual sin romper inmersión ni inventar vidas paralelas.
-  if (gapMs >= 6 * HOUR && gapMs < 2 * DAY) {
-    const timeIntro = gapMs < 20 * HOUR
-      ? `Several hours have passed since earlier today; ${N} naturally greets ${U} based on the current time of day, staying grounded in the present conversation.`
-      : `A day has passed since the previous exchange; ${N} warmly welcomes ${U} back, staying grounded in the present conversation.`;
-    if (used + timeIntro.length + 1 <= PRESENCE_NOTE_MAX) {
-      parts.push(timeIntro);
-      used += timeIntro.length + 1;
-    }
-  }
-
   // Prioridad cuando no cabe todo: el registro emocional (lo que el usuario siente AHORA) va primero, después las observaciones (ver `observations`).
   const register = registerLine(emotionId, N, U);
   if (register && used + register.length + 1 <= PRESENCE_NOTE_MAX) {
