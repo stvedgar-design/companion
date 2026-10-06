@@ -293,8 +293,7 @@ export function buildMemoryCard(entry, hooks) {
   if (entry.always) meta.appendChild(el('span', 'chip', 'Siempre presente'));
   else for (const key of entry.keys || []) meta.appendChild(el('span', 'chip', key));
   card.appendChild(meta);
-  const dateStr = entry.updated ? formatDateOnly(entry.updated) : 'Histórico';
-  card.appendChild(el('div', 'field__hint', `${entry.source === 'manual' ? 'Escrito o editado por ti' : 'Automático'} · ${dateStr}`));
+  card.appendChild(el('div', 'field__hint', entry.source === 'manual' ? 'Escrito o editado por ti' : 'Automático'));
   const actions = el('div', 'mem-actions');
   const edit = el('button', 'btn btn--sm btn--ghost', 'Editar');
   edit.type = 'button';

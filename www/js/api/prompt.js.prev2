@@ -187,12 +187,8 @@ export function formatUserAppearance(text, charName, userName) {
   return t ? `${userName}'s appearance: ${t}` : '';
 }
 
-export function formatAppearanceFixed(text, charName, userName, style) {
-  let combined = String(text || '');
-  if (style && typeof style === 'string' && style.trim()) {
-    combined = combined ? `${combined}. Usual wardrobe style: ${style.trim()}` : `Usual wardrobe style: ${style.trim()}`;
-  }
-  const t = subMacros(combined, charName, userName).replace(/\s+/g, ' ').trim();
+export function formatAppearanceFixed(text, charName, userName) {
+  const t = subMacros(String(text || ''), charName, userName).replace(/\s+/g, ' ').trim();
   return t ? `${charName}'s appearance: ${t}` : '';
 }
 
@@ -281,7 +277,7 @@ function headBlock(card, settings, chatScenario, loreBlock, relationship = null,
 
   const relationshipLine = formatRelationshipBlock(relationship);
   if (relationshipLine) parts.push(relationshipLine);
-  const appearanceLine = formatAppearanceFixed(appearanceFixed, N, U, appearance && appearance.style);
+  const appearanceLine = formatAppearanceFixed(appearanceFixed, N, U);
   if (appearanceLine) parts.push(appearanceLine);
   const userAppearanceLine = formatUserAppearance(settings && settings.userAppearance, N, U);
   if (userAppearanceLine) parts.push(userAppearanceLine);

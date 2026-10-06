@@ -10,8 +10,6 @@ export const APPEARANCE_CURRENT_MAX = 100;
 export const APPEARANCE_UNDERWEAR_MAX = 80;
 /** Tope de caracteres de accesorios y regalos (Capa 3). */
 export const APPEARANCE_ACCESSORIES_MAX = 100;
-/** Tope de caracteres para el estilo habitual inmutable. */
-export const APPEARANCE_STYLE_MAX = 150;
 
 /** @typedef {{ fixed: string, current: string, underwear?: string, accessories?: string, updated: number }} Appearance */
 
@@ -23,7 +21,7 @@ const clean = (value, max) => {
 
 /** Ficha vacía (valor por defecto de todo personaje). */
 export function emptyAppearance() {
-  return { fixed: '', current: '', underwear: '', accessories: '', style: '', updated: 0 };
+  return { fixed: '', current: '', underwear: '', accessories: '', updated: 0 };
 }
 
 /**
@@ -37,10 +35,9 @@ export function sanitizeAppearance(raw) {
   const current = clean(raw.current, APPEARANCE_CURRENT_MAX);
   const underwear = clean(raw.underwear, APPEARANCE_UNDERWEAR_MAX);
   const accessories = clean(raw.accessories, APPEARANCE_ACCESSORIES_MAX);
-  const style = clean(raw.style, APPEARANCE_STYLE_MAX);
   const updated = Number.isFinite(raw.updated) && raw.updated > 0 ? raw.updated : 0;
-  const hasAny = fixed || current || underwear || accessories || style;
-  return { fixed, current, underwear, accessories, style, updated: hasAny ? updated : 0 };
+  const hasAny = fixed || current || underwear || accessories;
+  return { fixed, current, underwear, accessories, updated: hasAny ? updated : 0 };
 }
 
 /**
@@ -74,13 +71,13 @@ export function buildLayeredLookText(look) {
  */
 export function appearanceOf(character) {
   const a = sanitizeAppearance(character && character.appearance);
-  return a.fixed || a.current || a.underwear || a.accessories || a.style
-    ? { fixed: a.fixed, current: a.current, underwear: a.underwear, accessories: a.accessories, style: a.style }
+  return a.fixed || a.current || a.underwear || a.accessories
+    ? { fixed: a.fixed, current: a.current, underwear: a.underwear, accessories: a.accessories }
     : null;
 }
 
 /** ¿No hay nada escrito? (entonces el prompt queda idéntico al de antes). */
 export function isAppearanceEmpty(appearance) {
   const a = sanitizeAppearance(appearance);
-  return !a.fixed && !a.current && !a.underwear && !a.accessories && !a.style;
+  return !a.fixed && !a.current && !a.underwear && !a.accessories;
 }

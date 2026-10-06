@@ -309,7 +309,7 @@ export function openCharacterSheet(app, character, opts = {}) {
     });
     node.appendChild(photoBtn);
 
-    app.openSheet(node, { fullscreen: true });
+    app.openSheet(node);
   }
 
   render();

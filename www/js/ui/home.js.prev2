@@ -12,7 +12,6 @@ import { pickFiles } from '../platform.js';
 import { continueTarget } from '../nav.js';
 import { createLongPress } from '../longpress.js';
 import { openSettings } from './settings.js';
-import { haptics } from './haptics.js';
 import { openCharacterEditor } from './character-editor.js';
 import { dayPart, pickGreeting } from '../greeting.js';
 
@@ -52,10 +51,24 @@ export function init(root, appApi) {
       <div class="home-grid" id="home-list"></div>
       <p class="home-hint" id="home-hint" hidden>Toca una tarjeta para continuar. Mantenla presionada para borrar el personaje.</p>
     </div>
-    <div class="footbar home-footbar">
-      <button class="btn home-footbar__create" id="home-create" type="button">Crear personaje</button>
-      <button class="ib" id="home-import" type="button" aria-label="Importar character card">${ICON_IMPORT}</button>
-    </div>
+    <nav class="home-bottomnav" aria-label="Navegación principal">
+      <button class="home-bottomnav__item home-bottomnav__item--active" id="home-nav-chats" type="button">
+        <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <span>Chats</span>
+      </button>
+      <button class="home-bottomnav__item" id="home-create" type="button">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>
+        <span>Crear</span>
+      </button>
+      <button class="home-bottomnav__item" id="home-import" type="button" aria-label="Importar personaje">
+        ${ICON_IMPORT}
+        <span>Importar</span>
+      </button>
+      <button class="home-bottomnav__item" id="home-nav-settings" type="button">
+        ${ICON_SETTINGS}
+        <span>Ajustes</span>
+      </button>
+    </nav>
   `;
 
   els = {
@@ -71,10 +84,12 @@ export function init(root, appApi) {
     import: root.querySelector('#home-import'),
   };
 
-  els.settingsBtn.addEventListener('click', () => { haptics.tap(); openSettings(app); });
-  els.status.addEventListener('click', () => { haptics.tap(); openSettings(app); });
-  els.create.addEventListener('click', () => { haptics.tap(); onCreateClick(); });
-  els.import.addEventListener('click', () => { haptics.tap(); onImportClick(); });
+  els.settingsBtn.addEventListener('click', () => openSettings(app));
+  const navSettings = root.querySelector('#home-nav-settings');
+  if (navSettings) navSettings.addEventListener('click', () => openSettings(app));
+  els.status.addEventListener('click', () => openSettings(app));
+  els.create.addEventListener('click', onCreateClick);
+  els.import.addEventListener('click', onImportClick);
   els.searchToggle.addEventListener('click', toggleSearch);
   els.search.addEventListener('input', () => {
     searchQuery = els.search.value.trim().toLowerCase();
@@ -222,7 +237,7 @@ function renderRow(character) {
 
   const longPress = createLongPress({
     onLong: () => {
-      haptics.action();
+      if (navigator.vibrate) navigator.vibrate(15);
       onDelete(character);
     },
   });
@@ -235,7 +250,6 @@ function renderRow(character) {
   card.addEventListener('contextmenu', (e) => e.preventDefault());
   card.addEventListener('click', () => {
     if (longPress.consumeClick()) return; // el click que sigue a una pulsación larga ya atendida
-    haptics.tap();
     openLatest();
   });
 

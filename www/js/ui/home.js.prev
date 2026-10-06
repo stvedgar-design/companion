@@ -12,7 +12,6 @@ import { pickFiles } from '../platform.js';
 import { continueTarget } from '../nav.js';
 import { createLongPress } from '../longpress.js';
 import { openSettings } from './settings.js';
-import { haptics } from './haptics.js';
 import { openCharacterEditor } from './character-editor.js';
 import { dayPart, pickGreeting } from '../greeting.js';
 
@@ -71,10 +70,10 @@ export function init(root, appApi) {
     import: root.querySelector('#home-import'),
   };
 
-  els.settingsBtn.addEventListener('click', () => { haptics.tap(); openSettings(app); });
-  els.status.addEventListener('click', () => { haptics.tap(); openSettings(app); });
-  els.create.addEventListener('click', () => { haptics.tap(); onCreateClick(); });
-  els.import.addEventListener('click', () => { haptics.tap(); onImportClick(); });
+  els.settingsBtn.addEventListener('click', () => openSettings(app));
+  els.status.addEventListener('click', () => openSettings(app));
+  els.create.addEventListener('click', onCreateClick);
+  els.import.addEventListener('click', onImportClick);
   els.searchToggle.addEventListener('click', toggleSearch);
   els.search.addEventListener('input', () => {
     searchQuery = els.search.value.trim().toLowerCase();
@@ -222,7 +221,7 @@ function renderRow(character) {
 
   const longPress = createLongPress({
     onLong: () => {
-      haptics.action();
+      if (navigator.vibrate) navigator.vibrate(15);
       onDelete(character);
     },
   });
@@ -235,7 +234,6 @@ function renderRow(character) {
   card.addEventListener('contextmenu', (e) => e.preventDefault());
   card.addEventListener('click', () => {
     if (longPress.consumeClick()) return; // el click que sigue a una pulsación larga ya atendida
-    haptics.tap();
     openLatest();
   });
 

@@ -473,14 +473,11 @@ function buildFormFields(app, { editing, source }) {
   // ni obligar a una migración el día que se decida conectarlo.
   const formatStyle = editing && source.formatStyle === 'plain' ? 'plain' : 'nomi';
 
-  let alternateGreetingsList = card && Array.isArray(card.alternate_greetings) ? [...card.alternate_greetings] : [];
   return {
     avatarRow, avatarBtn, nameField, genderField, personalityWrap,
     description, scenario, firstMes, mesExample,
     appearanceLabel, fixed, current, instructions,
     formatStyle,
-    getAlternateGreetings: () => alternateGreetingsList,
-    setAlternateGreetings: (list) => { alternateGreetingsList = list; },
     getGender: () => gender,
     getAvatar: () => ({ avatarDataUrl, avatarLargeDataUrl }),
     // Estado de personalidad, para que el wizard pueda aplicar una personalidad de partida o leerla al guardar.
@@ -506,7 +503,6 @@ async function saveFromFields(app, fields, { editing, source, opts }) {
     firstMes: fields.firstMes.input.value,
     mesExample: fields.mesExample.input.value,
     instructions: fields.instructions.input.value,
-    alternateGreetings: fields.getAlternateGreetings ? fields.getAlternateGreetings() : [],
   });
   const appearance = sanitizeAppearance({ fixed: fields.fixed.input.value, current: fields.current.input.value, updated: Date.now() });
   const personalityTags = fields.getPersonalityTags();
@@ -706,70 +702,7 @@ function renderWizard(app, fields, ctx) {
 
   // ---------- paso 4: cómo habla ----------
   const step4 = el('div', 'wizard-step');
-
-  const GREETING_TONES = [
-    {
-      id: 'warm',
-      label: 'Cálido',
-      text: "*smiles softly and takes a step closer, eyes brightening as you arrive* Hey. I'm really glad you made it. Come on in, make yourself comfortable — I've been looking forward to seeing you.",
-    },
-    {
-      id: 'playful',
-      label: 'Juguetón',
-      text: "*leans back with a knowing grin, eyes sparkling with amusement* Well, look who finally decided to show up! And here I was thinking you got completely lost on the way.",
-    },
-    {
-      id: 'calm',
-      label: 'Tranquilo',
-      text: "*looks up from what they were doing and offers a quiet, relaxed smile* Hey. Don't rush, sit wherever you feel comfortable. It's nice and quiet right now, and I'm glad we get to talk.",
-    },
-    {
-      id: 'bold',
-      label: 'Directo',
-      text: "*holds your gaze with an easy smirk, not hesitating for a second* Finally. I was starting to wonder how long you'd keep me waiting. Come sit down with me.",
-    },
-  ];
-
-  const toneField = el('div', 'field');
-  toneField.appendChild(el('div', 'field__label', 'Tono del primer encuentro'));
-  toneField.appendChild(el('div', 'field__hint', 'Elige cómo quieres que te salude la primera vez. Para el modelo, el primer mensaje es el ejemplo de estilo más importante: define la longitud de sus frases y la cercanía del trato.'));
-  const tonePicker = el('div', 'tag-picker');
-  tonePicker.setAttribute('role', 'radiogroup');
-  tonePicker.setAttribute('aria-label', 'Tono del primer mensaje');
-
-  let activeToneId = null;
-
-  function applyGreetingTone(tone) {
-    activeToneId = tone.id;
-    const gender = fields.getGender();
-    const mainText = applyGender(tone.text, gender);
-    fields.firstMes.input.value = mainText;
-    fields.firstMes.input.dispatchEvent(new Event('input'));
-
-    const alts = GREETING_TONES
-      .filter((t) => t.id !== tone.id)
-      .map((t) => applyGender(t.text, gender));
-    fields.setAlternateGreetings(alts);
-
-    renderTonePills();
-  }
-
-  function renderTonePills() {
-    tonePicker.replaceChildren();
-    for (const t of GREETING_TONES) {
-      const btn = el('button', 'tag-pill', t.label);
-      btn.type = 'button';
-      btn.setAttribute('role', 'radio');
-      btn.setAttribute('aria-checked', String(activeToneId === t.id));
-      btn.classList.toggle('tag-pill--active', activeToneId === t.id);
-      btn.addEventListener('click', () => applyGreetingTone(t));
-      tonePicker.appendChild(btn);
-    }
-  }
-  renderTonePills();
-  toneField.appendChild(tonePicker);
-
-  step4.append(toneField, fields.firstMes.field, fields.mesExample.field);
+  step4.append(fields.firstMes.field, fields.mesExample.field);
 
   // ---------- paso 5: apariencia e instrucciones + crear ----------
   const step5 = el('div', 'wizard-step');

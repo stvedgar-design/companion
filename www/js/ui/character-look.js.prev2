@@ -9,7 +9,6 @@ import {
   APPEARANCE_CURRENT_MAX,
   APPEARANCE_UNDERWEAR_MAX,
   APPEARANCE_ACCESSORIES_MAX,
-  APPEARANCE_STYLE_MAX,
   sanitizeAppearance,
 } from '../character-appearance.js';
 
@@ -88,22 +87,12 @@ export function openCharacterAppearance(app, character, onSaved) {
     label: 'Capa 3: Accesorios y regalos',
     hint: 'Objetos con valor afectivo o que porta habitualmente (los lentes que le regalaste, un collar, reloj).',
     max: APPEARANCE_ACCESSORIES_MAX,
-  APPEARANCE_STYLE_MAX,
     rows: 2,
     value: saved.accessories || '',
     placeholder: 'Ej.: gold pendant necklace gifted by Edgar, round silver-framed reading glasses',
   });
 
-  const style = textField({
-    label: 'Estilo de vestuario habitual (Inmutable)',
-    hint: 'La estética base que define cómo suele vestir (ej. bohemio, urbano, gótico, formal). Llama 3B en CPU la usa para adaptar la ropa según la escena.',
-    max: APPEARANCE_STYLE_MAX,
-    rows: 2,
-    value: saved.style || '',
-    placeholder: 'Ej.: casual and bohemian, flowy sundresses, earthy tones, flat sandals and handcrafted jewelry',
-  });
-
-  node.append(fixed.field, style.field, underwear.field, current.field, accessories.field);
+  node.append(fixed.field, underwear.field, current.field, accessories.field);
 
   const status = el('div', 'field__label');
   const saveBtn = el('button', 'btn', 'Guardar');
@@ -127,13 +116,11 @@ export function openCharacterAppearance(app, character, onSaved) {
         next.fixed !== before.fixed ||
         next.current !== before.current ||
         next.underwear !== before.underwear ||
-        next.accessories !== before.accessories ||
-        next.style !== before.style
+        next.accessories !== before.accessories
       ) {
         logEvent(TEL_EVENTS.APPEARANCE_EDITED, { characterId: character.id });
       }
       base = next;
-      if (style) style.input.value = next.style || "";
       fixed.input.value = next.fixed;
       underwear.input.value = next.underwear;
       current.input.value = next.current;
@@ -151,7 +138,6 @@ export function openCharacterAppearance(app, character, onSaved) {
   saveBtn.addEventListener('click', () =>
     save({
       fixed: fixed.input.value,
-      style: style ? style.input.value : '',
       underwear: underwear.input.value,
       current: current.input.value,
       accessories: accessories.input.value,
@@ -159,7 +145,7 @@ export function openCharacterAppearance(app, character, onSaved) {
   );
 
   clearBtn.addEventListener('click', () =>
-    save({ fixed: '', style: '', underwear: '', current: '', accessories: '' })
+    save({ fixed: '', underwear: '', current: '', accessories: '' })
   );
 
   app.openSheet(node);

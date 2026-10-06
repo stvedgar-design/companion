@@ -155,13 +155,17 @@ export function toast(text, opts = {}) {
   toastTimer = setTimeout(() => node.classList.remove('is-visible'), ms);
 }
 
-export function openSheet(node, opts = {}) {
+export function openSheet(node) {
   const sheet = el('sheet');
   const card = el('sheet-card');
   if (!sheet || !card) return;
 
   const wasOpen = sheet.classList.contains('is-open');
   if (wasOpen) {
+    // Reemplazo top-level (no un confirmDialog anidado): cualquier capa
+    // guardada para restaurar después deja de tener sentido, y el
+    // confirmDialog pendiente (si lo había) se cancela — pero no tocamos el
+    // historial (sigue siendo "una hoja abierta").
     sheetStack = [];
     const cb = sheetCloseCallback;
     sheetCloseCallback = null;
@@ -170,7 +174,6 @@ export function openSheet(node, opts = {}) {
 
   card.replaceChildren(node);
   sheet.classList.add('is-open');
-  sheet.classList.toggle('sheet--fullscreen', opts && opts.fullscreen === true);
 
   if (!wasOpen) {
     document.dispatchEvent(new CustomEvent('shell:sheetopen'));
@@ -228,7 +231,6 @@ export function closeSheet() {
   }
 
   sheet.classList.remove('is-open');
-  sheet.classList.remove('sheet--fullscreen');
   const card = el('sheet-card');
   if (card) card.replaceChildren();
 

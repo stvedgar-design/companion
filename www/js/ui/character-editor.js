@@ -591,7 +591,7 @@ function renderEditScreen(app, fields, ctx) {
     }
   });
 
-  app.openSheet(node);
+  app.openSheet(node, { fullscreen: true });
 }
 
 /**
@@ -855,7 +855,7 @@ function renderWizard(app, fields, ctx) {
   });
 
   goToStep(0);
-  app.openSheet(node);
+  app.openSheet(node, { fullscreen: true });
 }
 
 /**

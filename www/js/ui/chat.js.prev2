@@ -40,7 +40,6 @@ import { createFeelingUpdater, feelingDisplayText } from '../api/feeling.js';
 import { formatMessageTime, formatMessageFullTime } from '../msgtime.js';
 import { createContinuityUpdater, coveredCount, CONTINUITY_TOTAL_CHARS, CONTINUITY_ON_OPEN_DELAY_MS, cleanRecap, verifyRecap } from '../api/continuity.js';
 import { openCharacterSheet } from './character-sheet.js';
-import { haptics, setHapticsEnabled } from './haptics.js';
 import { archiveChat, archiveResultMessage, cancelBackgroundArchive } from './chat-archive.js';
 import { cancelBackgroundIdentity } from './identity.js';
 import { cancelBackgroundLife } from './life.js';
@@ -142,7 +141,7 @@ export function init(rootEl, appApi) {
   els.restore.addEventListener('click', onRestoreEpisode);
   els.messages.addEventListener('click', onMessagesClick);
   els.messages.addEventListener('scroll', onMessagesScroll, { passive: true });
-  els.scrollDown.addEventListener('click', () => { haptics.tap(); scrollToBottom(true, true); });
+  els.scrollDown.addEventListener('click', () => scrollToBottom(true));
 
   // La hoja de fondo de chat (ui/chat-background.js) se abre encima de esta
   // vista, no la reemplaza — sin este evento, un cambio de fondo no se
@@ -219,7 +218,6 @@ export async function show({ chatId } = {}) {
   }
 
   settings = await getSettings();
-  setHapticsEnabled(settings && settings.hapticsEnabled !== false);
   touchInteraction(character.id); // PROACT-001: el usuario estuvo con este personaje (para saber cuánto estuvo ausente)
 
   let loaded = await getChatMessages(chat.id);
@@ -468,7 +466,6 @@ function buildMessageRow(m, i) {
   const bubble = document.createElement('div');
   bubble.className = 'chat-bubble';
   if (isChar && !m.text && busy && isLast) {
-    bubble.classList.add('chat-bubble--thinking');
     bubble.appendChild(buildDots());
   } else {
     setBubbleContent(bubble, m);
@@ -645,7 +642,7 @@ function buildRetryButton() {
   btn.setAttribute('aria-label', 'Reintentar respuesta');
   btn.title = 'Reintentar respuesta';
   btn.innerHTML = `<span class="chat-retry__icon">${ICON_RETRY}</span>`;
-  btn.addEventListener('click', () => { haptics.tap(); generate(); });
+  btn.addEventListener('click', () => generate());
   return btn;
 }
 
@@ -743,19 +740,15 @@ function isNearBottom() {
   return el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
 }
 
-function scrollToBottom(force, smooth = false) {
+function scrollToBottom(force) {
   if (force || atBottom) {
+    // Con content-visibility las filas fuera de pantalla usan una altura estimada: al llegar abajo se miden las reales y el
+    // final se corre un poco. Se repite (máx. 4 veces) hasta que el fondo deja de moverse.
     const el = els.messages;
-    if (smooth && typeof el.scrollTo === 'function') {
-      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
-    } else {
-      // Con content-visibility las filas fuera de pantalla usan una altura estimada: al llegar abajo se miden las reales y el
-      // final se corre un poco. Se repite (máx. 4 veces) hasta que el fondo deja de moverse.
-      for (let k = 0; k < 4; k++) {
-        const target = el.scrollHeight;
-        el.scrollTop = target;
-        if (el.scrollHeight === target) break;
-      }
+    for (let k = 0; k < 4; k++) {
+      const target = el.scrollHeight;
+      el.scrollTop = target;
+      if (el.scrollHeight === target) break;
     }
     atBottom = true;
   }
@@ -938,7 +931,6 @@ async function onSendClick() {
   draftByChat.delete(chat.id);
   autosizeInput();
   syncSendButton();
-  haptics.send();
 
   // Prioridad absoluta al chat: si hay una extracción de memoria en curso se
   // cancela ya, y `sendInFlight` impide que arranque otra entre el guardado
@@ -1080,9 +1072,6 @@ async function generate(opts = {}) {
     syncSendButton();
     finishStreamRow(idx);
     await persistChat();
-    if (reply.text && !wasAborted) {
-      haptics.receive();
-    }
     // HUM-001: el ánimo solo se escribe en el personaje cuando cambió (el registro lleva imágenes).
     if (moodResult && moodResult.changed && character && reply.text) {
       saveCharacterMood(character.id, { id: moodResult.id, updated: moodResult.updated })
@@ -1167,7 +1156,6 @@ async function showContinuation(text) {
 // UI-001: al terminar la respuesta solo se rehace SU fila (o se quita, si quedó vacía); el resto de la lista no se toca.
 function finishStreamRow(idx) {
   const row = streamRow;
-  if (streamBubble) streamBubble.classList.remove('chat-bubble--thinking');
   streamRow = null;
   streamBubble = null;
   streamReply = null;
@@ -1204,10 +1192,8 @@ function paintStreamingBubble() {
     return;
   }
   if (streamReply.text) {
-    streamBubble.classList.remove('chat-bubble--thinking');
     setBubbleContent(streamBubble, streamReply);
   } else {
-    streamBubble.classList.add('chat-bubble--thinking');
     streamBubble.replaceChildren(buildDots());
   }
   followStreamToBottom();
