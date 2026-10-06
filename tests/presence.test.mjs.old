@@ -171,25 +171,6 @@ test('HUM-001 buildPresence: ánimo primero, ritmo al final, dentro del tope, si
   }
 });
 
-test('REFORMA PARETO Fase 4: presencia temporal determinista y sutil para pausas intradiarias y de un día', () => {
-  const t0 = at(2026, 10, 2, 21).getTime();
-  const character = { id: 'c1', name: 'Nora', lorebook: [], personalityTags: [] };
-
-  const sameDay = [MSG('char', 'Que tengas lindo día', t0 - 10 * HOUR), MSG('user', 'Hola, ya volví', t0)];
-  const resSameDay = buildPresence({ character, messages: sameDay, settings: { user: 'Edgar' }, now: new Date(t0) });
-  assert.match(resSameDay.note, /Several hours have passed since earlier today; Nora naturally greets Edgar based on the current time of day, staying grounded in the present conversation\./);
-  assert.ok(resSameDay.note.length <= PRESENCE_NOTE_MAX);
-  assert.doesNotMatch(resSameDay.note, /\b(he|she|they|him|her|them|his|their)\b/i);
-  assert.doesNotMatch(resSameDay.note, /\b(never|not|no|without|avoid|stop|stall|reject|refuse)\b|n't\b/i);
-
-  const oneDay = [MSG('char', 'Hasta mañana', t0 - 24 * HOUR), MSG('user', 'Hola Nora', t0)];
-  const resOneDay = buildPresence({ character, messages: oneDay, settings: { user: 'Edgar' }, now: new Date(t0) });
-  assert.match(resOneDay.note, /A day has passed since the previous exchange; Nora warmly welcomes Edgar back, staying grounded in the present conversation\./);
-  assert.ok(resOneDay.note.length <= PRESENCE_NOTE_MAX);
-  assert.doesNotMatch(resOneDay.note, /\b(he|she|they|him|her|them|his|their)\b/i);
-  assert.doesNotMatch(resOneDay.note, /\b(never|not|no|without|avoid|stop|stall|reject|refuse)\b|n't\b/i);
-});
-
 test('HUM-001 buildPresence: sin mensajes del usuario no falla y da ánimo y ritmo', () => {
   const { note } = buildPresence({ character: { id: 'c', name: 'Luna' }, messages: [], settings: {}, now: at(2026, 10, 2, 9), rnd: () => 0.5 });
   assert.match(note, /^Luna feels .* right now\. Make this reply/);
