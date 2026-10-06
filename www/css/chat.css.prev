@@ -49,7 +49,7 @@
 }
 .chat-head__sub[hidden] { display: none; }
 .chat-head__sub--typing { color: var(--color-accent-2, var(--color-muted)); }
-.chat-head__name:active { background: var(--color-surface-2); transform: scale(0.98); transition: transform 0.08s ease; }
+.chat-head__name:active { background: var(--color-surface-2); }
 .chat-head__name:focus-visible { outline: 2px solid var(--color-accent-2); outline-offset: 2px; }
 
 /* --- fondo de chat personalizado (opcional, ver ui/appearance.js) --- */

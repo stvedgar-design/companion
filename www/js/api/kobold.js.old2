@@ -162,11 +162,9 @@ export async function completeOnce(prompt, settings, opts = {}) {
   const aborted = () => !!(signal && signal.aborted);
   if (aborted()) throw makeError('Cancelado.', 'ABORTED');
 
-  const isSecondary = !!(opts && opts.url && opts.url !== settings.url);
-  const targetCtx = isSecondary ? Math.min(settings.ctx || 4096, 4096) : (settings.ctx || 4096);
   const body = {
     prompt,
-    max_context_length: targetCtx,
+    max_context_length: settings.ctx,
     max_length: opts.maxLen || settings.maxLen,
     temperature: typeof opts.temp === 'number' ? opts.temp : settings.temp,
     top_p: TOP_P,

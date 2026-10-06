@@ -175,18 +175,6 @@ export function formatRelationshipBlock(relationship) {
  * @param {string} userName
  * @returns {string}
  */
-/**
- * Formatea la apariencia física del usuario (User Persona Pareto).
- * @param {string} text
- * @param {string} charName
- * @param {string} userName
- * @returns {string}
- */
-export function formatUserAppearance(text, charName, userName) {
-  const t = subMacros(String(text || ''), charName, userName).replace(/\s+/g, ' ').trim();
-  return t ? `${userName}'s appearance: ${t}` : '';
-}
-
 export function formatAppearanceFixed(text, charName, userName) {
   const t = subMacros(String(text || ''), charName, userName).replace(/\s+/g, ' ').trim();
   return t ? `${charName}'s appearance: ${t}` : '';
@@ -199,22 +187,8 @@ export function formatAppearanceFixed(text, charName, userName) {
  * @param {string} userName
  * @returns {string}
  */
-export function formatAppearanceCurrent(textOrAppearance, charName, userName) {
-  let text = '';
-  if (textOrAppearance && typeof textOrAppearance === 'object') {
-    const cur = String(textOrAppearance.current || '').replace(/\s+/g, ' ').trim();
-    const under = String(textOrAppearance.underwear || '').replace(/\s+/g, ' ').trim();
-    const acc = String(textOrAppearance.accessories || '').replace(/\s+/g, ' ').trim();
-    const parts = [];
-    if (cur && under) parts.push(`${cur} over ${under}`);
-    else if (cur) parts.push(cur);
-    else if (under) parts.push(`wearing ${under}`);
-    if (acc) parts.push(`Wearing ${acc}`);
-    text = parts.join('. ');
-  } else {
-    text = String(textOrAppearance || '').replace(/\s+/g, ' ').trim();
-  }
-  const t = subMacros(text, charName, userName).replace(/\s+/g, ' ').trim();
+export function formatAppearanceCurrent(text, charName, userName) {
+  const t = subMacros(String(text || ''), charName, userName).replace(/\s+/g, ' ').trim();
   return t ? `${charName}'s look right now: ${t}` : '';
 }
 
@@ -279,8 +253,6 @@ function headBlock(card, settings, chatScenario, loreBlock, relationship = null,
   if (relationshipLine) parts.push(relationshipLine);
   const appearanceLine = formatAppearanceFixed(appearanceFixed, N, U);
   if (appearanceLine) parts.push(appearanceLine);
-  const userAppearanceLine = formatUserAppearance(settings && settings.userAppearance, N, U);
-  if (userAppearanceLine) parts.push(userAppearanceLine);
   if (loreBlock) parts.push(loreBlock);
 
   if (card.mes_example) {
@@ -336,7 +308,7 @@ export function continuityBlockChars(text) {
  * @returns {number}
  */
 export function appearanceEndChars(appearance, charName, userName) {
-  const block = formatAppearanceCurrent(appearance, charName, userName);
+  const block = formatAppearanceCurrent(appearance && appearance.current, charName, userName);
   return block ? formatTopicBlock(block).length + 1 : 0;
 }
 
@@ -447,7 +419,7 @@ export function buildPlainPrompt(card, messages, settings, chatScenario = '', lo
   const continuity = formatContinuityBlock(extras && extras.continuity);
   const timeNote = String((extras && extras.timeOfDay) || '').trim();
   const presenceNote = String((extras && extras.presence) || '').trim();
-  const topic = endBlock(topicBlock, varietyNote, continuity, formatAppearanceCurrent(extras && extras.appearance, N, U), timeNote, presenceNote);
+  const topic = endBlock(topicBlock, varietyNote, continuity, formatAppearanceCurrent(extras && extras.appearance && extras.appearance.current, N, U), timeNote, presenceNote);
   const budget = historyBudgetChars(settings, head.length, post.length, cue.length, topic.length + continuityPadding(continuity) + timePadding(timeNote) + presencePadding(presenceNote));
 
   const lines = messages.map((m) => `${m.role === 'user' ? U : N}: ${m.text}`);
@@ -500,7 +472,7 @@ export function buildChatMessages(card, messages, settings, chatScenario = '', l
   const continuity = formatContinuityBlock(extras && extras.continuity);
   const timeNote = String((extras && extras.timeOfDay) || '').trim();
   const presenceNote = String((extras && extras.presence) || '').trim();
-  const topic = endBlock(topicBlock, varietyNote, continuity, formatAppearanceCurrent(extras && extras.appearance, N, U), timeNote, presenceNote);
+  const topic = endBlock(topicBlock, varietyNote, continuity, formatAppearanceCurrent(extras && extras.appearance && extras.appearance.current, N, U), timeNote, presenceNote);
   const budget = historyBudgetChars(settings, head.length, topic.length + continuityPadding(continuity) + timePadding(timeNote) + presencePadding(presenceNote));
   const kept = stableFront(pickHistory(messages, budget, (m) => m.text.length), messages.length);
 
