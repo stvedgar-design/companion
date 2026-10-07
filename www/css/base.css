@@ -73,6 +73,7 @@ img{ max-width: 100%; display: block; }
   display: none;
   flex-direction: column;
   overflow: hidden;
+  position: relative;
 }
 .view.is-active{
   display: flex;

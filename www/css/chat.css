@@ -86,9 +86,9 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  /* FASE 12 (Efecto Talkie): máscara GPU aplicada EXCLUSIVAMENTE a las burbujas de mensajes */
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.15) 6%, rgba(0, 0, 0, 0.75) 18%, black 28%, black 100%);
-  mask-image: linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.15) 6%, rgba(0, 0, 0, 0.75) 18%, black 28%, black 100%);
+  /* FASE 12 (Efecto Talkie): máscara GPU aplicada EXCLUSIVAMENTE a las burbujas de mensajes (desvanecimiento más abajo para proteger rostro) */
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, transparent 35%, rgba(0, 0, 0, 0.2) 42%, rgba(0, 0, 0, 0.7) 48%, black 54%, black 100%);
+  mask-image: linear-gradient(to bottom, transparent 0%, transparent 35%, rgba(0, 0, 0, 0.2) 42%, rgba(0, 0, 0, 0.7) 48%, black 54%, black 100%);
   scroll-padding-bottom: calc(var(--composer-h, 60px) + var(--sab, 0px));
 }
 .chat-messages {
@@ -109,7 +109,7 @@
 .chat-row {
   display: flex;
   flex-direction: column;
-  max-width: 88%;
+  max-width: 82%;
 }
 /* UI-001: el navegador no calcula ni pinta las filas fuera de pantalla (el costo pasa a ser proporcional a lo visible, no al total
    del chat). `auto` en contain-intrinsic-size recuerda la altura real de cada fila ya vista, para que la barra de scroll no salte. */
@@ -157,8 +157,8 @@
 }
 
 .chat-bubble {
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-lg);
+  padding: 10px 14px;
+  border-radius: 18px;
   font-size: var(--msg-font-size, 17px);
   line-height: 1.5;
   word-wrap: break-word;
@@ -384,12 +384,15 @@
 
 /* --- MEM-018: barra de un episodio archivado (solo lectura) --- */
 .chat-archivedbar {
+  position: relative;
+  z-index: 10;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4) calc(var(--sab) + var(--space-3));
   flex: none;
+  background: var(--color-bg);
   font-size: var(--fs-sm);
   color: var(--color-muted);
   border-top: 1px solid var(--color-line);
@@ -400,14 +403,15 @@
 
 /* --- composer --- */
 .chat-composer {
+  position: relative;
+  z-index: 10;
   display: flex;
   align-items: flex-end;
   gap: var(--space-3);
   padding: var(--space-2) var(--space-3) calc(var(--sab) + var(--space-2));
   flex: none;
-  background: linear-gradient(to top, rgba(18, 16, 14, 0.92) 0%, rgba(18, 16, 14, 0.45) 60%, transparent 100%);
-  backdrop-filter: var(--bars-backdrop, none);
-  -webkit-backdrop-filter: var(--bars-backdrop, none);
+  background: var(--color-bg);
+  border-top: 1px solid var(--color-line);
 }
 .chat-composer__input {
   flex: 1;
