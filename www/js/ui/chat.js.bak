@@ -3,7 +3,7 @@
 
 import { getChat, getChatMessages, saveChatMessages, getCharacter, getSettings, saveSettings, markChatExported, saveCharacterLorebook, markChatLorebookProgress, saveChatContinuity, sanitizeContinuity, sanitizeMessage, saveCharacterRelationship, saveCharacterIdentity, saveCharacterMood, saveCharacterMoment, saveCharacterFollowUps, saveCharacterLife, saveChatArchive, isChatArchived, isChatArchivePending } from '../state.js';
 import { generateReplyNonEmpty, completeOnce, completeChatOnce } from '../api/kobold.js';
-import { initialMessages, scenarioGreeting, estimateContextUsage, subMacros } from '../api/prompt.js';
+import { initialMessages, scenarioGreeting, estimateContextUsage } from '../api/prompt.js';
 import {
   createLoreUpdater,
   editLoreEntry,
@@ -66,7 +66,7 @@ const ICON_SEND = '<svg viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></s
 const ICON_STOP = '<svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2.5"/></svg>';
 const ICON_DOWN = '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12l7 7 7-7"/></svg>';
 
-const NEAR_BOTTOM_PX = 200;
+const NEAR_BOTTOM_PX = 140;
 
 let root = null;
 let app = null;
@@ -102,7 +102,6 @@ export function init(rootEl, appApi) {
         <div class="chat-bg__fade" id="chat-bg-fade" hidden></div>
       </div>
       <div class="scroll chat-messages" id="chat-messages"></div>
-      <div class="chat-icebreakers" id="chat-icebreakers" hidden></div>
       <button class="chat-scrolldown" type="button" id="chat-scrolldown" aria-label="Ir al último mensaje" hidden>${ICON_DOWN}</button>
     </div>
     <div class="chat-archivedbar" id="chat-archivedbar" hidden>
@@ -124,7 +123,6 @@ export function init(rootEl, appApi) {
     bg: root.querySelector('#chat-bg'),
     bgFade: root.querySelector('#chat-bg-fade'),
     messages: root.querySelector('#chat-messages'),
-    icebreakers: root.querySelector('#chat-icebreakers'),
     scrollDown: root.querySelector('#chat-scrolldown'),
     composer: root.querySelector('#chat-composer'),
     archivedBar: root.querySelector('#chat-archivedbar'),
@@ -338,97 +336,6 @@ function checkKeyboardFromVh() {
   scrollToBottom(false);
 }
 
-/* ---------- rompehielos contextuales (Fase 13) ---------- */
-
-function getIcebreakerSuggestions() {
-  if (!character) return [];
-  const charName = character.name || 'tu acompañante';
-  const userName = settings?.userName || 'Tú';
-  const suggestions = [];
-
-  const alts = character.card?.data?.alternate_greetings;
-  if (Array.isArray(alts) && alts.length > 0) {
-    for (const alt of alts) {
-      if (typeof alt === 'string' && alt.trim()) {
-        const cleaned = subMacros(alt.trim(), charName, userName)
-          .replace(/^\*.*?\*\s*/, '')
-          .replace(/^["'«“]|["'»”]$/g, '')
-          .trim();
-        if (cleaned && cleaned.length <= 120 && !suggestions.includes(cleaned)) {
-          suggestions.push(cleaned);
-          if (suggestions.length >= 3) break;
-        }
-      }
-    }
-  }
-
-  if (suggestions.length < 2) {
-    const sc = character.card?.data?.scenario;
-    if (typeof sc === 'string' && sc.trim().length > 10) {
-      suggestions.push('Hola ' + charName + ', ¿en qué estabas pensando?');
-    }
-  }
-
-  const defaults = [
-    'Hola ' + charName + ', ¿cómo estás hoy?',
-    'Cuéntame de qué te gustaría hablar hoy.',
-    '¿Qué has estado haciendo últimamente?'
-  ];
-
-  for (const def of defaults) {
-    if (suggestions.length >= 3) break;
-    if (!suggestions.includes(def)) suggestions.push(def);
-  }
-
-  return suggestions.slice(0, 3);
-}
-
-function renderIcebreakers() {
-  if (!els.icebreakers) return;
-  const hasUserMessages = messages && messages.some((m) => m && m.role === 'user');
-  if (hasUserMessages || !character) {
-    els.icebreakers.hidden = true;
-    els.icebreakers.replaceChildren();
-    return;
-  }
-
-  const suggestions = getIcebreakerSuggestions();
-  if (!suggestions.length) {
-    els.icebreakers.hidden = true;
-    return;
-  }
-
-  els.icebreakers.classList.remove('chat-icebreakers--leaving');
-  els.icebreakers.hidden = false;
-  els.icebreakers.replaceChildren();
-
-  suggestions.forEach((text) => {
-    const pill = document.createElement('button');
-    pill.type = 'button';
-    pill.className = 'chat-icebreaker-pill';
-    pill.textContent = text;
-    pill.setAttribute('aria-label', 'Sugerencia: ' + text);
-    pill.addEventListener('click', () => {
-      haptics.tap();
-      els.input.value = text;
-      onInputChange();
-      els.input.focus();
-    });
-    els.icebreakers.appendChild(pill);
-  });
-}
-
-function hideIcebreakers() {
-  if (!els.icebreakers || els.icebreakers.hidden) return;
-  els.icebreakers.classList.add('chat-icebreakers--leaving');
-  setTimeout(() => {
-    if (els.icebreakers) {
-      els.icebreakers.hidden = true;
-      els.icebreakers.classList.remove('chat-icebreakers--leaving');
-    }
-  }, 180);
-}
-
 /* ---------- lista de mensajes ---------- */
 
 // UI-001: reconstrucción TOTAL de la lista. Solo al abrir el chat y en cambios estructurales (borrar, editar hasta vaciar,
@@ -449,7 +356,6 @@ function renderMessages() {
   els.messages.replaceChildren(frag);
   syncRetryButton();
   scrollToBottom(true);
-  renderIcebreakers();
 }
 
 // Caracteres por línea de burbuja en esta pantalla (para estimar la altura de las filas fuera de pantalla; ver chat.css).
@@ -814,12 +720,6 @@ function openEditSheet(i) {
 }
 
 async function deleteMessage(i) {
-  const ok = await app.confirmDialog('¿Eliminar este mensaje? No podrás recuperarlo.', {
-    confirmText: 'Eliminar',
-    danger: true,
-  });
-  if (!ok) return;
-  haptics.action();
   messages.splice(i, 1);
   await persistChat();
   renderMessages();
@@ -843,19 +743,15 @@ function isNearBottom() {
   return el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
 }
 
-function scrollToBottom(force, smooth) {
+function scrollToBottom(force) {
   if (force || atBottom) {
     // Con content-visibility las filas fuera de pantalla usan una altura estimada: al llegar abajo se miden las reales y el
     // final se corre un poco. Se repite (máx. 4 veces) hasta que el fondo deja de moverse.
     const el = els.messages;
-    if (smooth) {
-      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
-    } else {
-      for (let k = 0; k < 4; k++) {
-        const target = el.scrollHeight;
-        el.scrollTop = target;
-        if (el.scrollHeight === target) break;
-      }
+    for (let k = 0; k < 4; k++) {
+      const target = el.scrollHeight;
+      el.scrollTop = target;
+      if (el.scrollHeight === target) break;
     }
     atBottom = true;
   }
@@ -1024,7 +920,6 @@ async function onSendClick() {
   }
   const text = els.input.value.trim();
   if (!text || !character || !chat) return;
-  hideIcebreakers();
   if (isReadOnlyChat()) return;
   // MEM-018: si el usuario retoma un episodio que estaba "pendiente de archivar", la intención ya no es esa: se cancela la marca.
   if (isChatArchivePending(chat)) {

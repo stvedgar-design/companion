@@ -103,17 +103,18 @@ for (const [name, card] of Object.entries(CARDS)) {
   });
 }
 
-test('MEM-009: solo `fixed` o solo `current`: cada uno en su sitio y nada más; junto a la relación', () => {
-  const only = (a) => buildChatMessages(CARDS.Mia, MSGS, SETTINGS, '', '', '', '', false, { relationship: 'several', appearance: a }).messages;
+test('MEM-009: solo `fixed` o solo `current`: cada uno en su sitio y nada más; junto a la relación y los "siempre presentes"', () => {
+  const only = (a) => buildChatMessages(CARDS.Mia, MSGS, SETTINGS, '', 'Known facts:\n- Sam likes tea', '', '', false, { relationship: 'several', appearance: a }).messages;
   const f = only({ fixed: 'tall' });
   assert.ok(f[0].content.includes("Mia's appearance: tall"));
   assert.ok(!f[f.length - 1].content.includes('look right now'));
   const c = only({ current: 'a red scarf' });
   assert.ok(!c[0].content.includes('appearance:'));
   assert.ok(c[c.length - 1].content.includes("[Mia's look right now: a red scarf]"));
-  // en la cabecera queda después de la relación
+  // en la cabecera queda entre la relación y los recuerdos "siempre presentes"
   const head = only({ fixed: 'tall' })[0].content;
   assert.ok(head.indexOf('Relationship so far:') < head.indexOf("Mia's appearance:"));
+  assert.ok(head.indexOf("Mia's appearance:") < head.indexOf('Known facts:'));
 });
 
 test('MEM-009: las macros {{char}}/{{user}} del texto se resuelven; el texto se aplana a una línea', () => {
@@ -241,4 +242,87 @@ test('MEM-009: kobold.js pasa la ficha del personaje a los prompts; la hoja de e
   const sheet = readFileSync(new URL('../www/js/ui/character-look.js', import.meta.url), 'utf8');
   assert.match(sheet, /saveCharacterAppearance/);
   assert.ok(!/chara_card_v2|\.card\./.test(sheet), 'la ficha no toca la card');
+});
+
+import {
+  APPEARANCE_UNDERWEAR_MAX,
+  APPEARANCE_ACCESSORIES_MAX,
+  buildLayeredLookText,
+} from '../www/js/character-appearance.js';
+
+test('FASE 8: sistema de apariencia por 4 capas (cuerpo inmutable, lenceria/ropa interior, atuendo exterior, accesorios/regalos)', () => {
+  // 1. Sanitizacion y topes de las 4 capas
+  assert.equal(APPEARANCE_FIXED_MAX, 200);
+  assert.equal(APPEARANCE_UNDERWEAR_MAX, 80);
+  assert.equal(APPEARANCE_CURRENT_MAX, 100);
+  assert.equal(APPEARANCE_ACCESSORIES_MAX, 100);
+
+  const fullRaw = {
+    fixed: 'short and slim, pale skin, blue eyes',
+    underwear: 'black lace lingerie',
+    current: 'Green summer dress',
+    accessories: 'the silver necklace Edgar gifted her',
+    updated: 10,
+  };
+  const sanitized = sanitizeAppearance(fullRaw);
+  assert.equal(sanitized.fixed, 'short and slim, pale skin, blue eyes');
+  assert.equal(sanitized.underwear, 'black lace lingerie');
+  assert.equal(sanitized.current, 'Green summer dress');
+  assert.equal(sanitized.accessories, 'the silver necklace Edgar gifted her');
+  assert.equal(sanitized.updated, 10);
+
+  // Topes independientes
+  const clamped = sanitizeAppearance({
+    fixed: 'f'.repeat(300),
+    underwear: 'u'.repeat(200),
+    current: 'c'.repeat(200),
+    accessories: 'a'.repeat(200),
+  });
+  assert.equal(clamped.fixed.length, APPEARANCE_FIXED_MAX);
+  assert.equal(clamped.underwear.length, APPEARANCE_UNDERWEAR_MAX);
+  assert.equal(clamped.current.length, APPEARANCE_CURRENT_MAX);
+  assert.equal(clamped.accessories.length, APPEARANCE_ACCESSORIES_MAX);
+
+  // 2. buildLayeredLookText combina atuendo exterior, lenceria y accesorios segun contrato
+  const combined = buildLayeredLookText({
+    current: 'Green summer dress',
+    underwear: 'black lace lingerie',
+    accessories: 'the silver necklace Edgar gifted her',
+  });
+  assert.equal(combined, 'Green summer dress over black lace lingerie. Wearing the silver necklace Edgar gifted her.');
+
+  // Solo atuendo exterior (compatible con MEM-009)
+  assert.equal(buildLayeredLookText({ current: 'a white hoodie and jeans' }), 'a white hoodie and jeans');
+
+  // Solo ropa interior / lenceria (intimidad)
+  assert.equal(buildLayeredLookText({ underwear: 'silk pajamas' }), 'silk pajamas');
+
+  // Solo accesorios
+  assert.equal(buildLayeredLookText({ accessories: 'reading glasses' }), 'Wearing reading glasses.');
+  assert.equal(buildLayeredLookText({ accessories: 'Wearing a golden ring' }), 'Wearing a golden ring.');
+
+  // 3. Ensamblado en prompt: Capa 0 a cabecera fija, Capas 1-3 al final en una sola linea
+  const card = { name: 'Nora', description: 'friendly companion', personality: 'warm', scenario: '', mes_example: '', first_mes: 'Hi', system_prompt: '', post_history_instructions: '' };
+  const msgs = [
+    { role: 'user', text: 'Hi Nora', ts: 1 },
+    { role: 'char', text: 'Hello Edgar!', ts: 2 },
+    { role: 'user', text: 'How do you look today?', ts: 3 },
+  ];
+  const settings = { user: 'Edgar', mode: 'chat', ctx: 4096, maxLen: 220 };
+
+  const { messages } = buildChatMessages(card, msgs, settings, '', '', '', '', false, { appearance: fullRaw });
+  // Capa 0 en system
+  assert.ok(messages[0].content.includes("Nora's appearance: short and slim, pale skin, blue eyes"));
+  assert.ok(!messages[0].content.includes("green summer dress"));
+  assert.ok(!messages[0].content.includes("black lace lingerie"));
+
+  // Capas 1-3 en el ultimo mensaje del usuario
+  const lastUserMsg = messages[messages.length - 1];
+  assert.equal(lastUserMsg.role, 'user');
+  assert.ok(lastUserMsg.content.includes("[Nora's look right now: Green summer dress over black lace lingerie. Wearing the silver necklace Edgar gifted her.]"));
+
+  // Cero invalidacion de cache si cambia la ropa o accesorio
+  const fullRawChangedOutfit = { ...fullRaw, current: 'oversized pajamas', accessories: 'silver watch' };
+  const { messages: turnWithDifferentOutfit } = buildChatMessages(card, msgs, settings, '', '', '', '', false, { appearance: fullRawChangedOutfit });
+  assert.equal(messages[0].content, turnWithDifferentOutfit[0].content, 'la cabecera del prompt no cambia al cambiar ropa o accesorios');
 });

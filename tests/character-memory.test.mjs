@@ -6,7 +6,7 @@ import { duplicateCharacterData } from '../www/js/ui/character-sheet.js';
 import { relationshipSummary, RELATIONSHIP_EARLY_DISPLAY_TEXT } from '../www/js/api/relationship.js';
 
 const entry = (i, extra = {}) => ({ id: `e${i}`, keys: [`k${i}`], content: `Recuerdo ${i}`, updated: i, source: 'auto', ...extra });
-const lore = (n) => Array.from({ length: n }, (_, i) => entry(i));
+const lore = (n, alwaysIds = []) => Array.from({ length: n }, (_, i) => entry(i, alwaysIds.includes(i) ? { always: true, source: 'manual' } : {}));
 const makeChar = (extra = {}) => ({ id: 'c1', name: 'Nova', card: { name: 'Nova' }, lorebook: [], ...extra });
 
 test('modelo: personaje vacío — early, sin avance falso, sin archivados, sin resumen', () => {
@@ -20,10 +20,10 @@ test('modelo: personaje vacío — early, sin avance falso, sin archivados, sin 
   assert.equal(m.continuity.preview, '');
 });
 
-test('modelo: los recuerdos van todos juntos, el más reciente primero; ya no hay "siempre presentes" (MEM-020)', () => {
-  const m = memoryDashboardModel(makeChar({ lorebook: lore(5) }), null);
-  assert.deepEqual(m.topic.map((e) => e.id), ['e4', 'e3', 'e2', 'e1', 'e0']);
-  assert.ok(!('always' in m));
+test('modelo: separa siempre presentes y por tema (por tema, el más reciente primero)', () => {
+  const m = memoryDashboardModel(makeChar({ lorebook: lore(5, [1, 3]) }), null);
+  assert.deepEqual(m.always.map((e) => e.id), ['e1', 'e3']);
+  assert.deepEqual(m.topic.map((e) => e.id), ['e4', 'e2', 'e0']);
   assert.equal(m.total, 5);
 });
 
@@ -44,11 +44,11 @@ test('modelo: los archivados solo se cuentan y NO entran en los recuerdos activo
   const m = memoryDashboardModel(c, null);
   assert.equal(m.archivedCount, 2);
   assert.equal(m.total, 2);
-  assert.equal(m.topic.some((e) => e.id === 'e9'), false);
+  assert.equal([...m.always, ...m.topic].some((e) => e.id === 'e9'), false);
 });
 
 test('modelo: no modifica el personaje que recibe', () => {
-  const c = makeChar({ lorebook: lore(4), lorebookArchive: [] });
+  const c = makeChar({ lorebook: lore(4, [0]), lorebookArchive: [] });
   const before = JSON.stringify(c);
   memoryDashboardModel(c, { continuitySummary: { text: 'algo', updated: 1, coveredUntil: 1 } });
   assert.equal(JSON.stringify(c), before);

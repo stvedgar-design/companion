@@ -152,11 +152,6 @@
   overflow: hidden;
   background: var(--grad-avatar);
   cursor: pointer;
-  box-shadow: inset 0 1px 0 0 rgba(255, 238, 225, 0.12), 0 4px 16px -2px rgba(0, 0, 0, 0.25);
-  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.22s ease;
-}
-.home-card:active .home-card__avatar {
-  transform: scale(0.97);
 }
 
 .home-card__avatar img {
@@ -182,7 +177,7 @@
   right: 0;
   bottom: 0;
   padding: var(--space-4) var(--space-2) var(--space-2);
-  background: linear-gradient(to top, rgba(10, 8, 16, 0.92) 0%, rgba(10, 8, 16, 0.45) 55%, transparent 100%);
+  background: linear-gradient(to top, rgba(10, 8, 16, 0.88), rgba(10, 8, 16, 0) 85%);
 }
 
 .home-card__name {

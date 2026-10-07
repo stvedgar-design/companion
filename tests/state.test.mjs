@@ -74,6 +74,7 @@ test('getSettings devuelve valores por defecto cuando no hay nada guardado', asy
     messageFontSize: 17, // UI-026
     chatAvatarSize: 'medium', // UI-038
     feelingsEnabled: false, // MEM-015
+    hapticsEnabled: true, // FASE 11
   });
 });
 
@@ -1256,4 +1257,38 @@ test('streamReplies es true por defecto, solo un false estricto lo apaga y ajust
   const backend = createMemoryBackend();
   await backend.put('settings', 'main', { url: 'http://x', user: 'Ana' });
   assert.equal((await createState(backend).getSettings()).streamReplies, true);
+});
+
+test('FASE 8: userAppearance se sanitiza (tope 180 chars, espacios aplanados, no-string -> vacio) y persiste en Settings', async () => {
+  const state = createState(createMemoryBackend());
+  assert.equal((await state.getSettings()).userAppearance, '');
+
+  const saved = await state.saveSettings({ userAppearance: '   1.80m,   pelo castaño\n\t y lentes   ' });
+  assert.equal(saved.userAppearance, '1.80m, pelo castaño y lentes');
+  assert.equal((await state.getSettings()).userAppearance, '1.80m, pelo castaño y lentes');
+
+  const longText = 'a'.repeat(300);
+  const clamped = await state.saveSettings({ userAppearance: longText });
+  assert.equal(clamped.userAppearance.length, 180);
+  assert.equal(clamped.userAppearance, 'a'.repeat(180));
+
+  for (const bad of [null, undefined, 42, true, []]) {
+    const fallback = await state.saveSettings({ userAppearance: bad });
+    assert.equal(fallback.userAppearance, '');
+  }
+});
+
+test('FASE 11: hapticsEnabled es true por defecto, solo false estricto lo apaga y ajustes viejos cargan con true', async () => {
+  const state = createState(createMemoryBackend());
+  const def = await state.getSettings();
+  assert.strictEqual(def.hapticsEnabled, true);
+
+  const off = await state.saveSettings({ hapticsEnabled: false });
+  assert.strictEqual(off.hapticsEnabled, false);
+
+  const weird = await state.saveSettings({ hapticsEnabled: 'no' });
+  assert.strictEqual(weird.hapticsEnabled, true);
+
+  const old = await state.saveSettings({});
+  assert.strictEqual(old.hapticsEnabled, true);
 });

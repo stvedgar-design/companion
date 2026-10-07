@@ -463,29 +463,6 @@ function sanitizeTombstones(raw) {
 // todavía). No toca el resto del objeto: a diferencia de sanitizeChat(), el
 // resto de los campos de Character no se validan acá (nunca se validaron,
 // no es parte de ninguna de las dos features).
-export const GALLERY_CAPTION_MAX = 500;
-
-export function sanitizeGalleryItem(item) {
-  if (!item || typeof item !== 'object') return null;
-  const id = typeof item.id === 'string' && item.id.trim()
-    ? item.id.trim()
-    : 'gal_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
-  const dataUrl = typeof item.dataUrl === 'string' && item.dataUrl.startsWith('data:image/')
-    ? item.dataUrl
-    : '';
-  if (!dataUrl) return null;
-  const caption = typeof item.caption === 'string'
-    ? item.caption.slice(0, GALLERY_CAPTION_MAX).trim()
-    : '';
-  const createdAt = Number.isFinite(item.createdAt) ? item.createdAt : Date.now();
-  return { id, dataUrl, caption, createdAt };
-}
-
-export function sanitizeGallery(raw) {
-  if (!Array.isArray(raw)) return [];
-  return raw.map(sanitizeGalleryItem).filter(Boolean);
-}
-
 function sanitizeCharacterExtras(raw) {
   if (!raw || typeof raw !== 'object') return raw;
   const lorebook = Array.isArray(raw.lorebook) ? raw.lorebook.map(sanitizeLoreEntry).filter(Boolean) : [];
@@ -518,7 +495,6 @@ function sanitizeCharacterExtras(raw) {
     formatStyle,
     personalityTags,
     gender,
-    gallery: sanitizeGallery(raw.gallery),
   };
 }
 
@@ -836,54 +812,7 @@ export function createState(backend) {
 
   // PROACT-001: «el usuario estuvo con este personaje» (abrir su chat, episodios o ficha). Escribe el registro como mucho una vez cada
   // MAILBOX_TOUCH_THROTTLE_MS (lleva imágenes: escribirlo en cada apertura sería caro); enviar mensajes ya queda reflejado en las fechas de sus chats.
-    // FASE 14 (PARETO-008): almacén de galería / álbum estilo Instagram con notas privadas.
-  async function listCharacterGallery(characterId) {
-    const character = await getCharacter(characterId);
-    if (!character) return [];
-    return (character.gallery || []).slice().sort((a, b) => b.createdAt - a.createdAt);
-  }
-
-  async function saveGalleryItem(characterId, item) {
-    return withChatLock('char:' + characterId, async () => {
-      const character = await getCharacter(characterId);
-      if (!character) throw new Error('El personaje no existe.');
-      const cleaned = sanitizeGalleryItem(item);
-      if (!cleaned) throw new Error('La imagen de la galería no es válida.');
-      const before = character.gallery || [];
-      const gallery = [cleaned, ...before.filter((x) => x.id !== cleaned.id)];
-      const updated = sanitizeCharacterExtras({ ...character, gallery });
-      await backend.put('characters', characterId, updated);
-      return updated;
-    });
-  }
-
-  async function updateGalleryItemCaption(characterId, itemId, caption) {
-    return withChatLock('char:' + characterId, async () => {
-      const character = await getCharacter(characterId);
-      if (!character) throw new Error('El personaje no existe.');
-      const cleanCaption = typeof caption === 'string' ? caption.slice(0, GALLERY_CAPTION_MAX).trim() : '';
-      const gallery = (character.gallery || []).map((x) => {
-        if (x.id === itemId) return { ...x, caption: cleanCaption };
-        return x;
-      });
-      const updated = sanitizeCharacterExtras({ ...character, gallery });
-      await backend.put('characters', characterId, updated);
-      return updated;
-    });
-  }
-
-  async function deleteGalleryItem(characterId, itemId) {
-    return withChatLock('char:' + characterId, async () => {
-      const character = await getCharacter(characterId);
-      if (!character) throw new Error('El personaje no existe.');
-      const gallery = (character.gallery || []).filter((x) => x.id !== itemId);
-      const updated = sanitizeCharacterExtras({ ...character, gallery });
-      await backend.put('characters', characterId, updated);
-      return updated;
-    });
-  }
-
-async function touchCharacterInteraction(characterId, now = Date.now()) {
+  async function touchCharacterInteraction(characterId, now = Date.now()) {
     return withChatLock('char:' + characterId, () => touchCharacterInteractionUnlocked(characterId, now));
   }
   async function touchCharacterInteractionUnlocked(characterId, now) {
@@ -1198,10 +1127,6 @@ async function touchCharacterInteraction(characterId, now = Date.now()) {
     saveCharacterFollowUps,
     saveCharacterLife,
     touchCharacterInteraction,
-    listCharacterGallery,
-    saveGalleryItem,
-    updateGalleryItemCaption,
-    deleteGalleryItem,
     deleteCharacter,
     listChats,
     getChat,
@@ -1346,10 +1271,6 @@ export const saveCharacterMoment = (...args) => getDefaultInstance().saveCharact
 export const saveCharacterFollowUps = (...args) => getDefaultInstance().saveCharacterFollowUps(...args);
 export const saveCharacterLife = (...args) => getDefaultInstance().saveCharacterLife(...args);
 export const touchCharacterInteraction = (...args) => getDefaultInstance().touchCharacterInteraction(...args);
-export const listCharacterGallery = (...args) => getDefaultInstance().listCharacterGallery(...args);
-export const saveGalleryItem = (...args) => getDefaultInstance().saveGalleryItem(...args);
-export const updateGalleryItemCaption = (...args) => getDefaultInstance().updateGalleryItemCaption(...args);
-export const deleteGalleryItem = (...args) => getDefaultInstance().deleteGalleryItem(...args);
 export const deleteCharacter = (...args) => getDefaultInstance().deleteCharacter(...args);
 export const listChats = (...args) => getDefaultInstance().listChats(...args);
 export const getChat = (...args) => getDefaultInstance().getChat(...args);

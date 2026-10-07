@@ -790,3 +790,39 @@ test('HUM-006: la línea de adaptación nombra el habla como una forma válida d
   assert.match(line, /a gesture, a line of dialogue or a small step/);
   assert.doesNotMatch(line, /a gesture, a thought/);
 });
+
+test('FASE 8: userAppearance se inyecta en la cabecera fija del prompt (system) y no invalida la cache entre turnos', () => {
+  const card = { name: 'Mia', description: 'kind girl', personality: 'shy', scenario: '', mes_example: '', first_mes: 'Hi', system_prompt: '', post_history_instructions: '' };
+  const msgs = [
+    { role: 'user', text: 'Hi Mia', ts: 1 },
+    { role: 'char', text: 'Hello Edgar', ts: 2 },
+  ];
+  const settingsWithApp = { user: 'Edgar', userAppearance: '1.80m, brown hair, wearing glasses', mode: 'chat', ctx: 4096, maxLen: 220 };
+  const settingsWithoutApp = { user: 'Edgar', userAppearance: '', mode: 'chat', ctx: 4096, maxLen: 220 };
+
+  const { messages: withApp } = buildChatMessages(card, msgs, settingsWithApp);
+  assert.ok(withApp[0].content.includes("Edgar's appearance: 1.80m, brown hair, wearing glasses"));
+
+  const { messages: withoutApp } = buildChatMessages(card, msgs, settingsWithoutApp);
+  assert.ok(!withoutApp[0].content.includes("appearance:"));
+
+  // En texto simple (plain)
+  const plainWithApp = buildPlainPrompt(card, msgs, { ...settingsWithApp, mode: 'plain' });
+  assert.ok(plainWithApp.prompt.includes("Edgar's appearance: 1.80m, brown hair, wearing glasses"));
+  const plainWithoutApp = buildPlainPrompt(card, msgs, { ...settingsWithoutApp, mode: 'plain' });
+  assert.ok(!plainWithoutApp.prompt.includes("appearance:"));
+
+  // Resolucion de macros
+  const settingsWithMacro = { user: 'Edgar', userAppearance: '{{user}} is taller than {{char}} and wears glasses', mode: 'chat', ctx: 4096, maxLen: 220 };
+  const { messages: withMacro } = buildChatMessages(card, msgs, settingsWithMacro);
+  assert.ok(withMacro[0].content.includes("Edgar's appearance: Edgar is taller than Mia and wears glasses"));
+
+  // Cero invalidacion de cache: la cabecera fija es identica si se agregan mensajes al chat
+  const msgsLonger = [
+    ...msgs,
+    { role: 'user', text: 'How are you?', ts: 3 },
+    { role: 'char', text: 'I am good!', ts: 4 },
+  ];
+  const { messages: turn2 } = buildChatMessages(card, msgsLonger, settingsWithApp);
+  assert.equal(withApp[0].content, turn2[0].content, 'la cabecera del prompt no cambia entre turnos del mismo chat');
+});

@@ -77,11 +77,6 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  /* FASE 12 (Efecto Talkie): máscara GPU que difumina suavemente los mensajes antiguos hacia arriba */
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.15) 10%, rgba(0, 0, 0, 0.75) 24%, black 38%, black 100%);
-  mask-image: linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.15) 10%, rgba(0, 0, 0, 0.75) 24%, black 38%, black 100%);
-  scroll-padding-bottom: calc(var(--composer-h, 60px) + var(--sab, 0px));
 }
 .chat-messages {
   position: relative;
@@ -90,13 +85,6 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  min-height: 100%;
-  scroll-padding-bottom: calc(var(--composer-h, 60px) + var(--sab, 0px));
-}
-/* FASE 12 (Efecto Talkie): ancla los mensajes en el tercio inferior cuando son pocos */
-.chat-messages::before {
-  content: '';
-  margin-top: auto;
 }
 .chat-row {
   display: flex;
@@ -397,7 +385,6 @@
   gap: var(--space-3);
   padding: var(--space-2) var(--space-3) calc(var(--sab) + var(--space-2));
   flex: none;
-  background: linear-gradient(to top, rgba(18, 16, 14, 0.92) 0%, rgba(18, 16, 14, 0.45) 60%, transparent 100%);
   backdrop-filter: var(--bars-backdrop, none);
   -webkit-backdrop-filter: var(--bars-backdrop, none);
 }
@@ -443,63 +430,3 @@ textarea.chat-composer__input { min-height: 48px; }
 /* --- hoja: editar mensaje --- */
 .chat-editsheet { display: flex; flex-direction: column; gap: var(--space-3); }
 .chat-editsheet textarea { min-height: 140px; resize: vertical; line-height: 1.5; }
-
-
-/* --- rompehielos contextuales para chats nuevos (Fase 13) --- */
-.chat-icebreakers {
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2, 8px);
-  padding: var(--space-2, 8px) var(--space-4, 16px) var(--space-3, 12px);
-  z-index: 2;
-  transition: opacity var(--dur, 0.18s) ease, transform var(--dur, 0.18s) ease;
-}
-.chat-icebreakers[hidden] {
-  display: none;
-}
-.chat-icebreakers--leaving {
-  opacity: 0;
-  transform: translateY(8px);
-  pointer-events: none;
-}
-.chat-icebreaker-pill {
-  align-self: flex-start;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2, 8px);
-  max-width: 92%;
-  padding: 8px 14px;
-  background: var(--color-surface-2);
-  border: 1px solid var(--color-line);
-  border-radius: var(--radius-pill);
-  color: var(--color-text);
-  font-family: var(--font-ui, -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif);
-  font-size: var(--fs-sm, 13px);
-  line-height: 1.35;
-  text-align: left;
-  cursor: pointer;
-  box-shadow: inset 0 1px 0 0 rgba(255, 238, 225, 0.06);
-  transition: background var(--dur-fast) ease, border-color var(--dur-fast) ease, transform 0.1s var(--ease-spring);
-  -webkit-user-select: none;
-  user-select: none;
-}
-.chat-icebreaker-pill:active {
-  background: var(--color-surface);
-  transform: scale(0.97);
-}
-.chat-icebreaker-pill:focus-visible {
-  outline: 2px solid var(--color-accent-2);
-  outline-offset: 2px;
-}
-.chat-icebreaker-pill::before {
-  content: '✨';
-  font-size: 12px;
-  flex-shrink: 0;
-}
-@media (prefers-reduced-motion: reduce) {
-  .chat-icebreakers,
-  .chat-icebreaker-pill {
-    transition: none !important;
-  }
-}

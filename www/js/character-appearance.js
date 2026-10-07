@@ -13,7 +13,7 @@ export const APPEARANCE_ACCESSORIES_MAX = 100;
 /** Tope de caracteres para el estilo habitual inmutable. */
 export const APPEARANCE_STYLE_MAX = 150;
 
-/** @typedef {{ fixed: string, current: string, underwear?: string, accessories?: string, updated: number }} Appearance */
+/** @typedef {{ fixed: string, current: string, underwear?: string, accessories?: string, style?: string, updated: number }} Appearance */
 
 const clean = (value, max) => {
   if (typeof value !== 'string') return '';
@@ -23,7 +23,7 @@ const clean = (value, max) => {
 
 /** Ficha vacía (valor por defecto de todo personaje). */
 export function emptyAppearance() {
-  return { fixed: '', current: '', underwear: '', accessories: '', style: '', updated: 0 };
+  return { fixed: '', current: '', updated: 0 };
 }
 
 /**
@@ -40,7 +40,16 @@ export function sanitizeAppearance(raw) {
   const style = clean(raw.style, APPEARANCE_STYLE_MAX);
   const updated = Number.isFinite(raw.updated) && raw.updated > 0 ? raw.updated : 0;
   const hasAny = fixed || current || underwear || accessories || style;
-  return { fixed, current, underwear, accessories, style, updated: hasAny ? updated : 0 };
+
+  const res = {
+    fixed,
+    current,
+    updated: hasAny ? updated : 0,
+  };
+  if (underwear) res.underwear = underwear;
+  if (accessories) res.accessories = accessories;
+  if (style) res.style = style;
+  return res;
 }
 
 /**
@@ -52,31 +61,51 @@ export function buildLayeredLookText(look) {
   if (!look || typeof look !== 'object') return '';
   const current = clean(look.current, APPEARANCE_CURRENT_MAX);
   const underwear = clean(look.underwear, APPEARANCE_UNDERWEAR_MAX);
-  const accessories = clean(look.accessories, APPEARANCE_ACCESSORIES_MAX);
-  const parts = [];
+  let accessories = clean(look.accessories, APPEARANCE_ACCESSORIES_MAX);
+
+  let main = '';
   if (current && underwear) {
-    parts.push(`${current} over ${underwear}`);
+    main = `${current} over ${underwear}`;
   } else if (current) {
-    parts.push(current);
+    main = current;
   } else if (underwear) {
-    parts.push(`wearing ${underwear}`);
+    main = underwear;
   }
+
+  let accText = '';
   if (accessories) {
-    parts.push(`Wearing ${accessories}`);
+    if (!accessories.endsWith('.')) accessories += '.';
+    if (/^wearing\s+/i.test(accessories)) {
+      accText = accessories.charAt(0).toUpperCase() + accessories.slice(1);
+    } else {
+      accText = `Wearing ${accessories}`;
+    }
   }
-  return parts.join('. ');
+
+  if (main && accText) {
+    return `${main}. ${accText}`;
+  }
+  if (accText) {
+    return accText;
+  }
+  return main;
 }
 
 /**
  * Ficha lista para pasar a extras.appearance de los prompts, o null si el personaje no tiene nada escrito.
  * @param {{ appearance?: unknown }|null|undefined} character
- * @returns {{ fixed: string, current: string, underwear: string, accessories: string }|null}
+ * @returns {{ fixed: string, current: string, underwear?: string, accessories?: string, style?: string }|null}
  */
 export function appearanceOf(character) {
   const a = sanitizeAppearance(character && character.appearance);
-  return a.fixed || a.current || a.underwear || a.accessories || a.style
-    ? { fixed: a.fixed, current: a.current, underwear: a.underwear, accessories: a.accessories, style: a.style }
-    : null;
+  if (!a.fixed && !a.current && !a.underwear && !a.accessories && !a.style) {
+    return null;
+  }
+  const res = { fixed: a.fixed, current: a.current };
+  if (a.underwear) res.underwear = a.underwear;
+  if (a.accessories) res.accessories = a.accessories;
+  if (a.style) res.style = a.style;
+  return res;
 }
 
 /** ¿No hay nada escrito? (entonces el prompt queda idéntico al de antes). */

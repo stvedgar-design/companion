@@ -301,10 +301,7 @@ export function buildMemoryCard(entry, hooks) {
   edit.addEventListener('click', () => hooks.onEdit(entry.id));
   const archive = el('button', 'btn btn--sm btn--ghost', 'Archivar');
   archive.type = 'button';
-  archive.addEventListener('click', () => {
-    card.classList.add('is-leaving');
-    setTimeout(() => hooks.onArchive(entry.id), 120);
-  });
+  archive.addEventListener('click', () => hooks.onArchive(entry.id));
   actions.append(edit, archive);
   card.appendChild(actions);
   return card;

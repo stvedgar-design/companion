@@ -21,7 +21,6 @@ export function pickFiles(opts = {}) {
     // Sin atributo `accept`: en Android, un `accept` con tipos de imagen
     // abre la galería en vez del explorador de archivos, y ahí no se
     // pueden elegir archivos .json.
-    if (opts.accept) input.accept = opts.accept;
     if (opts.multiple) input.multiple = true;
     input.style.position = 'fixed';
     input.style.top = '-9999px';

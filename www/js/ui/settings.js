@@ -30,153 +30,170 @@ export function openSettings(app) {
   node.innerHTML = `
     <h3 class="sheet__title">Ajustes</h3>
 
-    <div class="settings-search">
+    <div class="settings-search" style="margin-bottom: var(--space-3, 12px);">
       <input class="inp" id="settings-search" type="search" inputmode="search" autocomplete="off"
              placeholder="Buscar en Ajustes" aria-label="Buscar en Ajustes">
     </div>
-    <div class="field__hint" id="settings-search-empty" hidden>No encontré nada con ese nombre.</div>
+    <div class="field__hint" id="settings-search-empty" hidden style="margin-bottom: var(--space-3, 12px);">No encontré nada con ese nombre.</div>
 
-    <div class="menu-group" aria-hidden="true">Conexión</div>
-    <div class="field">
-      <label class="field__label" for="settings-url">Servidor</label>
-      <div class="settings-row">
-        <input class="inp" id="settings-url" type="url" inputmode="url"
-               autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false">
-        <button class="btn btn--ghost btn--sm" id="settings-test" type="button">Probar</button>
+    <!-- TARJETA 1: TU PRESENCIA -->
+    <div class="settings-card" role="region" aria-label="Tu Presencia" style="border: 1px solid var(--color-line); border-radius: var(--radius-md, 12px); background: var(--color-surface); padding: var(--space-3, 12px) var(--space-4, 16px); margin-bottom: var(--space-3, 12px);">
+      <div class="menu-group" style="margin-top:0;padding-left:0;font-weight:600;color:var(--color-accent-2, var(--color-text));">Tu Presencia</div>
+      <div class="field">
+        <label class="field__label" for="settings-user">Tu nombre en el chat</label>
+        <input class="inp" id="settings-user" type="text" autocomplete="off" placeholder="Tu nombre">
       </div>
-      <div class="status" id="settings-status"></div>
-    </div>
-
-    <div class="field">
-      <label class="field__label" for="settings-user">Tu nombre en el chat</label>
-      <input class="inp" id="settings-user" type="text" autocomplete="off">
-    </div>
-
-    <div class="field">
-      <label class="field__label" for="settings-user-appearance">Tu apariencia física (opcional)</label>
-      <input class="inp" id="settings-user-appearance" type="text" autocomplete="off" maxlength="180"
-             placeholder="Ej.: Estatura media, pelo castaño corto, uso lentes de montura negra">
-      <div class="field__hint">Rasgos físicos que el companion tendrá presentes de forma natural (lentes, pelo, complexión, ropa habitual). Cero lentitud añadida.</div>
-    </div>
-
-    <div class="menu-group" aria-hidden="true">Conversación</div>
-    <div class="field">
-      <label class="field__label" for="settings-mode">Formato del prompt</label>
-      <select class="inp" id="settings-mode">
-        <option value="chat">Plantilla del modelo (recomendado)</option>
-        <option value="plain">Texto simple</option>
-      </select>
-      <div class="field__hint">Plantilla del modelo suele dar mejores respuestas de roleplay. Si tu modelo responde raro con esa opción, probá con "Texto simple", que funciona igual con cualquier modelo pero sin su plantilla de chat.</div>
-    </div>
-
-    <div class="field">
-      <label class="field__label" style="display:flex;align-items:center;gap:var(--space-2, 8px)">
-        <input type="checkbox" id="settings-human-touch" style="accent-color:var(--color-accent, #8b1fe0)">
-        <span>Presencia humana y empatía</span>
-      </label>
-      <div class="field__hint">El personaje modula su tono según la hora, la ausencia y lo que escribes, adaptándose con naturalidad a la conversación y respondiendo en un solo párrafo.</div>
-    </div>
-
-    <div class="field">
-      <label class="field__label" style="display:flex;align-items:center;gap:var(--space-2, 8px)">
-        <input type="checkbox" id="settings-variety" style="accent-color:var(--color-accent, #8b1fe0)">
-        <span>Ayuda para evitar repeticiones</span>
-      </label>
-      <div class="field__hint">Si tu personaje empieza a repetir las mismas palabras o temas, la siguiente respuesta lleva una nota breve pidiéndole variar. No hace el chat más lento.</div>
-    </div>
-
-    <div class="menu-group" aria-hidden="true">Seguridad</div>
-    <div class="field">
-      <label class="field__label">Bloqueo con PIN</label>
-      <div id="settings-pin-body"></div>
-    </div>
-
-    <div class="menu-group" aria-hidden="true">Apariencia</div>
-    <div class="field">
-      <div class="field__label">Tamaño del texto de los mensajes</div>
-      <div class="appearance-skins" id="settings-fontsize">
-        ${MESSAGE_FONT_SIZES.map((px, i) => `<button class="appearance-skin" type="button" data-size-value="${px}">${SIZE_LABELS[i]}</button>`).join('')}
-      </div>
-      <div class="field__hint">Solo cambia el tamaño de la letra; el ancho de las burbujas no cambia.</div>
-    </div>
-    <div class="field">
-      <div class="field__label">Tamaño de la foto junto a los mensajes</div>
-      <div class="appearance-skins" id="settings-avatarsize">
-        ${CHAT_AVATAR_SIZES.map((size, i) => `<button class="appearance-skin" type="button" data-avatar-size="${size}">${SIZE_LABELS[i]}</button>`).join('')}
-      </div>
-      <div class="field__hint">La foto del personaje que aparece al lado de sus mensajes. Crece o se achica junto con el tamaño del texto.</div>
-    </div>
-    <div class="field">
-      <label class="field__label" style="display:flex;align-items:center;gap:var(--space-2, 8px)">
-        <input type="checkbox" id="settings-stream" style="accent-color:var(--color-accent, #8b1fe0)">
-        <span>Ver la respuesta mientras se escribe</span>
-      </label>
-      <div class="field__hint">Encendido: el texto va apareciendo poco a poco. Apagado: ves los puntos de "escribiendo…" y la respuesta llega completa de una vez, como en una app de mensajería. El botón de detener sigue funcionando y no cambia la velocidad.</div>
-    </div>
-    <div class="field">
-      <label class="field__label" style="display:flex;align-items:center;gap:var(--space-2, 8px)">
-        <input type="checkbox" id="settings-haptics" style="accent-color:var(--color-accent, #8b1fe0)">
-        <span>Respuesta háptica (vibración al tacto)</span>
-      </label>
-      <div class="field__hint">Micro-vibraciones suaves al pulsar botones principales, enviar mensajes y al recibir la respuesta del personaje.</div>
-    </div>
-    <div class="field">
-      <label class="field__label">Aspecto de la app</label>
-      <div class="settings-row">
-        <button class="btn btn--ghost btn--sm" id="settings-appearance" type="button">Modo claro/oscuro y tipografía</button>
-      </div>
-      <div class="field__hint">El fondo del chat es por personaje: se cambia desde su ficha (toca el nombre del personaje dentro de un chat).</div>
-    </div>
-
-    <div class="menu-group" aria-hidden="true">Datos</div>
-    <div class="field">
-      <label class="field__label">Copia de seguridad</label>
-      <div class="settings-row">
-        <button class="btn btn--ghost btn--sm" id="settings-export" type="button">Exportar copia</button>
-        <button class="btn btn--ghost btn--sm" id="settings-import" type="button">Importar copia</button>
+      <div class="field">
+        <label class="field__label" for="settings-user-appearance">Tu apariencia física (opcional)</label>
+        <textarea class="inp" id="settings-user-appearance" rows="2" maxlength="180" autocomplete="off" placeholder="Ej.: estatura media, pelo oscuro ondulado, ojos marrones, lentes de marco negro, ropa informal"></textarea>
+        <div class="field__hint">Una frase corta describiendo cómo te ves: estatura, pelo, ojos, si usas lentes o ropa habitual. El companion lo tendrá presente naturalmente al interactuar contigo.</div>
       </div>
     </div>
 
-    <div class="menu-group" aria-hidden="true">Avanzado</div>
-    <div class="field__hint" id="settings-persist">${describePersistence(getPersistenceResult())}</div>
-    <div class="field">
-      <label class="field__label" for="settings-cpu-url">Servidor secundario (CPU — memorias y resúmenes)</label>
-      <div class="settings-row">
-        <input class="inp" id="settings-cpu-url" type="url" inputmode="url"
-               autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false"
-               placeholder="Opcional (p. ej. http://100.x.x.x:5002)">
-        <button class="btn btn--ghost btn--sm" id="settings-cpu-test" type="button">Probar</button>
+    <!-- TARJETA 2: CONEXIONES Y SERVIDORES -->
+    <div class="settings-card" role="region" aria-label="Conexión y Servidores" style="border: 1px solid var(--color-line); border-radius: var(--radius-md, 12px); background: var(--color-surface); padding: var(--space-3, 12px) var(--space-4, 16px); margin-bottom: var(--space-3, 12px);">
+      <div class="menu-group" style="margin-top:0;padding-left:0;font-weight:600;color:var(--color-accent-2, var(--color-text));">Conexión y Servidores</div>
+      <div class="field">
+        <label class="field__label" for="settings-url">Servidor principal (GPU — Mahou 12B)</label>
+        <div class="settings-row">
+          <input class="inp" id="settings-url" type="url" inputmode="url"
+                 autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" placeholder="http://100.x.x.x:5001">
+          <button class="btn btn--ghost btn--sm" id="settings-test" type="button">Probar</button>
+        </div>
+        <div class="status" id="settings-status"></div>
       </div>
-      <div class="field__hint">Si configuras una segunda instancia en CPU (como Llama 3B), las memorias y resúmenes se procesan allí sin interrumpir ni quitarle memoria al modelo principal en GPU. Si se deja vacío, usa el servidor principal.</div>
-      <div class="status" id="settings-cpu-status"></div>
+      <div class="field">
+        <label class="field__label" for="settings-cpu-url">Servidor secundario (CPU — Llama 3B)</label>
+        <div class="settings-row">
+          <input class="inp" id="settings-cpu-url" type="url" inputmode="url"
+                 autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false"
+                 placeholder="Opcional (p. ej. http://100.x.x.x:5002)">
+          <button class="btn btn--ghost btn--sm" id="settings-cpu-test" type="button">Probar</button>
+        </div>
+        <div class="field__hint">Procesa recuerdos y resúmenes en segundo plano sin interrumpir ni quitarle memoria al modelo principal en GPU. Si se deja vacío, usa el servidor principal.</div>
+        <div class="status" id="settings-cpu-status"></div>
+      </div>
     </div>
-    <div class="field">
-      <label class="field__label">Prueba de fluidez</label>
-      <div class="settings-row">
-        <button class="btn btn--ghost btn--sm" id="settings-fluency" type="button">Medir fluidez (${FLUENCY_SECONDS} s)</button>
+
+    <!-- TARJETA 3: EXPERIENCIA DE CONVERSACIÓN -->
+    <div class="settings-card" role="region" aria-label="Conversación" style="border: 1px solid var(--color-line); border-radius: var(--radius-md, 12px); background: var(--color-surface); padding: var(--space-3, 12px) var(--space-4, 16px); margin-bottom: var(--space-3, 12px);">
+      <div class="menu-group" style="margin-top:0;padding-left:0;font-weight:600;color:var(--color-accent-2, var(--color-text));">Conversación</div>
+      <div class="field">
+        <label class="field__label" for="settings-mode">Formato del prompt</label>
+        <select class="inp" id="settings-mode">
+          <option value="chat">Plantilla del modelo (recomendado)</option>
+          <option value="plain">Texto simple</option>
+        </select>
+        <div class="field__hint">Plantilla del modelo suele dar mejores respuestas de roleplay. Si tu modelo responde raro con esa opción, prueba con "Texto simple".</div>
       </div>
-      <div class="field__hint">Desliza el chat solo durante unos segundos y mide qué tan fluido va. Si tienes un chat abierto lo usa; si no, uno de prueba. No se envía nada a ningún lado.</div>
-      <div class="field__hint" id="settings-fluency-result" hidden style="white-space:pre-line"></div>
-      <div class="settings-row" id="settings-fluency-copyrow" hidden>
-        <button class="btn btn--ghost btn--sm" id="settings-fluency-copy" type="button">Copiar resultado</button>
+      <div class="field">
+        <label class="field__label" style="display:flex;align-items:center;gap:var(--space-2, 8px)">
+          <input type="checkbox" id="settings-human-touch" style="accent-color:var(--color-accent, #8b1fe0)">
+          <span>Presencia humana y empatía</span>
+        </label>
+        <div class="field__hint">El personaje modula su tono según la hora, la ausencia y lo que escribes, adaptándose con naturalidad a la conversación y respondiendo en un solo párrafo.</div>
+      </div>
+      <div class="field">
+        <label class="field__label" style="display:flex;align-items:center;gap:var(--space-2, 8px)">
+          <input type="checkbox" id="settings-variety" style="accent-color:var(--color-accent, #8b1fe0)">
+          <span>Ayuda para evitar repeticiones</span>
+        </label>
+        <div class="field__hint">Si el personaje empieza a repetir las mismas palabras o temas, la siguiente respuesta lleva una sugerencia breve de variedad sin ralentizar el chat.</div>
+      </div>
+      <div class="field">
+        <label class="field__label" style="display:flex;align-items:center;gap:var(--space-2, 8px)">
+          <input type="checkbox" id="settings-haptics" style="accent-color:var(--color-accent, #8b1fe0)">
+          <span>Respuesta háptica (vibración al tacto)</span>
+        </label>
+        <div class="field__hint">Micro-vibraciones suaves al pulsar botones principales, enviar mensajes y al recibir la respuesta del personaje.</div>
       </div>
     </div>
 
-    <div class="field">
-      <label class="field__label">Diagnóstico y rendimiento</label>
-      <div class="settings-row">
-        <button class="btn btn--ghost btn--sm" id="settings-diag" type="button">Abrir diagnóstico</button>
+    <!-- TARJETA 4: DISEÑO Y PANTALLA -->
+    <div class="settings-card" role="region" aria-label="Pantalla y Diseño" style="border: 1px solid var(--color-line); border-radius: var(--radius-md, 12px); background: var(--color-surface); padding: var(--space-3, 12px) var(--space-4, 16px); margin-bottom: var(--space-3, 12px);">
+      <div class="menu-group" style="margin-top:0;padding-left:0;font-weight:600;color:var(--color-accent-2, var(--color-text));">Pantalla y Diseño</div>
+      <div class="field">
+        <div class="field__label">Tamaño del texto de los mensajes</div>
+        <div class="appearance-skins" id="settings-fontsize">
+          ${MESSAGE_FONT_SIZES.map((px, i) => `<button class="appearance-skin" type="button" data-size-value="${px}">${SIZE_LABELS[i]}</button>`).join('')}
+        </div>
+        <div class="field__hint">Solo cambia el tamaño de la letra; el ancho de las burbujas se mantiene proporcional.</div>
       </div>
-      <div class="field__hint">Prueba de estrés con datos inventados para medir qué tan fluida va la app en este teléfono.</div>
+      <div class="field">
+        <div class="field__label">Tamaño de la foto junto a los mensajes</div>
+        <div class="appearance-skins" id="settings-avatarsize">
+          ${CHAT_AVATAR_SIZES.map((size, i) => `<button class="appearance-skin" type="button" data-avatar-size="${size}">${SIZE_LABELS[i]}</button>`).join('')}
+        </div>
+        <div class="field__hint">La foto de perfil del personaje junto a sus burbujas de diálogo.</div>
+      </div>
+      <div class="field">
+        <label class="field__label" style="display:flex;align-items:center;gap:var(--space-2, 8px)">
+          <input type="checkbox" id="settings-stream" style="accent-color:var(--color-accent, #8b1fe0)">
+          <span>Ver la respuesta mientras se escribe</span>
+        </label>
+        <div class="field__hint">Encendido: el texto va apareciendo poco a poco. Apagado: ves los puntos de "escribiendo…" y la respuesta llega completa de una vez, como en una app de mensajería.</div>
+      </div>
+      <div class="field">
+        <label class="field__label">Aspecto de la app</label>
+        <div class="settings-row">
+          <button class="btn btn--ghost btn--sm" id="settings-appearance" type="button">Modo claro/oscuro y tipografía</button>
+        </div>
+        <div class="field__hint">El fondo del chat es por personaje y se cambia desde su ficha al tocar su nombre dentro del chat.</div>
+      </div>
     </div>
 
-    <div class="field">
-      <label class="field__label">Informe de uso</label>
-      <div class="settings-row">
-        <button class="btn btn--ghost btn--sm" id="settings-usage-report" type="button">Exportar informe de uso</button>
+    <!-- TARJETA 5: SEGURIDAD Y DATOS -->
+    <div class="settings-card" role="region" aria-label="Seguridad y Datos" style="border: 1px solid var(--color-line); border-radius: var(--radius-md, 12px); background: var(--color-surface); padding: var(--space-3, 12px) var(--space-4, 16px); margin-bottom: var(--space-3, 12px);">
+      <div class="menu-group" style="margin-top:0;padding-left:0;font-weight:600;color:var(--color-accent-2, var(--color-text));">Seguridad y Datos</div>
+      <div class="field">
+        <label class="field__label">Bloqueo con PIN</label>
+        <div id="settings-pin-body"></div>
       </div>
-      <div class="field__hint">Cuántos recuerdos, resúmenes y mensajes hubo, y qué ajustes probaste — solo números y fechas, nunca el texto de tus chats. Registrado desde que esta función se activó, no antes. Nada sale del teléfono salvo que tú lo exportes.</div>
+      <div class="field">
+        <label class="field__label">Copia de seguridad</label>
+        <div class="settings-row">
+          <button class="btn btn--ghost btn--sm" id="settings-export" type="button">Exportar copia</button>
+          <button class="btn btn--ghost btn--sm" id="settings-import" type="button">Importar copia</button>
+        </div>
+        <div class="field__hint">Guarda o restaura todos tus companions, recuerdos acumulados, historial de chats y ajustes en un solo archivo seguro.</div>
+      </div>
     </div>
+
+    <!-- TARJETA 6: HERRAMIENTAS AVANZADAS Y DIAGNÓSTICO -->
+    <details class="settings-card" style="border: 1px solid var(--color-line); border-radius: var(--radius-md, 12px); background: var(--color-surface); padding: var(--space-3, 12px) var(--space-4, 16px); margin-bottom: var(--space-4, 16px);">
+      <summary class="menu-group" style="cursor:pointer;margin-top:0;padding-left:0;font-weight:600;color:var(--color-muted);list-style:none;">
+        <span style="display:flex;align-items:center;justify-content:space-between;">
+          <span>Herramientas avanzadas y diagnóstico</span>
+          <span style="font-size:12px;opacity:0.7;">▼</span>
+        </span>
+      </summary>
+      <div class="field__hint" id="settings-persist" style="margin-top:var(--space-2, 8px);">${describePersistence(getPersistenceResult())}</div>
+      <div class="field">
+        <label class="field__label">Prueba de fluidez táctil</label>
+        <div class="settings-row">
+          <button class="btn btn--ghost btn--sm" id="settings-fluency" type="button">Medir fluidez (${FLUENCY_SECONDS} s)</button>
+        </div>
+        <div class="field__hint">Mide el rendimiento a 60 FPS deslizando el chat solo unos segundos.</div>
+        <div class="field__hint" id="settings-fluency-result" hidden style="white-space:pre-line"></div>
+        <div class="settings-row" id="settings-fluency-copyrow" hidden>
+          <button class="btn btn--ghost btn--sm" id="settings-fluency-copy" type="button">Copiar resultado</button>
+        </div>
+      </div>
+      <div class="field">
+        <label class="field__label">Diagnóstico de estrés</label>
+        <div class="settings-row">
+          <button class="btn btn--ghost btn--sm" id="settings-diag" type="button">Abrir diagnóstico</button>
+        </div>
+        <div class="field__hint">Prueba de memoria y rendimiento en este teléfono con datos simulados.</div>
+      </div>
+      <div class="field">
+        <label class="field__label">Informe de uso técnico</label>
+        <div class="settings-row">
+          <button class="btn btn--ghost btn--sm" id="settings-usage-report" type="button">Exportar informe</button>
+        </div>
+        <div class="field__hint">Estadísticas anónimas de mensajes y recuerdos. Nada sale de tu dispositivo.</div>
+      </div>
+    </details>
 
     <div class="settings-version">Companion v${APP_VERSION}</div>
   `;
@@ -475,38 +492,25 @@ export function openSettings(app) {
 
   function applySettingsFilter(raw) {
     const q = normalizeForSearch(raw).trim();
-    const searchWrap = els.search.closest('.settings-search');
-    let currentGroup = null;
-    let groupMatched = false;
     let anyMatch = false;
-    const finishGroup = () => {
-      if (currentGroup) currentGroup.hidden = !groupMatched;
-    };
-    for (const child of Array.from(node.children)) {
-      if (child === searchWrap || child === els.searchEmpty) continue;
-      if (child.classList.contains('menu-group')) {
-        finishGroup();
-        currentGroup = child;
-        groupMatched = false;
-        continue;
+    const cards = Array.from(node.querySelectorAll('.settings-card'));
+    for (const card of cards) {
+      const fields = Array.from(card.querySelectorAll('.field'));
+      let cardMatched = false;
+      for (const field of fields) {
+        const match = !q || normalizeForSearch(field.textContent).includes(q);
+        field.hidden = !match;
+        if (match) {
+          cardMatched = true;
+          anyMatch = true;
+        }
       }
-      if (child.classList.contains('settings-version')) {
-        child.hidden = false; // pie de página, no es un control: siempre visible
-        continue;
-      }
-      if (!currentGroup) continue; // el título "Ajustes" y el buscador van antes de cualquier grupo
-      const match = !q || normalizeForSearch(child.textContent).includes(q);
-      child.hidden = !match;
-      if (match) {
-        groupMatched = true;
-        anyMatch = true;
-      }
+      card.hidden = !cardMatched && !!q;
     }
-    finishGroup();
     els.searchEmpty.hidden = !q || anyMatch;
   }
 
-  app.openSheet(node);
+  app.openSheet(node, { fullscreen: true });
 }
 
 /** Minúsculas y sin acentos, para que el buscador de Ajustes no distinga mayúsculas ni tildes. */

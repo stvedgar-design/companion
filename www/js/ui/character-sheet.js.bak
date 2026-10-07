@@ -20,8 +20,6 @@ import { openCharacterEditor } from './character-editor.js';
 import { openCharacterAppearance } from './character-look.js';
 import { openChatBackground } from './chat-background.js';
 import { chooseAvatar } from './image-crop.js';
-import { openCharacterGallery } from './character-gallery.js';
-import { haptics } from './haptics.js';
 
 const ICON_BACK = '<svg viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>';
 
@@ -65,7 +63,6 @@ export function duplicateCharacterData(character) {
     updated: now,
     last: '',
     lorebook: [],
-    gallery: [],
     lorebookPrevious: [],
     lorebookPreviousAt: 0,
     lorebookTombstones: [],
@@ -121,7 +118,6 @@ export function characterSheetModel(character) {
     description,
     appearance,
     memoriesCount,
-    galleryCount: Array.isArray(character && character.gallery) ? character.gallery.length : 0,
     identityProposal: !!sanitizeIdentity(character && character.identity).proposal, // MEM-019: hay una propuesta esperando respuesta
     lifeToday: lifeSheetText(lifeToday(character && character.life, new Date()), name), // HUM-005: «Luna regó las plantas…» o '' si hoy no hay
     mailboxUnread: unreadCount(character), // PROACT-001: notas del buzón sin abrir
@@ -264,28 +260,6 @@ export function openCharacterSheet(app, character, opts = {}) {
     bgBtn.type = 'button';
     bgBtn.addEventListener('click', () => openChatBackground(app, current));
     node.appendChild(bgBtn);
-
-    // ---------- 6e. álbum de fotos (FASE 14 / PARETO-008) ----------
-    const galleryCountText = m.galleryCount === 1 ? '1 ilustración' : `${m.galleryCount} ilustraciones`;
-    const galleryBtn = el('button', 'menu-item', `Álbum de fotos de ${m.name} · ${galleryCountText}`);
-    galleryBtn.type = 'button';
-    galleryBtn.dataset.role = 'gallery';
-    galleryBtn.addEventListener('click', () => {
-      haptics.tap();
-      openCharacterGallery(app, current, {
-        onUpdated: async (freshChar) => {
-          if (freshChar) {
-            current = freshChar;
-          } else {
-            const fresh = await getCharacter(current.id);
-            if (fresh) current = fresh;
-          }
-          if (opts.onUpdated) opts.onUpdated(current);
-          render();
-        },
-      });
-    });
-    node.appendChild(galleryBtn);
 
     // ---------- 6d. buzón (PROACT-001): solo si hay notas; el indicador «nueva(s)» se apaga al abrirlo ----------
     if (m.mailboxCount > 0) {
