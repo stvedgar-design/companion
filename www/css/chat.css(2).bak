@@ -77,6 +77,10 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  /* FASE 12 (Efecto Talkie): máscara GPU que difumina suavemente los mensajes antiguos hacia arriba */
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.15) 10%, rgba(0, 0, 0, 0.75) 24%, black 38%, black 100%);
+  mask-image: linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.15) 10%, rgba(0, 0, 0, 0.75) 24%, black 38%, black 100%);
 }
 .chat-messages {
   position: relative;
@@ -85,6 +89,12 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+  min-height: 100%;
+}
+/* FASE 12 (Efecto Talkie): ancla los mensajes en el tercio inferior cuando son pocos */
+.chat-messages::before {
+  content: '';
+  margin-top: auto;
 }
 .chat-row {
   display: flex;
@@ -385,6 +395,7 @@
   gap: var(--space-3);
   padding: var(--space-2) var(--space-3) calc(var(--sab) + var(--space-2));
   flex: none;
+  background: linear-gradient(to top, rgba(18, 16, 14, 0.92) 0%, rgba(18, 16, 14, 0.45) 60%, transparent 100%);
   backdrop-filter: var(--bars-backdrop, none);
   -webkit-backdrop-filter: var(--bars-backdrop, none);
 }

@@ -97,10 +97,10 @@ export function init(rootEl, appApi) {
       </div>
       <button class="ib" type="button" id="chat-menu" aria-label="Más">${ICON_MENU}</button>
     </div>
+    <div class="chat-bg" id="chat-bg" hidden>
+      <div class="chat-bg__fade" id="chat-bg-fade" hidden></div>
+    </div>
     <div class="chat-messageswrap">
-      <div class="chat-bg" id="chat-bg" hidden>
-        <div class="chat-bg__fade" id="chat-bg-fade" hidden></div>
-      </div>
       <div class="scroll chat-messages" id="chat-messages"></div>
       <div class="chat-icebreakers" id="chat-icebreakers" hidden></div>
       <button class="chat-scrolldown" type="button" id="chat-scrolldown" aria-label="Ir al último mensaje" hidden>${ICON_DOWN}</button>
