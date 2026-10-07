@@ -50,7 +50,7 @@ export function openCharacterGallery(app, character, opts = {}) {
 
     // 1. Cabecera editorial (Topbar)
     const topbar = el('div', 'char-gallery__topbar');
-    const backBtn = el('button', 'ib', '');
+    const backBtn = el('button', 'btn btn--ghost btn--icon', '');
     backBtn.type = 'button';
     backBtn.setAttribute('aria-label', 'Volver');
     backBtn.innerHTML = ICON_BACK;
@@ -63,7 +63,7 @@ export function openCharacterGallery(app, character, opts = {}) {
     const title = el('h2', 'char-gallery__title', `${current.name} · Álbum`);
     topbar.appendChild(title);
 
-    const addBtn = el('button', 'ib', '');
+    const addBtn = el('button', 'btn btn--ghost btn--icon', '');
     addBtn.type = 'button';
     addBtn.setAttribute('aria-label', 'Agregar ilustración');
     addBtn.innerHTML = ICON_ADD;
@@ -163,7 +163,7 @@ export function openCharacterGallery(app, character, opts = {}) {
 
     // Topbar del lightbox
     const topbar = el('div', 'gallery-lightbox__topbar');
-    const closeBtn = el('button', 'ib', '');
+    const closeBtn = el('button', 'btn btn--ghost btn--icon', '');
     closeBtn.type = 'button';
     closeBtn.setAttribute('aria-label', 'Cerrar detalle');
     closeBtn.innerHTML = ICON_BACK;
@@ -177,7 +177,7 @@ export function openCharacterGallery(app, character, opts = {}) {
     const title = el('h3', 'gallery-lightbox__title', 'Detalle de ilustración');
     topbar.appendChild(title);
 
-    const spacer = el('div', 'ib');
+    const spacer = el('div', 'btn btn--ghost btn--icon');
     spacer.style.visibility = 'hidden';
     topbar.appendChild(spacer);
     lightbox.appendChild(topbar);
