@@ -1846,14 +1846,7 @@ function openLorebookSheet(note = '') {
       onRevert: () => changeIdentity(revertIdentity, 'Hecho. Volvió a como estaba antes.'),
     })
   );
-  wrap.appendChild(buildContinuityCard(model, { onOpen: () => openContinuitySheet() }));,
-        onDismiss: (c) => {
-          model.clusters = model.clusters.filter((cl) => cl.id !== c.id);
-          openLorebookSheet('Recuerdos conservados por separado.');
-        },
-      })
-    );
-  }
+  wrap.appendChild(buildContinuityCard(model, { onOpen: () => openContinuitySheet() }));
 
   // (3) recuerdos como tarjetas
   const all = character.lorebook || [];
