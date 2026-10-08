@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { memoryDashboardModel, memoryPage, continuityPreview, MEMORY_PAGE_SIZE } from '../www/js/ui/character-memory.js';
 import { duplicateCharacterData } from '../www/js/ui/character-sheet.js';
 import { relationshipSummary, RELATIONSHIP_EARLY_DISPLAY_TEXT } from '../www/js/api/relationship.js';
+import { buildMemoryRefinePrompt, parseMemoryRefineResponse } from '../www/js/api/memory-clustering.js';
 
 const entry = (i, extra = {}) => ({ id: `e${i}`, keys: [`k${i}`], content: `Recuerdo ${i}`, updated: i, source: 'auto', ...extra });
 const lore = (n, alwaysIds = []) => Array.from({ length: n }, (_, i) => entry(i, alwaysIds.includes(i) ? { always: true, source: 'manual' } : {}));
@@ -91,8 +92,7 @@ test('duplicar personaje: el archivo de recuerdos NO se copia (un duplicado nace
   assert.deepEqual(dup.lorebookArchive, []);
 });
 
-
-test('FASE 17: memoryDashboardModel incluye clusters de recuerdos afines', () => {
+test('FASE 19 (PARETO-012): coautor y consolidacion retirados; pulido emocional de recuerdos individuales activo', () => {
   const c = makeChar({
     lorebook: [
       { id: 'e1', keys: ['café', 'mañanas'], content: 'Edgar toma café negro por la mañana', updated: 10 },
@@ -101,8 +101,22 @@ test('FASE 17: memoryDashboardModel incluye clusters de recuerdos afines', () =>
     ],
   });
   const m = memoryDashboardModel(c, null);
+  // La consolidación en clusters fue retirada en favor de la pureza atómica (siempre [])
   assert.ok(Array.isArray(m.clusters));
-  assert.equal(m.clusters.length, 1);
-  assert.equal(m.clusters[0].entries.length, 2);
-  assert.equal(m.clusters[0].topic.toLowerCase(), 'cafe');
+  assert.equal(m.clusters.length, 0);
+
+  // Verificación del generador de prompt emocional para Llama 3.2 3B
+  const messages = buildMemoryRefinePrompt({
+    charName: 'Nora',
+    userName: 'Edgar',
+    content: 'Edgar mentioned needing to cook and shower before preparing for work',
+  });
+  assert.equal(messages.length, 2);
+  assert.ok(messages[0].content.includes('intimate, character-driven fiction'));
+  assert.ok(messages[0].content.includes('STRICTLY FORBIDDEN: Clinical, forensic, or transactional phrasing'));
+  assert.ok(messages[1].content.includes('Edgar mentioned needing to cook'));
+
+  // Verificación del parser
+  const parsed = parseMemoryRefineResponse('Refined: "A warm, tender morning where Edgar and Nora shared soft words."');
+  assert.equal(parsed, 'A warm, tender morning where Edgar and Nora shared soft words.');
 });

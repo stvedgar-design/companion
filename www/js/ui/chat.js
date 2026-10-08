@@ -46,8 +46,8 @@ import { cancelBackgroundIdentity } from './identity.js';
 import { cancelBackgroundLife } from './life.js';
 import { withLifeMentioned } from '../api/life.js';
 import { cancelBackgroundMailbox, touchInteraction } from './mailbox.js';
-import { memoryDashboardModel, buildRelationshipHero, buildContinuityCard, buildMemoryCards, buildGroupedMemoryCards, buildIdentityCard, buildCoAuthorCard } from './character-memory.js';
-import { applyClusterConsolidation } from '../api/memory-clustering.js';
+import { memoryDashboardModel, buildRelationshipHero, buildContinuityCard, buildMemoryCards, buildGroupedMemoryCards, buildIdentityCard } from './character-memory.js';
+import { buildMemoryRefinePrompt, buildMemoryRefinePlainPrompt, parseMemoryRefineResponse } from '../api/memory-clustering.js';
 import { acceptProposal, discardProposal, revertIdentity } from '../api/identity-synthesis.js';
 import { logEvent, TEL_EVENTS } from '../telemetry.js';
 import { formatMessage } from './format.js';
@@ -1846,33 +1846,7 @@ function openLorebookSheet(note = '') {
       onRevert: () => changeIdentity(revertIdentity, 'Hecho. Volvió a como estaba antes.'),
     })
   );
-  wrap.appendChild(buildContinuityCard(model, { onOpen: () => openContinuitySheet() }));
-
-  // FASE 17 (PARETO-010): Co-autoría editorial para recuerdos recurrentes
-  if (model.clusters && model.clusters.length > 0) {
-    const cluster = model.clusters[0];
-    wrap.appendChild(
-      buildCoAuthorCard(cluster, { name: character.name }, {
-        onConsolidate: async (c, text) => {
-          try {
-            const updated = applyClusterConsolidation(
-              character,
-              c.entries.map((e) => e.id),
-              text,
-              c.keys
-            );
-            character = await saveCharacterLorebook(
-              character.id,
-              updated.lorebook,
-              character.lorebook,
-              { archive: updated.lorebookArchive }
-            );
-            haptics.action();
-            openLorebookSheet(`Recuerdos sobre "${c.topic}" consolidados y anteriores archivados.`);
-          } catch (err) {
-            openLorebookSheet('No se pudo consolidar la memoria.');
-          }
-        },
+  wrap.appendChild(buildContinuityCard(model, { onOpen: () => openContinuitySheet() }));,
         onDismiss: (c) => {
           model.clusters = model.clusters.filter((cl) => cl.id !== c.id);
           openLorebookSheet('Recuerdos conservados por separado.');
@@ -1896,7 +1870,7 @@ function openLorebookSheet(note = '') {
       )
     );
   }
-  const cardHooks = { onEdit: (id) => openLoreEdit(id), onArchive: (id) => openLoreDeleteConfirm(id) };
+  const cardHooks = { onEdit: (id) => openLoreEdit(id), onRefine: (id) => openLoreEdit(id, { autoRefine: true }), onArchive: (id) => openLoreDeleteConfirm(id) };
   if (all.length) {
     // MEM-004: "Siempre presentes" (van en cada respuesta, con tope) y "Por tema" (solo cuando sale una palabra clave).
     list.appendChild(loreEl('h5', 'mem-group__title', 'Siempre presentes'));
@@ -2102,7 +2076,7 @@ function openLorebookSheet(note = '') {
   app.openSheet(wrap);
 }
 
-function openLoreEdit(entryId) {
+function openLoreEdit(entryId, opts = {}) {
   const entry = ((character && character.lorebook) || []).find((e) => e.id === entryId);
   if (!entry) {
     openLorebookSheet('Ese recuerdo ya no existe.');
@@ -2116,6 +2090,55 @@ function openLoreEdit(entryId) {
   content.maxLength = LOREBOOK_MAX_ENTRY_CHARS;
   content.rows = 3;
   content.setAttribute('aria-label', 'Recuerdo');
+
+  // FASE 19 (PARETO-012): Botón para pulir/sintetizar el recuerdo individual con Llama 3.2 3B en CPU
+  const aiRefineBtn = loreEl('button', 'btn btn--sm btn--ghost', '✨ Pulir con IA (Llama 3.2)');
+  aiRefineBtn.type = 'button';
+  aiRefineBtn.style.marginTop = 'var(--space-2, 8px)';
+  aiRefineBtn.style.marginBottom = 'var(--space-1, 4px)';
+  aiRefineBtn.style.display = 'inline-flex';
+  aiRefineBtn.style.alignItems = 'center';
+  aiRefineBtn.style.gap = 'var(--space-1, 4px)';
+
+  const doRefine = async () => {
+    const raw = content.value.trim();
+    if (!raw) return;
+    const oldLabel = aiRefineBtn.textContent;
+    aiRefineBtn.disabled = true;
+    aiRefineBtn.textContent = '✨ Pulinedo recuerdo…';
+    error.textContent = '';
+    try {
+      const messages = buildMemoryRefinePrompt({
+        charName: character.name,
+        userName: (settings && settings.user) || 'User',
+        content: raw,
+      });
+      const bg = bgSettings(settings);
+      let reply = '';
+      try {
+        reply = await completeChatOnce(messages, bg, { maxLen: 140, temp: 0.7 });
+      } catch {
+        const plain = buildMemoryRefinePlainPrompt({
+          charName: character.name,
+          userName: (settings && settings.user) || 'User',
+          content: raw,
+        });
+        reply = await completeOnce(plain, bg, { maxLen: 140, temp: 0.7 });
+      }
+      const refined = parseMemoryRefineResponse(reply, raw);
+      if (refined && refined !== raw) {
+        content.value = refined;
+        haptics.action();
+      }
+    } catch {
+      error.textContent = 'No se pudo conectar con el modelo en CPU para pulir el recuerdo.';
+    } finally {
+      aiRefineBtn.disabled = false;
+      aiRefineBtn.textContent = oldLabel;
+    }
+  };
+  aiRefineBtn.addEventListener('click', doRefine);
+
   const keys = loreEl('input', 'inp');
   keys.type = 'text';
   keys.value = (entry.keys || []).join(', ');
@@ -2173,8 +2196,11 @@ function openLoreEdit(entryId) {
   cancelBtn.style.marginTop = 'var(--space-2, 8px)';
   cancelBtn.addEventListener('click', () => openLorebookSheet());
 
-  wrap.append(content, keys, hint, alwaysRow, alwaysHint, error, saveBtn, cancelBtn);
+  wrap.append(content, aiRefineBtn, keys, hint, alwaysRow, alwaysHint, error, saveBtn, cancelBtn);
   app.openSheet(wrap);
+  if (opts && opts.autoRefine) {
+    setTimeout(doRefine, 60);
+  }
 }
 
 // Confirmaciones dentro de la propia hoja (en vez de `app.confirmDialog`, que
