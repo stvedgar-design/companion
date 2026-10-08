@@ -90,3 +90,19 @@ test('duplicar personaje: el archivo de recuerdos NO se copia (un duplicado nace
   assert.deepEqual(dup.lorebook, []);
   assert.deepEqual(dup.lorebookArchive, []);
 });
+
+
+test('FASE 17: memoryDashboardModel incluye clusters de recuerdos afines', () => {
+  const c = makeChar({
+    lorebook: [
+      { id: 'e1', keys: ['café', 'mañanas'], content: 'Edgar toma café negro por la mañana', updated: 10 },
+      { id: 'e2', keys: ['café', 'lluvia'], content: 'Edgar y Nora toman café los días de lluvia', updated: 20 },
+      { id: 'e3', keys: ['piano'], content: 'Nora toca el piano', updated: 30 },
+    ],
+  });
+  const m = memoryDashboardModel(c, null);
+  assert.ok(Array.isArray(m.clusters));
+  assert.equal(m.clusters.length, 1);
+  assert.equal(m.clusters[0].entries.length, 2);
+  assert.equal(m.clusters[0].topic.toLowerCase(), 'cafe');
+});

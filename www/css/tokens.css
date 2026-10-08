@@ -75,9 +75,11 @@
  --font: 'Source Serif 4', Georgia, 'Times New Roman', serif;  
  /* UI-023: tipografía del DIÁLOGO cuando "Tipografía dividida" está activa. Fuente de sistema (la misma pila que iMessage): sin  
  archivos que incluir ni licencias. La narración (cursiva) sigue con --font, la del skin. */  
- --font-dialogue: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
-  /* FASE 12: tipografía de sistema para controles, botones, etiquetas y metadatos (jerarquía dual) */
+ --font-dialogue: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;  
+  /* FASE 12: tipografía de sistema para controles, botones, etiquetas y metadatos (jerarquía dual) */  
   --font-ui: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;  
+  /* FASE 16: tipografía ágil, limpia y moderna para las burbujas de diálogo del chat (Benchmark Talkie/Nomi) */  
+  --font-chat: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;  
  --fs-xs: 12px;  
  --fs-sm: 13px;  
  --fs-md: 15px;  
@@ -106,9 +108,9 @@
   
  /* Movimiento */  
  --dur-fast: 0.12s;  
- --dur: 0.18s;
-  /* FASE 12: curvas de aceleración física (spring / natural ease-out) */
-  --dur-spring: 0.22s;
+ --dur: 0.18s;  
+  /* FASE 12: curvas de aceleración física (spring / natural ease-out) */  
+  --dur-spring: 0.22s;  
   --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);  
   
  /* Áreas seguras (recalculadas por platform.js en tiempo real si aplica) */  

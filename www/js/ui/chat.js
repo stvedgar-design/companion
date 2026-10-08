@@ -1,7 +1,7 @@
 // www/js/ui/chat.js
 // Pantalla de chat: burbujas, streaming, avatar en 3 modos, composer, menú.
 
-import { getChat, getChatMessages, saveChatMessages, getCharacter, getSettings, saveSettings, markChatExported, saveCharacterLorebook, markChatLorebookProgress, saveChatContinuity, sanitizeContinuity, sanitizeMessage, saveCharacterRelationship, saveCharacterIdentity, saveCharacterMood, saveCharacterMoment, saveCharacterFollowUps, saveCharacterLife, saveChatArchive, isChatArchived, isChatArchivePending } from '../state.js';
+import { getChat, getChatMessages, saveChatMessages, getCharacter, getSettings, saveSettings, markChatExported, saveCharacterLorebook, markChatLorebookProgress, saveChatContinuity, sanitizeContinuity, sanitizeMessage, saveCharacterRelationship, saveCharacterIdentity, saveCharacterMood, saveCharacterMoment, saveCharacterFollowUps, saveCharacterLife, saveChatArchive, isChatArchived, isChatArchivePending, insertSceneBreak } from '../state.js';
 import { generateReplyNonEmpty, completeOnce, completeChatOnce } from '../api/kobold.js';
 import { initialMessages, scenarioGreeting, estimateContextUsage, subMacros } from '../api/prompt.js';
 import {
@@ -33,7 +33,7 @@ import {
 import { appearanceOf } from '../character-appearance.js';
 import { identityForPrompt } from '../api/identity-synthesis.js';
 import { moodText } from '../api/mood.js';
-import { computeMood, moodHeadText, planSplit, typingHoldMs } from '../api/presence.js';
+import { computeMood, moodHeadText, moodDisplayStatus, feelingDisplayStatus, planSplit, typingHoldMs } from '../api/presence.js';
 import { momentCandidate, withMoment } from '../api/moments.js';
 import { detectFollowUps, detectUserDates, withFollowUps, withUserDates, markAsked, markDone } from '../api/followups.js';
 import { createFeelingUpdater, feelingDisplayText } from '../api/feeling.js';
@@ -46,7 +46,8 @@ import { cancelBackgroundIdentity } from './identity.js';
 import { cancelBackgroundLife } from './life.js';
 import { withLifeMentioned } from '../api/life.js';
 import { cancelBackgroundMailbox, touchInteraction } from './mailbox.js';
-import { memoryDashboardModel, buildRelationshipHero, buildContinuityCard, buildMemoryCards, buildGroupedMemoryCards, buildIdentityCard } from './character-memory.js';
+import { memoryDashboardModel, buildRelationshipHero, buildContinuityCard, buildMemoryCards, buildGroupedMemoryCards, buildIdentityCard, buildCoAuthorCard } from './character-memory.js';
+import { applyClusterConsolidation } from '../api/memory-clustering.js';
 import { acceptProposal, discardProposal, revertIdentity } from '../api/identity-synthesis.js';
 import { logEvent, TEL_EVENTS } from '../telemetry.js';
 import { formatMessage } from './format.js';
@@ -93,7 +94,13 @@ export function init(rootEl, appApi) {
     <div class="topbar">
       <button class="ib" type="button" id="chat-back" aria-label="Volver">${ICON_BACK}</button>
       <div class="chat-head" id="chat-head">
-        <button class="chat-head__name" type="button" id="chat-head-name" aria-label="Ver ficha del personaje"><span class="chat-head__nm" id="chat-head-nm"></span><span class="chat-head__sub" id="chat-head-sub"></span></button>
+        <button class="chat-head__name" type="button" id="chat-head-name" aria-label="Ver ficha del personaje">
+          <div class="chat-head__avatar av" id="chat-head-avatar"></div>
+          <div class="chat-head__info">
+            <span class="chat-head__nm" id="chat-head-nm"></span>
+            <span class="chat-head__sub" id="chat-head-sub"></span>
+          </div>
+        </button>
       </div>
       <button class="ib" type="button" id="chat-menu" aria-label="Más">${ICON_MENU}</button>
     </div>
@@ -118,6 +125,7 @@ export function init(rootEl, appApi) {
   els = {
     back: root.querySelector('#chat-back'),
     headName: root.querySelector('#chat-head-name'),
+    headAvatar: root.querySelector('#chat-head-avatar'),
     headNm: root.querySelector('#chat-head-nm'),
     headSub: root.querySelector('#chat-head-sub'),
     menu: root.querySelector('#chat-menu'),
@@ -225,12 +233,12 @@ export async function show({ chatId } = {}) {
   touchInteraction(character.id); // PROACT-001: el usuario estuvo con este personaje (para saber cuánto estuvo ausente)
 
   let loaded = await getChatMessages(chat.id);
+  const isBrandNewScenarioChat = (!loaded || !loaded.length) && !!chat.scenario;
   if (!loaded) {
-    // Si el chat tiene un escenario propio, el first_mes de la card (escrito
-    // para el escenario por defecto) casi nunca encaja: se reemplaza por una
-    // nota de escenario en vez de un saludo desalineado.
-    loaded = chat.scenario
-      ? scenarioGreeting(character, settings, chat.scenario)
+    // FASE 15: si el chat tiene escenario propio, se inicializa vacío para que el LLM
+    // principal genere de inmediato el saludo/entrada a escena del personaje respondiendo al escenario.
+    loaded = isBrandNewScenarioChat
+      ? []
       : initialMessages(character, settings);
     try {
       await saveChatMessages(chat.id, loaded);
@@ -244,6 +252,7 @@ export async function show({ chatId } = {}) {
   abortCtl = null;
 
   els.headNm.textContent = character.name;
+  if (els.headAvatar) setAvatarEl(els.headAvatar, character);
   els.input.value = draftByChat.get(chat.id) || '';
   autosizeInput();
   syncSendButton();
@@ -251,6 +260,10 @@ export async function show({ chatId } = {}) {
   updateGlassTint();
   applyArchivedState();
   renderMessages();
+
+  if (isBrandNewScenarioChat && messages.length === 0) {
+    generate().catch((err) => console.error('Error generating opening scene:', err));
+  }
 
   attachViewportListeners();
   checkKeyboardFromVh();
@@ -295,6 +308,7 @@ function onOpenCharacterSheet() {
     onUpdated: (updated) => {
       character = updated;
       els.headNm.textContent = character.name;
+      if (els.headAvatar) setAvatarEl(els.headAvatar, character);
       renderMessages();
     },
     openMemories: () => openLorebookSheet(),
@@ -530,6 +544,21 @@ function setBubbleContent(bubble, m) {
 }
 
 function buildMessageRow(m, i) {
+  if (m.kind === 'scene_break' || m.role === 'system') {
+    const row = document.createElement('div');
+    row.className = 'chat-row chat-row--scene-break';
+    row.dataset.index = String(i);
+    row.style.setProperty('--row-h', '44px');
+    const divider = document.createElement('div');
+    divider.className = 'chat-scene-break';
+    const textSpan = document.createElement('span');
+    textSpan.className = 'chat-scene-break__text';
+    textSpan.textContent = m.text || 'Corte de escena';
+    divider.appendChild(textSpan);
+    row.appendChild(divider);
+    return row;
+  }
+
   const isLast = i === messages.length - 1;
   const isChar = m.role === 'char';
   const row = document.createElement('div');
@@ -543,22 +572,6 @@ function buildMessageRow(m, i) {
   // `role` de un mensaje ya guardado); en el resto de la racha se reserva el mismo ancho con un div vacío,
   // para que todas las burbujas de la racha queden alineadas igual. Reutiliza `character.avatar` tal cual
   // (mismo data: URL en cada fila que lo usa, así el navegador decodifica la imagen una sola vez).
-  let body = row;
-  if (isChar) {
-    const startsStreak = i === 0 || messages[i - 1].role !== 'char';
-    const avatarSlot = document.createElement('div');
-    if (startsStreak) {
-      avatarSlot.className = 'chat-row__avatar av';
-      setAvatarEl(avatarSlot, character);
-    } else {
-      avatarSlot.className = 'chat-row__avatarspace';
-    }
-    row.appendChild(avatarSlot);
-    body = document.createElement('div');
-    body.className = 'chat-row__body';
-    row.appendChild(body);
-  }
-
   const bubble = document.createElement('div');
   bubble.className = 'chat-bubble';
   if (isChar && !m.text && busy && isLast) {
@@ -567,10 +580,9 @@ function buildMessageRow(m, i) {
   } else {
     setBubbleContent(bubble, m);
   }
-  body.appendChild(bubble);
+  row.appendChild(bubble);
 
-  // Línea bajo la burbuja: marcapáginas de memoria (UI-010), el selector de versiones de una respuesta regenerada (UI-017) y (MEM-011) el
-  // timestamp de TODOS los mensajes, con "sintiendo …" solo en respuestas que activaron 3 o más recuerdos y de las que hay una emoción clara.
+  // FASE 16: Línea bajo la burbuja ultra-limpia (solo marcapáginas, versiones y hora, sin etiquetas duplicadas)
   const loreState = loreIndicatorState(m);
   const showLore = loreState !== 'none' && !!m.text;
   const showVariants = isChar && variantCount(m) > 1 && !!m.text;
@@ -592,7 +604,7 @@ function buildMessageRow(m, i) {
     }
     if (showVariants) meta.appendChild(buildVariantNav(m, i)); // después del marcapáginas: este no cambia de sitio (UI-016)
     if (stampText) meta.appendChild(buildStamp(m, stampText));
-    body.appendChild(meta);
+    row.appendChild(meta);
   }
 
   return row;
@@ -608,15 +620,6 @@ function buildStamp(m, text) {
   time.title = formatMessageFullTime(m.ts);
   time.textContent = text;
   stamp.appendChild(time);
-  // MEM-015: la palabra que el propio personaje eligió manda; sin ella (ajuste apagado, sin
-  // servidor, sin palabra válida) se muestra el respaldo heurístico de MEM-011, sin llamar al modelo.
-  const mood = m.role === 'char' ? feelingDisplayText(m.feeling) || moodText(m.loreUsed) : '';
-  if (mood) {
-    const label = document.createElement('span');
-    label.className = 'chat-mood';
-    label.textContent = ' · ' + mood;
-    stamp.appendChild(label);
-  }
   return stamp;
 }
 
@@ -904,9 +907,23 @@ function autosizeInput() {
 // HUM-001: línea bajo el nombre: "escribiendo…" mientras responde; si no, el ánimo del momento ("ánimo tranquilo"). El ánimo mostrado es el
 // guardado más la hora y el día (sin lo que se escriba): el que se usa al responder lo recalcula `generateReply` con el mensaje nuevo.
 function headSubText() {
-  if (busy) return 'escribiendo…';
+  if (busy) return 'typing…';
   if (!character || !settings || settings.humanTouch !== true) return '';
-  return moodHeadText(computeMood({ prev: character.mood, characterId: character.id, tags: character.personalityTags }).id);
+
+  const d = new Date();
+  const charHash = (character.id || character.name || 'char').split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
+  const seed = d.getHours() * 31 + d.getDate() * 7 + charHash;
+
+  // FASE 16: Si el último mensaje del personaje activó un sentimiento puntual, lo refleja prioritariamente:
+  const lastChar = [...(messages || [])].reverse().find((m) => m && m.role === 'char');
+  if (lastChar && lastChar.feeling) {
+    const rawF = typeof lastChar.feeling === 'string' ? lastChar.feeling : (lastChar.feeling.word || lastChar.feeling.id || '');
+    const feelStatus = feelingDisplayStatus(rawF.toLowerCase(), seed);
+    if (feelStatus) return feelStatus;
+  }
+
+  const moodId = computeMood({ prev: character.mood, characterId: character.id, tags: character.personalityTags, now: d }).id;
+  return moodDisplayStatus(moodId, seed) || moodHeadText(moodId);
 }
 
 function syncHeadSub() {
@@ -973,6 +990,65 @@ async function onRestoreEpisode() {
   } finally {
     els.restore.disabled = false;
   }
+}
+
+// FASE 17 (PARETO-010): "Nuevo capítulo / Corte de escena" dentro del chat único continuo.
+function onNewSceneBreak() {
+  app.closeSheet();
+  const wrap = document.createElement('div');
+
+  const title = document.createElement('h3');
+  title.className = 'sheet__title';
+  title.textContent = 'Nuevo capítulo / Corte de escena';
+  wrap.appendChild(title);
+
+  const field = document.createElement('div');
+  field.className = 'field';
+  field.innerHTML = `
+    <label class="field__label" for="scene-break-title">Acontecimiento o salto temporal</label>
+    <input class="inp" id="scene-break-title" type="text" autocomplete="off" maxlength="80"
+      placeholder="Ej: A la mañana siguiente en la cafetería, Tres días después...">
+  `;
+  wrap.appendChild(field);
+
+  const scenField = document.createElement('div');
+  scenField.className = 'field';
+  scenField.innerHTML = `
+    <label class="field__label" for="scene-break-scenario">Nuevo escenario o situación (opcional)</label>
+    <textarea class="inp" id="scene-break-scenario" rows="3" maxlength="300"
+      placeholder="Orientación situacional para el companion en el nuevo momento."></textarea>
+  `;
+  wrap.appendChild(scenField);
+
+  const insertBtn = document.createElement('button');
+  insertBtn.type = 'button';
+  insertBtn.className = 'btn';
+  insertBtn.textContent = 'Insertar capítulo';
+  wrap.appendChild(insertBtn);
+
+  const titleInput = field.querySelector('#scene-break-title');
+  const scenInput = scenField.querySelector('#scene-break-scenario');
+
+  insertBtn.addEventListener('click', async () => {
+    const text = titleInput.value.trim() || 'Corte de escena';
+    const scenario = scenInput.value.trim();
+    insertBtn.disabled = true;
+    try {
+      const { message } = await insertSceneBreak(chat.id, { text, ...(scenario ? { scenario } : {}) });
+      if (scenario) chat.scenario = scenario;
+      messages.push(message);
+      appendMessageRow(messages.length - 1);
+      scrollToBottom(true);
+      haptics.tap();
+      app.closeSheet();
+    } catch (err) {
+      insertBtn.disabled = false;
+      app.toast('No se pudo insertar el capítulo.');
+    }
+  });
+
+  app.openSheet(wrap);
+  titleInput.focus();
 }
 
 // MEM-018: "Archivar este episodio". Fuerza recuerdos y resumen (api/chat-archive.js) y, si salió bien, vuelve a la pantalla anterior; si
@@ -1772,6 +1848,39 @@ function openLorebookSheet(note = '') {
   );
   wrap.appendChild(buildContinuityCard(model, { onOpen: () => openContinuitySheet() }));
 
+  // FASE 17 (PARETO-010): Co-autoría editorial para recuerdos recurrentes
+  if (model.clusters && model.clusters.length > 0) {
+    const cluster = model.clusters[0];
+    wrap.appendChild(
+      buildCoAuthorCard(cluster, { name: character.name }, {
+        onConsolidate: async (c, text) => {
+          try {
+            const updated = applyClusterConsolidation(
+              character,
+              c.entries.map((e) => e.id),
+              text,
+              c.keys
+            );
+            character = await saveCharacterLorebook(
+              character.id,
+              updated.lorebook,
+              character.lorebook,
+              { archive: updated.lorebookArchive }
+            );
+            haptics.action();
+            openLorebookSheet(`Recuerdos sobre "${c.topic}" consolidados y anteriores archivados.`);
+          } catch (err) {
+            openLorebookSheet('No se pudo consolidar la memoria.');
+          }
+        },
+        onDismiss: (c) => {
+          model.clusters = model.clusters.filter((cl) => cl.id !== c.id);
+          openLorebookSheet('Recuerdos conservados por separado.');
+        },
+      })
+    );
+  }
+
   // (3) recuerdos como tarjetas
   const all = character.lorebook || [];
   const preview = loreBudgetPreview(all);
@@ -2138,9 +2247,10 @@ function openLoreDeleteConfirm(entryId) {
 function openLoreAuditSheet() {
   if (!character) return;
   const lore = (character.lorebook || []).slice();
+  const isRawAction = (txt) => /\b(made love|slept together|went to bed|fell asleep|undressed|kissed|cama|dormitorio|dormir|durmieron|hicieron el amor)\b/i.test(txt);
   const candidates = lore.filter((e) => {
     const text = e.content || '';
-    return text.includes('"') || /told\s+\w+:|asked\s+\w+:|said\s+to\s+\w+:/i.test(text);
+    return text.includes('"') || /told\s+\w+:|asked\s+\w+:|said\s+to\s+\w+:/i.test(text) || isRawAction(text);
   });
 
   if (!candidates.length) {
@@ -2208,9 +2318,10 @@ function openLoreAuditSheet() {
 
     try {
       const uName = (settings && settings.user) || 'the user';
-      const prompt = `Rewrite the following chat transcript snippet into ONE short, concise, conceptual memory fact about ${character.name} and ${uName}, focusing on their shared emotional truth. Do NOT use quotes. Do NOT write dialogue. Output ONLY the rewritten sentence, nothing else.\n\nOriginal: ${currentEntry.content}\n\nRewritten:`;
-      const res = await completeOnce(settings, prompt, {
-        url: settings.cpuUrl || settings.url,
+      const prompt = `Rewrite the following memory snippet into ONE short, concise, enduring emotional truth or value shared between ${character.name} and ${uName}. Do NOT describe immediate raw physical actions or dialogue. Focus on their underlying bond, feelings, or meaning. Do NOT use quotes. Output ONLY the rewritten sentence, nothing else.\n\nOriginal: ${currentEntry.content}\n\nRewritten:`;
+      const activeSettings = (await getSettings()) || settings;
+      const targetSettings = bgSettings(activeSettings);
+      const res = await completeOnce(prompt, targetSettings, {
         temp: 0.2,
         maxLen: 90,
       });
@@ -2719,6 +2830,13 @@ function onMenu() {
   // foto", "Editar apariencia" y "Editar" (editor completo), respectivamente.
   // UI-032: "Fondo del chat" se quitó por el mismo motivo — también vive en la ficha ahora.
   wrap.appendChild(menuSection('Personaje y memoria', characterItems));
+
+  // FASE 17 (PARETO-010): Acción rápida para corte de escena / nuevo capítulo
+  wrap.appendChild(
+    menuSection('Continuidad y capítulos', [
+      menuItem('Nuevo capítulo / Corte de escena', () => onNewSceneBreak()),
+    ])
+  );
 
   // MEM-018: no tiene sentido archivar lo que ya está archivado.
   if (!isChatArchived(chat)) {

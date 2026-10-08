@@ -203,16 +203,23 @@ export function formatAppearanceFixed(text, charName, userName, style) {
  * @param {string} userName
  * @returns {string}
  */
-export function formatAppearanceCurrent(textOrAppearance, charName, userName) {
+export function formatAppearanceCurrent(textOrAppearance, charName, userName, opts = {}) {
   let text = '';
   if (textOrAppearance && typeof textOrAppearance === 'object') {
-    const cur = String(textOrAppearance.current || '').replace(/\s+/g, ' ').trim();
+    let cur = String(textOrAppearance.current || '').replace(/\s+/g, ' ').trim();
     const under = String(textOrAppearance.underwear || '').replace(/\s+/g, ' ').trim();
     let acc = String(textOrAppearance.accessories || '').replace(/\s+/g, ' ').trim();
+
+    const isDaytime = opts.dayPart === 'morning' || opts.dayPart === 'afternoon';
+    const isNightwear = /\b(nightgown|teddy|camis[oó]n|pijama|pyjamas|pajamas|negligee|robe|bata de dormir|ropa de dormir)\b/i.test(cur);
+    if (isDaytime && isNightwear) {
+      cur = '';
+    }
+
     let main = '';
     if (cur && under) main = `${cur} over ${under}`;
     else if (cur) main = cur;
-    else if (under) main = under;
+    else if (under && !isDaytime) main = under;
 
     let accText = '';
     if (acc) {
@@ -276,7 +283,8 @@ function headBlock(card, settings, chatScenario, loreBlock, relationship = null,
   parts.push(
     `Roleplay chat between ${N} and ${U}. Stay in character as ${N}. ` +
       `Write only ${N}'s next reply, using *asterisks* for actions and plain text for speech. ` +
-      `${N}'s replies always include ${N}'s own spoken words, and ${N}'s feelings come through mostly in what ${N} says.`
+      `${N}'s replies always include ${N}'s own spoken words, and ${N}'s feelings come through mostly in what ${N} says. ` +
+      `Stay grounded in the physical setting and distance established in the scene: if communicating remotely (such as a phone call, voice call or text), all actions must remain strictly on ${N}'s own physical side without impossible in-person contact (such as touching, kissing, or physical presence).`
   );
 
   if (card.description) parts.push(`${N}'s description:\n${sub(card.description)}`);
@@ -365,7 +373,8 @@ function continuityPadding(continuity) {
 // TIME-001: referencia temporal gruesa ("It is a Tuesday morning."), siempre la ÚLTIMA línea del bloque final. Su largo cambia según
 // la franja/día, y un bloque final más corto o más largo movería la ventana del historial (ver CONTINUITY_RESERVE_CHARS): por eso
 // se reserva un espacio fijo, tenga la frase el largo que tenga (la más larga posible ronda los 30 caracteres con corchetes).
-export const TIME_RESERVE_CHARS = 48;
+// TIME-001 / FASE 15: referencia temporal objetiva con fecha, hora local y franja.
+export const TIME_RESERVE_CHARS = 90;
 
 // HUM-001: reserva fija de la nota de presencia (ánimo + ritmo + observaciones; tope de la nota en api/presence.js: `PRESENCE_NOTE_MAX` + 10 de corchetes y
 // salto). HUM-002 la subió de 440 a 650 (nota de hasta 640) para sumar la instrucción de registro emocional, los pendientes y la vida propia; un test ata ambas.
@@ -463,7 +472,8 @@ export function buildPlainPrompt(card, messages, settings, chatScenario = '', lo
   const continuity = formatContinuityBlock(extras && extras.continuity);
   const timeNote = String((extras && extras.timeOfDay) || '').trim();
   const presenceNote = String((extras && extras.presence) || '').trim();
-  const topic = endBlock(topicBlock, varietyNote, continuity, formatAppearanceCurrent(extras && extras.appearance, N, U), timeNote, presenceNote);
+  const appDayPart = (extras && extras.dayPart) || '';
+  const topic = endBlock(topicBlock, varietyNote, continuity, formatAppearanceCurrent(extras && extras.appearance, N, U, { dayPart: appDayPart }), timeNote, presenceNote);
   const budget = historyBudgetChars(settings, head.length, post.length, cue.length, topic.length + continuityPadding(continuity) + timePadding(timeNote) + presencePadding(presenceNote));
 
   const lines = messages.map((m) => `${m.role === 'user' ? U : N}: ${m.text}`);
@@ -516,7 +526,8 @@ export function buildChatMessages(card, messages, settings, chatScenario = '', l
   const continuity = formatContinuityBlock(extras && extras.continuity);
   const timeNote = String((extras && extras.timeOfDay) || '').trim();
   const presenceNote = String((extras && extras.presence) || '').trim();
-  const topic = endBlock(topicBlock, varietyNote, continuity, formatAppearanceCurrent(extras && extras.appearance, N, U), timeNote, presenceNote);
+  const appDayPart = (extras && extras.dayPart) || '';
+  const topic = endBlock(topicBlock, varietyNote, continuity, formatAppearanceCurrent(extras && extras.appearance, N, U, { dayPart: appDayPart }), timeNote, presenceNote);
   const budget = historyBudgetChars(settings, head.length, topic.length + continuityPadding(continuity) + timePadding(timeNote) + presencePadding(presenceNote));
   const kept = stableFront(pickHistory(messages, budget, (m) => m.text.length), messages.length);
 
@@ -549,7 +560,9 @@ export function buildChatMessages(card, messages, settings, chatScenario = '', l
   // `gendefaults` del servidor NO se aplica si la petición trae su propio `stop`
   // (medido en FMT-001), y sin él el modelo a veces responde en varios párrafos.
   // Formato Nomi = un solo párrafo por turno del personaje.
-  const stop = ['\n', `\n${U}:`];
+  // FASE 18 (PARETO-011): Desacoplamiento generativo de Magnum 12B.
+  // Se retira la guillotina de '\n' para que el modelo no se corte a mitad de frase.
+  const stop = [`\n${U}:`, `${U}:`, `\n${N}:`, '<|im_end|>', '<|end_of_text|>', '<|eot_id|>'];
 
   return { messages: out, stop };
 }

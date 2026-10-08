@@ -193,5 +193,12 @@ export function formatMessage(text, opts) {
   // capturar asteriscos aislados como en "5 * 3".
   s = s.replace(/\*(\S[^*]*)$/, '<em>$1</em>');
 
+  // FASE 18 (PARETO-011): Formato Nomi visual compacto.
+  // Colapsa saltos de línea de la respuesta del personaje en un solo párrafo fluido,
+  // evitando los bloques espaciados tipo SillyTavern.
+  if (opts && opts.role === 'char') {
+    return s.replace(/[\r\n]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
+  }
+
   return s.replace(/\n/g, '<br>');
 }

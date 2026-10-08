@@ -1,7 +1,7 @@
 // www/js/ui/home.js
 // Vista de lista de personajes: saludo según la hora con el estado de conexión, lista, búsqueda y carga de character cards.
 
-import { getSettings, listCharacters, listChats, deleteCharacter, activeChats } from '../state.js';
+import { getSettings, listCharacters, listChats, deleteCharacter, activeChats, mergeCharacterChats } from '../state.js';
 import { retryPendingArchives } from './chat-archive.js';
 import { maybeSynthesizeIdentities } from './identity.js';
 import { maybeWriteMailboxNotes, openMailbox, unreadCount } from './mailbox.js';
@@ -175,7 +175,11 @@ async function buildLastPreviews(list) {
     list.map(async (character) => {
       try {
         // MEM-018: un episodio archivado no cuenta para "Continuar" ni para la vista previa de la tarjeta.
-        const chats = activeChats(await listChats(character.id));
+        let chats = activeChats(await listChats(character.id));
+        if (chats.length > 1) {
+          const merged = await mergeCharacterChats(character.id);
+          chats = [merged];
+        }
         chatsByCharacter[character.id] = chats;
         return [character.id, chats.length ? chats[0].last : ''];
       } catch {
@@ -231,11 +235,11 @@ function renderRow(character) {
   // UI-022: TODA la tarjeta es "Continuar" (entra al chat más reciente; sin chats, `continueTarget` cae en la lista, que
   // crea uno, UI-013). El retrato es su propia zona: abre la lista de chats. Borrar = pulsación larga sobre la tarjeta
   // (con confirmación), ya no hay papelera al lado de "Continuar".
-  const openChats = () => app.navigate('chats', { characterId: character.id });
   const openLatest = () => {
     const target = continueTarget(character.id, chatsByCharacter[character.id]);
     app.navigate(target.view, target.params);
   };
+  const openChats = openLatest;
 
   const longPress = createLongPress({
     onLong: () => {
@@ -260,7 +264,7 @@ function renderRow(character) {
   avatar.className = 'home-card__avatar';
   avatar.setAttribute('role', 'button');
   avatar.tabIndex = 0;
-  avatar.setAttribute('aria-label', `Episodios de ${character.name}`);
+  avatar.setAttribute('aria-label', `Chat con ${character.name}`);
   if (character.avatar) {
     const img = document.createElement('img');
     img.src = character.avatar;

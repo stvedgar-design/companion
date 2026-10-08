@@ -60,6 +60,46 @@ export function moodHeadText(id) {
   return m ? `ánimo ${m.label}` : '';
 }
 
+// FASE 16: Batería de vocabulario y clústeres emocionales 100% en inglés (gender-neutral)
+export const MOOD_CLUSTERS = Object.freeze({
+  cozy: ['Affectionate', 'Warm', 'Tender', 'Loving', 'Sweet', 'Gentle', 'Fond', 'Close to you'],
+  playful: ['Playful', 'Teasing', 'Mischievous', 'Cheeky', 'Flirty', 'Spirited', 'Playfully bold'],
+  calm: ['Calm', 'Peaceful', 'Serene', 'At ease', 'Relaxed', 'Quietly content', 'Restful'],
+  wistful: ['Thoughtful', 'Wistful', 'Nostalgic', 'Reflective', 'Pensive', 'Daydreaming', 'Sentimental'],
+  tired: ['Sleepy', 'Drowsy', 'Tired', 'Cozy-tired', 'Drifting off', 'Worn out'],
+  lively: ['Bright', 'Lively', 'Cheerful', 'Radiant', 'Energetic', 'Bubbly', 'Upbeat'],
+});
+
+export const FEELING_CLUSTERS = Object.freeze({
+  longing: ['Longing for you', 'Missing you', 'Thinking of you'],
+  tenderness: ['Deeply touched', 'Soft-hearted', 'Tender'],
+  desire: ['Captivated', 'Intense', 'Vulnerable'],
+  affection: ['Warmly attached', 'Loving', 'Close to you'],
+  gratitude: ['Grateful', 'Warmly appreciative', 'Thankful'],
+  nostalgia: ['Nostalgic', 'Reminiscing', 'Reflective'],
+  joy: ['Joyful', 'Delighted', 'Happy'],
+  calm: ['Serene', 'At peace', 'Content'],
+  playfulness: ['Teasing', 'Playful', 'Amused'],
+  warmth: ['Warm-hearted', 'Comforted', 'Gentle'],
+  hope: ['Hopeful', 'Expectant', 'Looking forward'],
+  wonder: ['In awe', 'Spellbound', 'Amazed'],
+});
+
+export function moodDisplayStatus(id, seed = 0) {
+  const cluster = MOOD_CLUSTERS[id];
+  if (!cluster || !cluster.length) return '';
+  const idx = Math.abs(seed) % cluster.length;
+  return cluster[idx];
+}
+
+export function feelingDisplayStatus(id, seed = 0) {
+  const key = typeof id === 'string' ? id.toLowerCase().trim() : '';
+  const cluster = FEELING_CLUSTERS[key];
+  if (!cluster || !cluster.length) return '';
+  const idx = Math.abs(seed) % cluster.length;
+  return cluster[idx];
+}
+
 // Hash simple y estable (FNV-1a) para el "día" de cada personaje.
 function hash(str) {
   let h = 2166136261;
@@ -209,7 +249,7 @@ function pickWeighted(weights, rnd) {
  */
 export function pickRhythm({ userText = '', lastCharText = '', moodId = '', emotionId = '', rnd = Math.random } = {}) {
   const words = wordCount(userText);
-  const base = words <= 4 ? { brief: 0.6, medium: 0.35, full: 0.05 } : words <= 20 ? { brief: 0.25, medium: 0.55, full: 0.2 } : { brief: 0.1, medium: 0.45, full: 0.45 };
+  const base = words <= 4 ? { brief: 0.6, medium: 0.35, full: 0.05 } : words <= 20 ? { brief: 0.35, medium: 0.55, full: 0.1 } : { brief: 0.15, medium: 0.55, full: 0.3 };
   const w = { ...base };
   if (moodId === 'tired') w.brief *= 1.5;
   if (moodId === 'lively' || moodId === 'cozy') w.full *= 1.3;
@@ -304,10 +344,24 @@ export function observations({ messages = [], now = new Date(), userName = 'User
 
   if (gapMs >= 4 * HOUR && !followUp && rnd() < 0.6) { // con un pendiente por preguntar no se suma otro «volver a algo de antes»
     const candidates = [];
-    const memories = (Array.isArray(lorebook) ? lorebook : []).map((e) => clip(e && e.content, 110)).filter(Boolean);
+    const part = dayPart(now.getHours());
+    const isDaytime = part === 'morning' || part === 'afternoon';
+    const isBedtime = (txt) => /\b(bed|bedroom|slept|sleep|sleeping|cama|dormitorio|dormir|durmiendo)\b/i.test(txt);
+
+    const memories = (Array.isArray(lorebook) ? lorebook : [])
+      .map((e) => clip(e && e.content, 110))
+      .filter(Boolean)
+      .filter((txt) => !isDaytime || !isBedtime(txt));
+
     if (memories.length) candidates.push(memories[Math.floor(rnd() * memories.length)]);
     for (let i = lastUserIdx - 1; i >= 0; i--) {
-      if (messages[i].role === 'user' && wordCount(messages[i].text) >= 4) { candidates.push(clip(messages[i].text, 110)); break; }
+      if (messages[i].role === 'user' && wordCount(messages[i].text) >= 4) {
+        const uText = clip(messages[i].text, 110);
+        if (!isDaytime || !isBedtime(uText)) {
+          candidates.push(uText);
+          break;
+        }
+      }
     }
     if (candidates.length) {
       const pick = candidates[Math.floor(rnd() * candidates.length)];

@@ -563,6 +563,9 @@ function sanitizeChat(raw) {
     // MEM-018: 0 = episodio activo (también para todo registro guardado antes de este contrato).
     archivedAt: Number.isFinite(raw.archivedAt) && raw.archivedAt > 0 ? raw.archivedAt : 0,
     archivePendingAt: Number.isFinite(raw.archivePendingAt) && raw.archivePendingAt > 0 ? raw.archivePendingAt : 0,
+    // FASE 17 (PARETO-010): Fusión en chat único continuo y cierre definitivo de archivados
+    mergedInto: typeof raw.mergedInto === 'string' && raw.mergedInto ? raw.mergedInto : '',
+    archiveProcessedAt: Number.isFinite(raw.archiveProcessedAt) ? raw.archiveProcessedAt : 0,
   };
 }
 
@@ -578,7 +581,7 @@ export function isChatArchivePending(chat) {
 
 /** MEM-018: los episodios que van en la lista normal (los pendientes de archivar siguen ahí, con su indicador). */
 export function activeChats(chats) {
-  return (Array.isArray(chats) ? chats : []).filter((c) => c && !isChatArchived(c));
+  return (Array.isArray(chats) ? chats : []).filter((c) => c && !isChatArchived(c) && !c.mergedInto);
 }
 
 /** MEM-018: los episodios archivados, el más recién archivado primero. */
@@ -1033,6 +1036,120 @@ async function touchCharacterInteraction(characterId, now = Date.now()) {
     );
   }
 
+  // FASE 17 (PARETO-010): Chat Único Continuo y Fusión de Episodios
+  async function getActiveChat(characterId) {
+    const character = await getCharacter(characterId);
+    if (!character) throw new Error('El personaje no existe.');
+    const all = await listChats(characterId);
+    const active = activeChats(all);
+    if (!active.length) {
+      return createChat(characterId, { title: 'Chat continuo' });
+    }
+    if (active.length === 1) {
+      return active[0];
+    }
+    return mergeCharacterChats(characterId);
+  }
+
+  async function mergeCharacterChats(characterId) {
+    return withChatLock('merge_' + characterId, async () => {
+      const all = await listChats(characterId);
+      const active = activeChats(all).sort((a, b) => ((a.updated || a.created || 0) - (b.updated || b.created || 0)));
+      if (!active.length) {
+        return createChat(characterId, { title: 'Chat continuo' });
+      }
+      if (active.length === 1) {
+        return active[0];
+      }
+
+      const targetChat = active[active.length - 1];
+      const mergedMessages = [];
+      const ops = [];
+
+      for (let i = 0; i < active.length; i++) {
+        const c = active[i];
+        const msgs = (await getChatMessages(c.id)) || [];
+        if (msgs.length > 0) {
+          if (i > 0 && mergedMessages.length > 0) {
+            mergedMessages.push({
+              role: 'system',
+              kind: 'scene_break',
+              text: c.title ? "Capítulo: " + c.title : "Capítulo — " + new Date(c.created || Date.now()).toLocaleDateString(),
+              ts: c.created || Date.now(),
+            });
+          }
+          mergedMessages.push(...msgs);
+        }
+        if (c.id !== targetChat.id) {
+          const updatedSecondary = { ...c, mergedInto: targetChat.id, updated: Date.now() };
+          ops.push({ type: 'put', store: 'chatMeta', key: c.id, value: updatedSecondary });
+        }
+      }
+
+      const updatedTarget = {
+        ...targetChat,
+        title: targetChat.title || 'Chat continuo',
+        last: previewLast(mergedMessages),
+        updated: Date.now(),
+      };
+      ops.push({ type: 'put', store: 'chatMeta', key: targetChat.id, value: updatedTarget });
+      ops.push({ type: 'put', store: 'chatMsgs', key: targetChat.id, value: mergedMessages });
+
+      await backend.atomic(ops);
+      return updatedTarget;
+    });
+  }
+
+  async function insertSceneBreak(chatId, opts = {}) {
+    return withChatLock(chatId, async () => {
+      const chat = await getChat(chatId);
+      if (!chat) throw new Error('El chat no existe.');
+      const msgs = (await getChatMessages(chatId)) || [];
+      const now = Date.now();
+      const text = String((opts && opts.text) || 'Corte de escena').trim() || 'Corte de escena';
+      const breakMsg = {
+        role: 'system',
+        kind: 'scene_break',
+        text,
+        ts: now,
+      };
+      const updatedMsgs = [...msgs, breakMsg];
+      const updatedChat = {
+        ...chat,
+        ...(opts && opts.scenario !== undefined ? { scenario: String(opts.scenario).trim() } : {}),
+        last: breakMsg.text,
+        updated: now,
+      };
+      await backend.atomic([
+        { type: 'put', store: 'chatMsgs', key: chatId, value: updatedMsgs },
+        { type: 'put', store: 'chatMeta', key: chatId, value: updatedChat },
+      ]);
+      return { chat: updatedChat, message: breakMsg };
+    });
+  }
+
+  async function archiveChatMemoriesPass(characterId, extractFn) {
+    const all = await listChats(characterId);
+    const archived = archivedChats(all);
+    const results = [];
+    for (const c of archived) {
+      if (typeof extractFn === 'function') {
+        const msgs = (await getChatMessages(c.id)) || [];
+        if (msgs.length > 0) {
+          try {
+            await extractFn(c, msgs);
+          } catch {
+            // tolera caídas de red o servidor
+          }
+        }
+      }
+      const updated = { ...c, archiveProcessedAt: Date.now() };
+      await backend.put('chatMeta', c.id, updated);
+      results.push(c.id);
+    }
+    return results;
+  }
+
   // Migra chats del formato viejo (uno por personaje, guardado bajo el id
   // del propio personaje en el store "chats") al formato nuevo. Segura de
   // correr más de una vez: si el chat destino ya existe, no hace nada.
@@ -1214,6 +1331,10 @@ async function touchCharacterInteraction(characterId, now = Date.now()) {
     saveChatContinuity,
     saveChatArchive,
     deleteChat,
+    getActiveChat,
+    mergeCharacterChats,
+    insertSceneBreak,
+    archiveChatMemoriesPass,
     migrateLegacyChats,
     exportBackup,
     importBackup,
@@ -1362,6 +1483,10 @@ export const markChatLorebookProgress = (...args) => getDefaultInstance().markCh
 export const saveChatContinuity = (...args) => getDefaultInstance().saveChatContinuity(...args);
 export const saveChatArchive = (...args) => getDefaultInstance().saveChatArchive(...args);
 export const deleteChat = (...args) => getDefaultInstance().deleteChat(...args);
+export const getActiveChat = (...args) => getDefaultInstance().getActiveChat(...args);
+export const mergeCharacterChats = (...args) => getDefaultInstance().mergeCharacterChats(...args);
+export const insertSceneBreak = (...args) => getDefaultInstance().insertSceneBreak(...args);
+export const archiveChatMemoriesPass = (...args) => getDefaultInstance().archiveChatMemoriesPass(...args);
 export const migrateLegacyChats = (...args) => getDefaultInstance().migrateLegacyChats(...args);
 export const exportBackup = (...args) => getDefaultInstance().exportBackup(...args);
 export const importBackup = (...args) => getDefaultInstance().importBackup(...args);

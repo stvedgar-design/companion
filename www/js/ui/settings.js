@@ -122,9 +122,9 @@ export function openSettings(app) {
       <div class="field">
         <div class="field__label">Tamaño de la foto junto a los mensajes</div>
         <div class="appearance-skins" id="settings-avatarsize">
-          ${CHAT_AVATAR_SIZES.map((size, i) => `<button class="appearance-skin" type="button" data-avatar-size="${size}">${SIZE_LABELS[i]}</button>`).join('')}
+          ${CHAT_AVATAR_SIZES.map((sz, i) => `<button class="appearance-skin" type="button" data-avatar-size="${sz}">${SIZE_LABELS[i]}</button>`).join('')}
         </div>
-        <div class="field__hint">La foto de perfil del personaje junto a sus burbujas de diálogo.</div>
+        <div class="field__hint">El avatar principal se ubica en la barra superior; este ajuste calibra vistas compactas.</div>
       </div>
       <div class="field">
         <label class="field__label" style="display:flex;align-items:center;gap:var(--space-2, 8px)">

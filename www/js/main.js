@@ -37,6 +37,7 @@ const app = {
   closeSheet: shell.closeSheet,
   confirmDialog: shell.confirmDialog,
 };
+if (typeof window !== 'undefined') window.app = app;
 
 /**
  * Cambia de vista: oculta la actual, activa la nueva y actualiza el

@@ -1,7 +1,7 @@
 // tests/state.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createState, sanitizeLoreUsed, sanitizeContinuity, MESSAGE_FONT_SIZES, CHAT_AVATAR_SIZES, migrateMessageFontSize } from '../www/js/state.js';
+import { createState, activeChats, sanitizeLoreUsed, sanitizeContinuity, MESSAGE_FONT_SIZES, CHAT_AVATAR_SIZES, migrateMessageFontSize } from '../www/js/state.js';
 import { cleanStoredLorebook } from '../www/js/api/lorebook.js';
 
 // ---------- backend en memoria, implementa el mismo contrato que el backend de IndexedDB ----------
@@ -1291,4 +1291,76 @@ test('FASE 11: hapticsEnabled es true por defecto, solo false estricto lo apaga 
 
   const old = await state.saveSettings({});
   assert.strictEqual(old.hapticsEnabled, true);
+});
+
+
+test('FASE 17: getActiveChat devuelve el chat continuo único (lo crea si no hay ninguno)', async () => {
+  const state = createState(createMemoryBackend());
+  await state.saveCharacter(makeCharacter({ id: 'nora', name: 'Nora' }));
+
+  const chat = await state.getActiveChat('nora');
+  assert.ok(chat);
+  assert.equal(chat.characterId, 'nora');
+  assert.equal(chat.title, 'Chat continuo');
+
+  const same = await state.getActiveChat('nora');
+  assert.equal(same.id, chat.id);
+});
+
+test('FASE 17: mergeCharacterChats fusiona múltiples chats en un solo flujo continuo con scene_break', async () => {
+  const state = createState(createMemoryBackend());
+  await state.saveCharacter(makeCharacter({ id: 'nora', name: 'Nora' }));
+
+  const c1 = await state.createChat('nora', { title: 'Episodio 1' });
+  await new Promise((r) => setTimeout(r, 5));
+  const c2 = await state.createChat('nora', { title: 'Episodio 2' });
+
+  await state.saveChatMessages(c1.id, [
+    { role: 'user', text: 'Hola Nora', ts: 100 },
+    { role: 'char', text: 'Hola Edgar', ts: 101 },
+  ]);
+  await state.saveChatMessages(c2.id, [
+    { role: 'user', text: 'Cómo estás hoy?', ts: 200 },
+    { role: 'char', text: 'Muy bien contigo', ts: 201 },
+  ]);
+
+  const active = await state.getActiveChat('nora');
+  assert.equal(active.id, c2.id); // el último es el destino
+  assert.ok(!active.mergedInto);
+
+  // Verificamos los mensajes fusionados
+  const msgs = await state.getChatMessages(active.id);
+  assert.equal(msgs.length, 5); // 2 de c1 + 1 scene_break + 2 de c2
+  assert.equal(msgs[0].text, 'Hola Nora');
+  assert.equal(msgs[1].text, 'Hola Edgar');
+  assert.equal(msgs[2].kind, 'scene_break');
+  assert.ok(msgs[2].text.includes('Episodio 2'));
+  assert.equal(msgs[3].text, 'Cómo estás hoy?');
+  assert.equal(msgs[4].text, 'Muy bien contigo');
+
+  // c1 quedó marcado con mergedInto y excluido de activeChats
+  const allChats = await state.listChats('nora');
+  const oldC1 = allChats.find((c) => c.id === c1.id);
+  assert.equal(oldC1.mergedInto, c2.id);
+  assert.equal(activeChats(allChats).length, 1);
+  assert.equal(activeChats(allChats)[0].id, c2.id);
+});
+
+test('FASE 17: insertSceneBreak añade un separador de capítulo y actualiza escenario si corresponde', async () => {
+  const state = createState(createMemoryBackend());
+  await state.saveCharacter(makeCharacter({ id: 'nora', name: 'Nora' }));
+  const chat = await state.getActiveChat('nora');
+
+  const { chat: updatedChat, message } = await state.insertSceneBreak(chat.id, {
+    text: 'A la mañana siguiente en la cafetería',
+    scenario: 'Coffee shop at 9 AM',
+  });
+
+  assert.equal(message.kind, 'scene_break');
+  assert.equal(message.text, 'A la mañana siguiente en la cafetería');
+  assert.equal(updatedChat.scenario, 'Coffee shop at 9 AM');
+
+  const msgs = await state.getChatMessages(chat.id);
+  assert.equal(msgs.length, 1);
+  assert.equal(msgs[0].kind, 'scene_break');
 });

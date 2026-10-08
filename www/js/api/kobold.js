@@ -4,7 +4,7 @@
 // respuestas en streaming. No guarda nada en localStorage/IndexedDB.
 
 import { buildPlainPrompt, buildChatMessages, cleanReply, trimPartial, FORMAT_PREFILL } from './prompt.js';
-import { timeOfDayNote } from './timeofday.js';
+import { timeOfDayNote, dayPart } from './timeofday.js';
 import { buildPresence } from './presence.js';
 import { identityForPrompt } from './identity-synthesis.js';
 import { buildLoreBlocks } from './lorebook.js';
@@ -162,11 +162,9 @@ export async function completeOnce(prompt, settings, opts = {}) {
   const aborted = () => !!(signal && signal.aborted);
   if (aborted()) throw makeError('Cancelado.', 'ABORTED');
 
-  const isSecondary = !!(opts && opts.url && opts.url !== settings.url);
-  const targetCtx = isSecondary ? Math.min(settings.ctx || 4096, 4096) : (settings.ctx || 4096);
   const body = {
     prompt,
-    max_context_length: targetCtx,
+    max_context_length: settings.ctx,
     max_length: opts.maxLen || settings.maxLen,
     temperature: typeof opts.temp === 'number' ? opts.temp : settings.temp,
     top_p: TOP_P,
@@ -393,7 +391,7 @@ export async function generateReply({ character, chat, messages, settings, signa
   const identity = '';
   // HUM-001: ánimo + ritmo + observaciones (api/presence.js), una nota corta al FINAL; apagable con `Settings.humanTouch`. `rnd` inyectable para tests.
   const presence = settings.humanTouch === true ? buildPresence({ character, messages, settings, now, rnd }) : null;
-  const extras = { ...(continuity ? { continuity } : {}), relationship, ...(appearance ? { appearance } : {}), ...(timeOfDay ? { timeOfDay } : {}), ...(identity ? { identity } : {}), ...(presence ? { presence: presence.note } : {}) };
+  const extras = { ...(continuity ? { continuity } : {}), relationship, ...(appearance ? { appearance } : {}), ...(timeOfDay ? { timeOfDay } : {}), dayPart: dayPart(now.getHours()), ...(identity ? { identity } : {}), ...(presence ? { presence: presence.note } : {}) };
   const moodInfo = presence ? presence.mood : null;
   const lifeInfo = presence ? presence.life : null; // HUM-005: si el personaje sacó su día en este turno (chat.js lo anota después de guardar)
   const followUpInfo = presence ? presence.followUp : null; // HUM-004: el pendiente que se preguntó en este turno (chat.js lo marca después de guardar)

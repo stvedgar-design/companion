@@ -244,12 +244,12 @@ test('buildChatMessages no antepone relleno si el historial ya empieza en user',
   assert.equal(out[1].content, 'Hola');
 });
 
-test('buildChatMessages incluye post_history_instructions en el system y usa stop con salto de línea y usuario', () => {
+test('buildChatMessages incluye post_history_instructions en el system y usa stop sin guillotina de salto de línea (FASE 18)', () => {
   const card = makeCard({ post_history_instructions: 'Sé breve, {{user}}.' });
   const { messages: out, stop } = buildChatMessages(card, [], makeSettings());
   assert.ok(out[0].content.includes('Sé breve, Edgar.'));
-  // FMT-001: "\n" fuerza un solo párrafo también en /v1/chat/completions.
-  assert.deepEqual(stop, ['\n', '\nEdgar:']);
+  // FASE 18 (PARETO-011): stop sin guillotina de salto de línea
+  assert.deepEqual(stop, ['\nEdgar:', 'Edgar:', '\nLuna:', '<|im_end|>', '<|end_of_text|>', '<|eot_id|>']);
 });
 
 test('buildChatMessages recorta el historial y conserva lo más reciente', () => {
@@ -345,7 +345,7 @@ test('MEM-004: sin entradas el prompt es IDÉNTICO al de antes (modo texto simpl
   const { card, settings, msgs } = fixture();
   // Valores literales producidos por la versión anterior de prompt.js (antes de MEM-004).
   const plain = {
-    prompt: "Roleplay chat between Luna and Edgar. Stay in character as Luna. Write only Luna's next reply, using *asterisks* for actions and plain text for speech. Luna's replies always include Luna's own spoken words, and Luna's feelings come through mostly in what Luna says.\n\nLuna's description:\nUna guardiana de la torre.\n\nLuna's personality: Curiosa\n\nScenario: Una torre junto al mar\n\n[Start of chat]\nLuna: *Sonrío.* Hola.\nEdgar: Hola Luna, ¿cómo estás?\nLuna:",
+    prompt: "Roleplay chat between Luna and Edgar. Stay in character as Luna. Write only Luna's next reply, using *asterisks* for actions and plain text for speech. Luna's replies always include Luna's own spoken words, and Luna's feelings come through mostly in what Luna says. Stay grounded in the physical setting and distance established in the scene: if communicating remotely (such as a phone call, voice call or text), all actions must remain strictly on Luna's own physical side without impossible in-person contact (such as touching, kissing, or physical presence).\n\nLuna's description:\nUna guardiana de la torre.\n\nLuna's personality: Curiosa\n\nScenario: Una torre junto al mar\n\n[Start of chat]\nLuna: *Sonrío.* Hola.\nEdgar: Hola Luna, ¿cómo estás?\nLuna:",
     stop: ['\nEdgar:', 'Edgar:', '\nLuna:']
   };
   assert.deepEqual(buildPlainPrompt(card, msgs, settings), plain);
@@ -353,12 +353,12 @@ test('MEM-004: sin entradas el prompt es IDÉNTICO al de antes (modo texto simpl
 
   const chat = {
     messages: [
-      { role: 'system', content: "Roleplay chat between Luna and Edgar. Stay in character as Luna. Write only Luna's next reply, using *asterisks* for actions and plain text for speech. Luna's replies always include Luna's own spoken words, and Luna's feelings come through mostly in what Luna says.\n\nLuna's description:\nUna guardiana de la torre.\n\nLuna's personality: Curiosa\n\nScenario: Una torre junto al mar" },
+      { role: 'system', content: "Roleplay chat between Luna and Edgar. Stay in character as Luna. Write only Luna's next reply, using *asterisks* for actions and plain text for speech. Luna's replies always include Luna's own spoken words, and Luna's feelings come through mostly in what Luna says. Stay grounded in the physical setting and distance established in the scene: if communicating remotely (such as a phone call, voice call or text), all actions must remain strictly on Luna's own physical side without impossible in-person contact (such as touching, kissing, or physical presence).\n\nLuna's description:\nUna guardiana de la torre.\n\nLuna's personality: Curiosa\n\nScenario: Una torre junto al mar" },
       { role: 'user', content: '[Start of roleplay]' },
       { role: 'assistant', content: '*Sonrío.* Hola.' },
       { role: 'user', content: 'Hola Luna, ¿cómo estás?' }
     ],
-    stop: ['\n', '\nEdgar:']
+    stop: ['\nEdgar:', 'Edgar:', '\nLuna:', '<|im_end|>', '<|end_of_text|>', '<|eot_id|>']
   };
   assert.deepEqual(buildChatMessages(card, msgs, settings), chat);
   assert.deepEqual(buildChatMessages(card, msgs, settings, '', '', ''), chat);
@@ -825,4 +825,17 @@ test('FASE 8: userAppearance se inyecta en la cabecera fija del prompt (system) 
   ];
   const { messages: turn2 } = buildChatMessages(card, msgsLonger, settingsWithApp);
   assert.equal(withApp[0].content, turn2[0].content, 'la cabecera del prompt no cambia entre turnos del mismo chat');
+});
+
+import { formatMessage } from '../www/js/ui/format.js';
+
+test('FASE 18: formatMessage colapsa saltos de línea en respuestas del personaje a un solo párrafo continuo Nomi', () => {
+  const multiline = '*deja su pincel sobre la mesa*\n\nHacía tiempo que no te veía tan concentrado.\n*sonríe con ternura*';
+  const formatted = formatMessage(multiline, { role: 'char' });
+  assert.equal(formatted, '<em>deja su pincel sobre la mesa</em> Hacía tiempo que no te veía tan concentrado. <em>sonríe con ternura</em>');
+  assert.ok(!formatted.includes('<br>'), 'no debe contener saltos <br>');
+
+  const userText = 'Línea 1\nLínea 2';
+  const userFormatted = formatMessage(userText, { role: 'user' });
+  assert.equal(userFormatted, 'Línea 1<br>Línea 2', 'mensajes de usuario preservan <br>');
 });

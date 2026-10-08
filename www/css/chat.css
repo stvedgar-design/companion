@@ -10,23 +10,23 @@
    Usa variables de tokens.css y clases de base.css; no redefine base.css,
    no usa la unidad vh (solo la variable --vh) y no usa position: fixed. */
 
-/* --- barra superior: limpia, sin avatar propio (UI-028) — solo el nombre, que abre la ficha (UI-027) --- */
+/* --- barra superior: avatar propio compacto (38px) + nombre + estado (FASE 16) --- */
 .chat-head {
   flex: 1;
   min-width: 0;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
 }
-/* UI-027: el nombre abre la ficha del personaje; la flechita es el "indicio discreto" de que se puede tocar. */
+/* El bloque interactivo [avatar + nombre + estado] abre la ficha del personaje */
 .chat-head__name {
   flex: 1;
   min-width: 0;
   display: flex;
-  flex-direction: column; /* HUM-001: el nombre y, debajo, el ánimo ("escribiendo…" mientras responde) */
+  flex-direction: row;
   align-items: center;
-  justify-content: center;
-  gap: 0;
+  justify-content: flex-start;
+  gap: var(--space-2, 8px);
   min-height: 44px;
   padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-md);
@@ -35,6 +35,33 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  text-align: left;
+}
+.chat-head__avatar {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--grad-avatar);
+  display: grid;
+  place-items: center;
+}
+.chat-head__avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.chat-head__avatar span {
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+}
+.chat-head__info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
 }
 .chat-head__nm {
   max-width: 100%;
@@ -48,15 +75,16 @@
   font-weight: 400;
   margin-left: 2px;
 }
-/* HUM-001: ánimo del personaje bajo el nombre, discreto; "escribiendo…" va un poco más vivo. */
+/* Estado del personaje en inglés directo (Affectionate, Teasing, typing…) */
 .chat-head__sub {
   font-size: var(--fs-xs, 12px);
   font-weight: 400;
   line-height: 1.1;
   color: var(--color-muted);
+  font-family: var(--font-ui, sans-serif);
 }
 .chat-head__sub[hidden] { display: none; }
-.chat-head__sub--typing { color: var(--color-accent-2, var(--color-muted)); }
+.chat-head__sub--typing { color: var(--color-accent-2, var(--color-muted)); font-weight: 500; }
 .chat-head__name:active { background: var(--color-surface-2); transform: scale(0.98); transition: transform 0.08s ease; }
 .chat-head__name:focus-visible { outline: 2px solid var(--color-accent-2); outline-offset: 2px; }
 
@@ -86,9 +114,9 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  /* FASE 12 (Efecto Talkie): máscara GPU aplicada EXCLUSIVAMENTE a las burbujas de mensajes (desvanecimiento más abajo para proteger rostro) */
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, transparent 35%, rgba(0, 0, 0, 0.2) 42%, rgba(0, 0, 0, 0.7) 48%, black 54%, black 100%);
-  mask-image: linear-gradient(to bottom, transparent 0%, transparent 35%, rgba(0, 0, 0, 0.2) 42%, rgba(0, 0, 0, 0.7) 48%, black 54%, black 100%);
+  /* FASE 16 (Benchmark Talkie/Nomi): máscara GPU compacta que protege el rostro del companion y libera +220px de lectura */
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, transparent 16%, rgba(0, 0, 0, 0.4) 22%, black 28%, black 100%);
+  mask-image: linear-gradient(to bottom, transparent 0%, transparent 16%, rgba(0, 0, 0, 0.4) 22%, black 28%, black 100%);
   scroll-padding-bottom: calc(var(--composer-h, 60px) + var(--sab, 0px));
 }
 .chat-messages {
@@ -109,7 +137,7 @@
 .chat-row {
   display: flex;
   flex-direction: column;
-  max-width: 82%;
+  max-width: 86%;
 }
 /* UI-001: el navegador no calcula ni pinta las filas fuera de pantalla (el costo pasa a ser proporcional a lo visible, no al total
    del chat). `auto` en contain-intrinsic-size recuerda la altura real de cada fila ya vista, para que la barra de scroll no salte. */
@@ -121,51 +149,60 @@
   }
 }
 .chat-row--user { align-self: flex-end; align-items: flex-end; }
-/* UI-028: la fila del personaje pasa a ser una fila horizontal (avatar + burbuja), alineada arriba. El
-   max-width crece EXACTAMENTE lo que ocupan el avatar y el hueco entre avatar y burbuja, así la burbuja en
-   sí conserva el mismo ancho útil que antes (88 % del contenedor) en vez de perder ese espacio — el hueco
-   que se "gasta" es el margen vacío que antes quedaba sin usar a la derecha, nunca el de la burbuja. */
-/* UI-038: el tamaño de la foto se mide en veces el tamaño del texto (--msg-font-size), así escala junto con él:
-   Pequeño 2× (34 px con el texto Mediano, el tamaño de antes), Mediano 2,6× (44 px) y Grande 3,3× (56 px). La
-   elección (Ajustes → Apariencia) es global y viaja en `<html data-chat-avatar>` (shell.js). */
-:root {
-  --char-avatar-k: 2.6;
-  --char-avatar-size: calc(var(--msg-font-size, 17px) * var(--char-avatar-k));
-}
-:root[data-chat-avatar="small"] { --char-avatar-k: 2; }
-:root[data-chat-avatar="large"] { --char-avatar-k: 3.3; }
+/* FASE 16: Burbuja limpia sin avatar de fila, expandida al 86% de ancho útil para lectura fluida */
 .chat-row--char {
   align-self: flex-start;
   align-items: flex-start;
-  flex-direction: row;
-  gap: var(--space-2);
-  /* min(100%, …): con la foto Grande en una pantalla angosta, la fila nunca se sale del chat (la burbuja cede
-     unos píxeles de ancho en vez de desbordar). */
-  max-width: min(100%, calc(88% + var(--char-avatar-size) + var(--space-2)));
+  max-width: 86%;
 }
-.chat-row__avatar,
-.chat-row__avatarspace {
-  flex: none;
-  width: var(--char-avatar-size);
-  height: var(--char-avatar-size);
+
+/* FASE 17 (PARETO-010): Separadores de escena / capítulos en chat continuo */
+.chat-row--scene-break {
+  align-self: center;
+  align-items: center;
+  max-width: 100%;
+  width: 100%;
+  margin: var(--space-4, 16px) 0;
+  user-select: none;
 }
-.chat-row__avatar { font-size: calc(var(--char-avatar-size) * 0.38); } /* la inicial, cuando el personaje no tiene foto */
-.chat-row__body {
+.chat-scene-break {
   display: flex;
-  flex-direction: column;
-  min-width: 0; /* para que el texto siga envolviendo/recortando bien dentro de la fila flex */
+  align-items: center;
+  width: 100%;
+  gap: var(--space-3, 12px);
+  color: var(--color-muted, rgba(255, 255, 255, 0.55));
+  font-family: var(--font-chat, -apple-system, sans-serif);
+  font-size: 13.5px;
+  font-style: italic;
+  text-align: center;
+}
+.chat-scene-break::before,
+.chat-scene-break::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to right, transparent, var(--color-line, rgba(255, 255, 255, 0.18)), transparent);
+}
+.chat-scene-break__text {
+  padding: 0 var(--space-2, 8px);
+  letter-spacing: 0.02em;
 }
 
 .chat-bubble {
   padding: 10px 14px;
-  border-radius: 18px;
+  border-radius: 16px;
+  font-family: var(--font-chat, -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif);
   font-size: var(--msg-font-size, 17px);
-  line-height: 1.5;
+  line-height: 1.45;
   word-wrap: break-word;
   overflow-wrap: anywhere;
   backdrop-filter: var(--surface-backdrop, none);
   -webkit-backdrop-filter: var(--surface-backdrop, none);
   box-shadow: var(--bubble-edge, none); /* UI-009: borde fino de luz de Penumbra; `none` en los demás skins */
+}
+.chat-bubble em {
+  color: var(--em-color);
+  font-style: italic;
 }
 .chat-row--char .chat-bubble {
   background: var(--color-surface-2);

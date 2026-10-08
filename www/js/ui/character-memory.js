@@ -10,6 +10,7 @@
 // Un personaje con 300 recuerdos abre con 20 tarjetas, no con 300.
 
 import { sanitizeIdentity, IDENTITY_MIN_MEMORIES } from '../api/identity-synthesis.js';
+import { clusterLorebookEntries } from '../api/memory-clustering.js';
 import { isMoment, momentToneLabel } from '../api/moment-tones.js';
 import { formatDateOnly } from '../msgtime.js';
 import { relationshipSummary, relationshipDisplayText, relationshipAgeText, RELATIONSHIP_GROWING_MIN, RELATIONSHIP_ESTABLISHED_MIN } from '../api/relationship.js';
@@ -96,6 +97,7 @@ export function memoryDashboardModel(character, chat) {
     progress,
     always,
     topic,
+    clusters: clusterLorebookEntries(entries, { charName: character && character.name }),
     identity: identityModel(character, sum.total),
     archivedCount: character && Array.isArray(character.lorebookArchive) ? character.lorebookArchive.length : 0,
     continuity: {
@@ -173,6 +175,73 @@ export function buildRelationshipHero(model, info, hooks = {}) {
  * @param {{ name: string }} info
  * @param {{ onAccept: () => void, onDiscard: () => void, onRevert: () => void }} hooks
  */
+/**
+ * FASE 17 (PARETO-010): Tarjeta de co-autoría editorial para consolidación de recuerdos recurrentes.
+ * @param {import('../api/memory-clustering.js').MemoryCluster} cluster
+ * @param {{ name: string }} info
+ * @param {{ onConsolidate?: (cluster: object, text: string) => void, onDismiss?: (cluster: object) => void }} hooks
+ */
+export function buildCoAuthorCard(cluster, info, hooks = {}) {
+  const card = el('section', 'card mem-coauthor');
+  card.dataset.role = 'coauthor';
+  card.style.border = '1px solid var(--color-accent-soft, rgba(179, 81, 47, 0.3))';
+  card.style.background = 'var(--color-surface, #292521)';
+  card.style.padding = 'var(--space-3, 12px) var(--space-4, 16px)';
+  card.style.marginBottom = 'var(--space-4, 16px)';
+  card.style.borderRadius = 'var(--radius-md, 12px)';
+
+  const badge = el('div', 'field__hint', `Co-autoría · Recuerdos recurrentes sobre "${cluster.topic}" (${cluster.entries.length})`);
+  badge.style.color = 'var(--color-accent, #b3512f)';
+  badge.style.fontWeight = '600';
+  badge.style.marginBottom = 'var(--space-1, 4px)';
+
+  const hint = el('div', 'field__hint', 'Puedes afinar la redacción antes de consolidar y archivar los recuerdos previos:');
+  hint.style.marginBottom = 'var(--space-2, 8px)';
+
+  const defaultText = cluster.proposedText || (
+    info && info.name
+      ? `${info.name} recuerda los momentos compartidos sobre ${cluster.topic.toLowerCase()}: ` + cluster.entries.map((e) => e.content).join('; ')
+      : cluster.entries.map((e) => e.content).join('; ')
+  );
+
+  const textarea = el('textarea', 'inp');
+  textarea.rows = 3;
+  textarea.maxLength = 320;
+  textarea.value = defaultText;
+
+  const sourcesList = el('ul');
+  sourcesList.style.margin = 'var(--space-2, 8px) 0';
+  sourcesList.style.paddingLeft = 'var(--space-4, 16px)';
+  sourcesList.style.fontSize = '12px';
+  sourcesList.style.color = 'var(--color-muted, #b3a695)';
+  cluster.entries.forEach((e) => {
+    const li = el('li', '', e.content);
+    sourcesList.appendChild(li);
+  });
+
+  const actions = el('div', 'mem-actions');
+  actions.style.display = 'flex';
+  actions.style.gap = 'var(--space-2, 8px)';
+  actions.style.marginTop = 'var(--space-3, 12px)';
+
+  const acceptBtn = el('button', 'btn btn--sm', 'Consolidar y archivar anteriores');
+  acceptBtn.type = 'button';
+  acceptBtn.addEventListener('click', () => {
+    const text = textarea.value.trim();
+    if (hooks.onConsolidate) hooks.onConsolidate(cluster, text);
+  });
+
+  const dismissBtn = el('button', 'btn btn--sm btn--ghost', 'Mantener por separado');
+  dismissBtn.type = 'button';
+  dismissBtn.addEventListener('click', () => {
+    if (hooks.onDismiss) hooks.onDismiss(cluster);
+  });
+
+  actions.append(acceptBtn, dismissBtn);
+  card.append(badge, hint, textarea, sourcesList, actions);
+  return card;
+}
+
 export function buildIdentityCard(model, info, hooks) {
   const idn = model.identity;
   const box = el('section', 'mem-identity');

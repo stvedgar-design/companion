@@ -1416,7 +1416,17 @@ export function formatLoreBlock(entries, opts = {}) {
   const facts = entries.filter((e) => !isMoment(e));
   const moments = entries.filter(isMoment);
   const parts = [];
-  if (facts.length) parts.push(`Known facts (from memory):\n${facts.map((e) => `- ${e.content}`).join('\n')}`);
+  if (facts.length) {
+    const lines = facts.map((e) => {
+      const content = e.content || '';
+      const isNightEpisodic = /\b(bed|bedroom|slept|sleep|sleeping|slept together|made love|night together|cama|dormitorio|dormir|durmieron|hicieron el amor)\b/i.test(content) || e.time === 'night';
+      if (isNightEpisodic && !content.toLowerCase().startsWith('[past memory')) {
+        return `- [Past memory - night]: ${content}`;
+      }
+      return `- ${content}`;
+    });
+    parts.push(`Known facts (from memory):\n${lines.join('\n')}`);
+  }
   // HUM-003: los momentos van aparte, en positivo: el personaje puede evocarlos con naturalidad (no recitarlos).
   if (moments.length) {
     parts.push(`Shared moments (the character may recall one naturally, in the character's own words, when the moment fits):\n${moments.map((e) => `- ${momentPromptLine(e, opts.now)}`).join('\n')}`);
