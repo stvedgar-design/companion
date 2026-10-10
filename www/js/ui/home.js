@@ -59,10 +59,6 @@ export function init(root, appApi) {
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>
         <span>Crear</span>
       </button>
-      <button class="home-bottomnav__item" id="home-import" type="button" aria-label="Importar personaje">
-        ${ICON_IMPORT}
-        <span>Importar</span>
-      </button>
       <button class="home-bottomnav__item" id="home-nav-settings" type="button">
         ${ICON_SETTINGS}
         <span>Ajustes</span>
@@ -80,7 +76,7 @@ export function init(root, appApi) {
     list: root.querySelector('#home-list'),
     hint: root.querySelector('#home-hint'),
     create: root.querySelector('#home-create'),
-    import: root.querySelector('#home-import'),
+    
   };
 
   if (els.settingsBtn) els.settingsBtn.addEventListener('click', () => { haptics.tap(); openSettings(app); });
@@ -88,7 +84,7 @@ export function init(root, appApi) {
   if (navSettings) navSettings.addEventListener('click', () => { haptics.tap(); openSettings(app); });
   els.status.addEventListener('click', () => { haptics.tap(); openSettings(app); });
   els.create.addEventListener('click', () => { haptics.tap(); onCreateClick(); });
-  els.import.addEventListener('click', () => { haptics.tap(); onImportClick(); });
+  if (els.import) els.import.addEventListener('click', () => { haptics.tap(); onImportClick(); });
   els.searchToggle.addEventListener('click', toggleSearch);
   els.search.addEventListener('input', () => {
     searchQuery = els.search.value.trim().toLowerCase();
@@ -204,7 +200,7 @@ function renderList() {
   if (!characters.length) {
     const empty = document.createElement('div');
     empty.className = 'empty';
-    empty.innerHTML = 'Todavía no hay personajes.<br>Toca «Crear personaje» abajo para empezar el tuyo.';
+    empty.innerHTML = 'Todavía no hay personajes.<br>Toca «Crear» abajo para empezar el tuyo.';
     els.list.appendChild(empty);
     return;
   }
@@ -421,7 +417,7 @@ async function onImportClick() {
 }
 
 function setImportBusy(busy) {
-  els.import.disabled = busy;
+  if (els.import) els.import.disabled = busy;
 }
 
 // CCC-001: creador guiado, botón grande y protagonista del hub. Al guardar, character-editor.js

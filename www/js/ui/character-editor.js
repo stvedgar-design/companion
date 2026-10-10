@@ -354,7 +354,7 @@ function buildFormFields(app, { editing, source }) {
     if (!personalityExamplePanel.hidden) renderPersonalityExample();
   }
   renderPersonality();
-  genderListeners.push(() => { if (!personalityExamplePanel.hidden) renderPersonalityExample(); });
+  genderListeners.push(() => { if (!personalityExamplePanel.hidden) renderPersonalityExample(); updateIdentityPreview(); });
 
   // ---------- descripción / escenario / primer mensaje / ejemplo ----------
   const description = textField({
@@ -517,8 +517,8 @@ function buildFormFields(app, { editing, source }) {
     }
     const info = el('div');
     info.appendChild(el('div', 'identity-preview-card__name', (nameField.input.value || 'Companion').trim()));
-    const genderKey = gender ? gender() : '';
-    const genderLabel = GENDER_LABELS[genderKey] || 'Presencia';
+    const gObj = GENDER_LABELS.find((g) => g.id === gender);
+    const genderLabel = gObj ? gObj.label : 'Presencia';
     info.appendChild(el('div', 'identity-preview-card__nature', genderLabel));
     header.append(av, info);
     previewCard.appendChild(header);
