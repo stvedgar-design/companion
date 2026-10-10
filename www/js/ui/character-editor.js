@@ -1,3 +1,5 @@
+import { PSYCHOLOGICAL_TRAITS, WORLDVIEW_SUGGESTIONS, VULNERABILITY_PRESETS, ENCOUNTER_SUGGESTIONS } from '../data/identity-core.js';
+import { haptics } from './haptics.js';
 // www/js/ui/character-editor.js
 // CCC-001: creador y editor de personajes propios. EDITAR (`opts.character` presente) sigue siendo una
 // sola pantalla con todos los campos a la vez, sin cambios. CREAR (CCC-004) es un asistente guiado en
@@ -473,8 +475,99 @@ function buildFormFields(app, { editing, source }) {
   // ni obligar a una migración el día que se decida conectarlo.
   const formatStyle = editing && source.formatStyle === 'plain' ? 'plain' : 'nomi';
 
+  // FASE 21: Identity Core fields
+  const existingCore = source ? source.identityCore : null;
+  let selectedTraits = new Set(existingCore && Array.isArray(existingCore.traits) ? existingCore.traits : ['observadora', 'cálida']);
+
+  const worldview = textField({
+    label: 'Cosmovisión & Lente',
+    hint: 'Cómo interpreta la realidad y le da sentido a lo que vive.',
+    rows: 2,
+    max: 300,
+    value: existingCore ? (existingCore.worldview || '') : '',
+  });
+
+  const vulnerability = textField({
+    label: 'La grieta interior & Defensa',
+    hint: 'La contradicción, temor o mecanismo de defensa que oculta tras su actitud habitual.',
+    rows: 2,
+    max: 300,
+    value: existingCore ? (existingCore.vulnerability || '') : '',
+  });
+
+  const origin = textField({
+    label: 'Dinámica de contacto inicial',
+    hint: 'La situación y el ambiente en el segundo cero del encuentro.',
+    rows: 2,
+    max: 300,
+    value: existingCore ? (existingCore.origin || existingCore.dynamic || '') : '',
+  });
+
+  const previewCard = el('div', 'identity-preview-card');
+  function updateIdentityPreview() {
+    previewCard.replaceChildren();
+    const header = el('div', 'identity-preview-card__header');
+    const av = el('div', 'av av--sm');
+    if (avatarDataUrl) {
+      const img = el('img');
+      img.src = avatarDataUrl;
+      av.appendChild(img);
+    } else {
+      av.appendChild(el('span', null, (nameField.input.value || '?').trim().charAt(0).toUpperCase()));
+    }
+    const info = el('div');
+    info.appendChild(el('div', 'identity-preview-card__name', (nameField.input.value || 'Companion').trim()));
+    const genderKey = gender ? gender() : '';
+    const genderLabel = GENDER_LABELS[genderKey] || 'Presencia';
+    info.appendChild(el('div', 'identity-preview-card__nature', genderLabel));
+    header.append(av, info);
+    previewCard.appendChild(header);
+
+    const traitsWrap = el('div', 'identity-preview-card__traits');
+    for (const t of selectedTraits) {
+      traitsWrap.appendChild(el('span', 'chip chip--topic', t));
+    }
+    previewCard.appendChild(traitsWrap);
+
+    const body = el('div', 'identity-preview-card__body');
+    const parts = [];
+    const wv = worldview.input.value.trim();
+    const vul = vulnerability.input.value.trim();
+    const orig = origin.input.value.trim();
+    if (wv) parts.push(wv);
+    if (vul) parts.push(`Grieta: ${vul}`);
+    if (orig) parts.push(`Escena: ${orig}`);
+    body.textContent = parts.join(' · ') || 'Completa su presencia, temperamento y mundo interior para ver la identidad cobrar vida.';
+    previewCard.appendChild(body);
+  }
+
+  nameField.input.addEventListener('input', updateIdentityPreview);
+  vulnerability.input.addEventListener('input', updateIdentityPreview);
+  origin.input.addEventListener('input', updateIdentityPreview);
+  updateIdentityPreview();
+
   let alternateGreetingsList = card && Array.isArray(card.alternate_greetings) ? [...card.alternate_greetings] : [];
   return {
+    worldview, vulnerability, origin, previewCard, updateIdentityPreview,
+    getSelectedTraits: () => Array.from(selectedTraits),
+    setSelectedTraits: (set) => { selectedTraits = new Set(set); updateIdentityPreview(); },
+    toggleTrait: (t) => {
+      if (selectedTraits.has(t)) {
+        if (selectedTraits.size > 2) selectedTraits.delete(t);
+      } else {
+        if (selectedTraits.size < 6) selectedTraits.add(t);
+      }
+      updateIdentityPreview();
+    },
+    getIdentityCore: () => ({
+      traits: Array.from(selectedTraits),
+      worldview: worldview.input.value.trim(),
+      vulnerability: vulnerability.input.value.trim(),
+      origin: origin.input.value.trim(),
+      dynamic: origin.input.value.trim(),
+      stage: (existingCore && existingCore.stage) || 'early',
+      updated: Date.now()
+    }),
     avatarRow, avatarBtn, nameField, genderField, personalityWrap,
     description, scenario, firstMes, mesExample,
     appearanceLabel, fixed, current, instructions,
@@ -513,12 +606,14 @@ async function saveFromFields(app, fields, { editing, source, opts }) {
   const { avatarDataUrl, avatarLargeDataUrl } = fields.getAvatar();
 
   if (editing) {
+    const identityCore = fields.getIdentityCore ? fields.getIdentityCore() : undefined;
     const updated = {
       ...source,
       name: builtCard.name,
       avatar: avatarDataUrl,
       avatarLarge: avatarLargeDataUrl,
       card: builtCard,
+      ...(identityCore ? { identityCore } : (source && source.identityCore ? { identityCore: source.identityCore } : {})),
       appearance,
       formatStyle: fields.formatStyle,
       personalityTags,
@@ -535,12 +630,14 @@ async function saveFromFields(app, fields, { editing, source, opts }) {
     app.closeSheet();
   } else {
     const now = Date.now();
+    const identityCore = fields.getIdentityCore ? fields.getIdentityCore() : undefined;
     const character = {
       id: newId(),
       name: builtCard.name,
       avatar: avatarDataUrl,
       avatarLarge: avatarLargeDataUrl,
       card: builtCard,
+      ...(identityCore ? { identityCore } : {}),
       avatarMode: 'mini',
       created: now,
       updated: now,
@@ -581,6 +678,10 @@ function renderEditScreen(app, fields, ctx) {
       status.textContent = 'El nombre es obligatorio.';
       return;
     }
+    if (app.confirmDialog) {
+      const ok = await app.confirmDialog(`¿Guardar los cambios en ${fields.nameField.input.value.trim()}?`, { confirmText: 'Guardar' });
+      if (!ok) return;
+    }
     saveBtn.disabled = true;
     status.textContent = '';
     try {
@@ -603,184 +704,151 @@ function renderEditScreen(app, fields, ctx) {
  */
 function renderWizard(app, fields, ctx) {
   const node = el('div', 'character-editor');
-  node.appendChild(el('h3', 'sheet__title', 'Crear personaje'));
+  node.appendChild(el('h3', 'sheet__title', 'Crear companion'));
   const progress = el('div', 'field__hint wizard-progress');
   node.appendChild(progress);
 
-  // ---------- paso 1: identidad visual ----------
+  // Compatibilidad con CCC-006: inicialización o ajuste de personalidad
+  const archetype = CHARACTER_ARCHETYPES[0];
+  if (archetype && fields.applyPersonalityText) {
+    fields.applyPersonalityText(archetype.personality);
+  }
+
+  // ---------- paso 1: La Presencia y la Voz ----------
   const step1 = el('div', 'wizard-step');
+  step1.appendChild(el('div', 'field__hint', 'Define quién se manifiesta ante ti: su nombre, su voz gramatical y su imagen inicial.'));
   const identityStatus = el('div', 'field__label');
-  step1.append(fields.avatarRow, fields.nameField.field, fields.genderField, identityStatus);
+  step1.append(fields.avatarRow, fields.nameField.field, fields.genderField, fields.fixed.field, identityStatus);
 
-  // ---------- paso 2: elegir una personalidad de partida ----------
+  // ---------- paso 2: El Temperamento (El Actor — Agencia & Comunión) ----------
   const step2 = el('div', 'wizard-step');
-  step2.appendChild(el('div', 'field__hint', 'Elige una personalidad para partir de ella (lo editas todo después) o empieza en blanco.'));
-  const archetypeGrid = el('div', 'wizard-archetypes');
-  const overwriteBanner = el('div', 'field-example__panel wizard-overwrite');
-  overwriteBanner.hidden = true;
-  step2.append(archetypeGrid, overwriteBanner);
+  step2.appendChild(el('div', 'field__label', 'El Temperamento'));
+  step2.appendChild(el('div', 'field__hint', 'Cómo se manifiesta su energía y conducta cotidiana en el espacio social (Agencia & Comunión):'));
 
-  let selectedStartId = null; // id de la personalidad de partida, o 'blank' para "Desde cero"
-
-  function fieldsHaveDownstreamContent() {
-    return fields.hasPersonalityContent()
-      || !!fields.description.input.value.trim()
-      || !!fields.scenario.input.value.trim()
-      || !!fields.firstMes.input.value.trim()
-      || !!fields.mesExample.input.value.trim();
-  }
-
-  function applyStart(chosen) {
-    // CCC-005: el texto base es neutro; se convierte al género elegido en el paso 1.
-    const archetype = chosen ? archetypeForGender(chosen, fields.getGender()) : null;
-    if (archetype) {
-      fields.applyPersonalityText(archetype.personality);
-      fields.description.input.value = archetype.description;
-      fields.scenario.input.value = archetype.scenario;
-      fields.firstMes.input.value = archetype.firstMes;
-      fields.mesExample.input.value = archetype.mesExample;
-    } else {
-      fields.applyPersonalityTags([]);
-      fields.description.input.value = '';
-      fields.scenario.input.value = '';
-      fields.firstMes.input.value = '';
-      fields.mesExample.input.value = '';
-    }
-    for (const f of [fields.description, fields.scenario, fields.firstMes, fields.mesExample]) {
-      f.input.dispatchEvent(new Event('input'));
-    }
-    selectedStartId = chosen ? chosen.id : 'blank';
-    renderArchetypeGrid();
-    goToStep(2);
-  }
-
-  function chooseStart(archetype) {
-    overwriteBanner.hidden = true;
-    if (fieldsHaveDownstreamContent()) {
-      overwriteBanner.replaceChildren();
-      const label = archetype ? archetype.label : 'Desde cero';
-      overwriteBanner.appendChild(el(
-        'p',
-        'field-example__text',
-        `Esto va a reemplazar la personalidad, descripción, situación, primer mensaje y ejemplo de diálogo que ya tenías, con los de "${label}". ¿Reemplazar?`
-      ));
-      const row = el('div', 'wizard-overwrite__actions');
-      const cancelBtn = el('button', 'btn btn--ghost btn--sm', 'Cancelar');
-      cancelBtn.type = 'button';
-      cancelBtn.addEventListener('click', () => { overwriteBanner.hidden = true; });
-      const okBtn = el('button', 'btn btn--sm', 'Reemplazar');
-      okBtn.type = 'button';
-      okBtn.addEventListener('click', () => applyStart(archetype));
-      row.append(cancelBtn, okBtn);
-      overwriteBanner.appendChild(row);
-      overwriteBanner.hidden = false;
-      return;
-    }
-    applyStart(archetype);
-  }
-
-  function renderArchetypeGrid() {
-    archetypeGrid.replaceChildren();
-    for (const archetype of CHARACTER_ARCHETYPES) {
-      const card = el('button', 'archetype-card');
-      card.type = 'button';
-      card.classList.toggle('archetype-card--active', selectedStartId === archetype.id);
-      card.appendChild(el('div', 'archetype-card__label', archetype.label));
-      card.appendChild(el('div', 'archetype-card__tagline', archetype.tagline));
-      card.addEventListener('click', () => chooseStart(archetype));
-      archetypeGrid.appendChild(card);
-    }
-    const blank = el('button', 'archetype-card archetype-card--blank');
-    blank.type = 'button';
-    blank.classList.toggle('archetype-card--active', selectedStartId === 'blank');
-    blank.appendChild(el('div', 'archetype-card__label', 'Desde cero'));
-    blank.appendChild(el('div', 'archetype-card__tagline', 'Empieza con todos los campos vacíos.'));
-    blank.addEventListener('click', () => chooseStart(null));
-    archetypeGrid.appendChild(blank);
-  }
-  renderArchetypeGrid();
-
-  // ---------- paso 3: personalidad y trasfondo ----------
-  const step3 = el('div', 'wizard-step');
-  step3.append(fields.personalityWrap, fields.description.field, fields.scenario.field);
-
-  // ---------- paso 4: cómo habla ----------
-  const step4 = el('div', 'wizard-step');
-
-  const GREETING_TONES = [
-    {
-      id: 'warm',
-      label: 'Cálido',
-      text: "*smiles softly and takes a step closer, eyes brightening as you arrive* Hey. I'm really glad you made it. Come on in, make yourself comfortable — I've been looking forward to seeing you.",
-    },
-    {
-      id: 'playful',
-      label: 'Juguetón',
-      text: "*leans back with a knowing grin, eyes sparkling with amusement* Well, look who finally decided to show up! And here I was thinking you got completely lost on the way.",
-    },
-    {
-      id: 'calm',
-      label: 'Tranquilo',
-      text: "*looks up from what they were doing and offers a quiet, relaxed smile* Hey. Don't rush, sit wherever you feel comfortable. It's nice and quiet right now, and I'm glad we get to talk.",
-    },
-    {
-      id: 'bold',
-      label: 'Directo',
-      text: "*holds your gaze with an easy smirk, not hesitating for a second* Finally. I was starting to wonder how long you'd keep me waiting. Come sit down with me.",
-    },
+  const traitsWrap = el('div', 'wizard-traits-container');
+  const categories = [
+    { key: 'agency', title: 'Agencia (Iniciativa, Asertividad y Distancia)' },
+    { key: 'communion', title: 'Comunión (Calidez, Vínculo y Apertura)' },
+    { key: 'passion', title: 'Textura y Resonancia Emocional' },
   ];
 
-  const toneField = el('div', 'field');
-  toneField.appendChild(el('div', 'field__label', 'Tono del primer encuentro'));
-  toneField.appendChild(el('div', 'field__hint', 'Elige cómo quieres que te salude la primera vez. Para el modelo, el primer mensaje es el ejemplo de estilo más importante: define la longitud de sus frases y la cercanía del trato.'));
-  const tonePicker = el('div', 'tag-picker');
-  tonePicker.setAttribute('role', 'radiogroup');
-  tonePicker.setAttribute('aria-label', 'Tono del primer mensaje');
-
-  let activeToneId = null;
-
-  function applyGreetingTone(tone) {
-    activeToneId = tone.id;
-    const gender = fields.getGender();
-    const mainText = applyGender(tone.text, gender);
-    fields.firstMes.input.value = mainText;
-    fields.firstMes.input.dispatchEvent(new Event('input'));
-
-    const alts = GREETING_TONES
-      .filter((t) => t.id !== tone.id)
-      .map((t) => applyGender(t.text, gender));
-    fields.setAlternateGreetings(alts);
-
-    renderTonePills();
-  }
-
-  function renderTonePills() {
-    tonePicker.replaceChildren();
-    for (const t of GREETING_TONES) {
-      const btn = el('button', 'tag-pill', t.label);
-      btn.type = 'button';
-      btn.setAttribute('role', 'radio');
-      btn.setAttribute('aria-checked', String(activeToneId === t.id));
-      btn.classList.toggle('tag-pill--active', activeToneId === t.id);
-      btn.addEventListener('click', () => applyGreetingTone(t));
-      tonePicker.appendChild(btn);
+  function renderTraitsGroups() {
+    traitsWrap.replaceChildren();
+    const activeTraits = new Set(fields.getSelectedTraits ? fields.getSelectedTraits() : []);
+    for (const cat of categories) {
+      const group = el('div', 'traits-group');
+      group.appendChild(el('div', 'traits-group__title', cat.title));
+      const picker = el('div', 'tag-picker');
+      const items = PSYCHOLOGICAL_TRAITS.filter((t) => t.category === cat.key);
+      for (const item of items) {
+        const btn = el('button', 'tag-pill', item.label);
+        btn.type = 'button';
+        const isSelected = activeTraits.has(item.id);
+        btn.classList.toggle('tag-pill--active', isSelected);
+        btn.title = item.hint;
+        btn.addEventListener('click', () => {
+          haptics.tap();
+          if (fields.toggleTrait) fields.toggleTrait(item.id);
+          renderTraitsGroups();
+          updatePersonalityFromTraits();
+        });
+        picker.appendChild(btn);
+      }
+      group.appendChild(picker);
+      traitsWrap.appendChild(group);
     }
   }
-  renderTonePills();
-  toneField.appendChild(tonePicker);
 
-  step4.append(toneField, fields.firstMes.field, fields.mesExample.field);
+  function updatePersonalityFromTraits() {
+    const active = fields.getSelectedTraits ? fields.getSelectedTraits() : [];
+    if (active.length && fields.applyPersonalityText) {
+      const traitLabels = active.map((id) => {
+        const tr = PSYCHOLOGICAL_TRAITS.find((t) => t.id === id);
+        return tr ? tr.label.toLowerCase() : id;
+      });
+      const gender = fields.getGender ? fields.getGender() : 'neutral';
+      const text = `Presencia ${traitLabels.join(', ')}. Su actitud se adapta orgánicamente a la cercanía y a lo que sucede en cada momento.`;
+      fields.applyPersonalityText(applyGender(text, gender));
+    }
+  }
 
-  // ---------- paso 5: apariencia e instrucciones + crear ----------
-  const step5 = el('div', 'wizard-step');
-  step5.appendChild(fields.appearanceLabel);
-  step5.append(fields.fixed.field, fields.current.field, fields.instructions.field);
+  renderTraitsGroups();
+  step2.appendChild(traitsWrap);
+
+  // ---------- paso 3: El Mundo Interior y la Tensión Psicológica (El Agente) ----------
+  const step3 = el('div', 'wizard-step');
+  step3.appendChild(el('div', 'field__label', 'El Mundo Interior'));
+  step3.appendChild(el('div', 'field__hint', 'La mirada con la que interpreta la realidad y la sombra o defensa que guarda dentro:'));
+
+  if (fields.worldview) {
+    step3.appendChild(fields.worldview.field);
+    const wvSuggRow = el('div', 'tag-picker');
+    wvSuggRow.style.marginBottom = 'var(--space-3)';
+    for (const sugg of WORLDVIEW_SUGGESTIONS) {
+      const btn = el('button', 'tag-pill', sugg.label);
+      btn.type = 'button';
+      btn.title = sugg.text;
+      btn.addEventListener('click', () => {
+        haptics.tap();
+        fields.worldview.input.value = sugg.text;
+        fields.worldview.input.dispatchEvent(new Event('input'));
+      });
+      wvSuggRow.appendChild(btn);
+    }
+    step3.appendChild(wvSuggRow);
+  }
+
+  if (fields.vulnerability) {
+    step3.appendChild(fields.vulnerability.field);
+    const vulnPresetsRow = el('div', 'tag-picker');
+    vulnPresetsRow.style.marginBottom = 'var(--space-2)';
+    for (const preset of VULNERABILITY_PRESETS) {
+      const pBtn = el('button', 'tag-pill', preset.label);
+      pBtn.type = 'button';
+      pBtn.title = preset.text;
+      pBtn.addEventListener('click', () => {
+        haptics.tap();
+        fields.vulnerability.input.value = preset.text;
+        fields.vulnerability.input.dispatchEvent(new Event('input'));
+      });
+      vulnPresetsRow.appendChild(pBtn);
+    }
+    step3.appendChild(vulnPresetsRow);
+  }
+
+  // ---------- paso 4: El Umbral del Vínculo (El Autor & Génesis) ----------
+  const step4 = el('div', 'wizard-step');
+  step4.appendChild(el('div', 'field__label', 'El Umbral del Vínculo'));
+  step4.appendChild(el('div', 'field__hint', 'El segundo cero donde se cruzan las miradas y comienza la relación:'));
+
+  if (fields.origin) {
+    step4.appendChild(fields.origin.field);
+    const encSuggRow = el('div', 'tag-picker');
+    encSuggRow.style.marginBottom = 'var(--space-3)';
+    for (const enc of ENCOUNTER_SUGGESTIONS) {
+      const eBtn = el('button', 'tag-pill', enc.label);
+      eBtn.type = 'button';
+      eBtn.title = enc.text;
+      eBtn.addEventListener('click', () => {
+        haptics.tap();
+        fields.origin.input.value = enc.text;
+        fields.origin.input.dispatchEvent(new Event('input'));
+      });
+      encSuggRow.appendChild(eBtn);
+    }
+    step4.appendChild(encSuggRow);
+  }
+
+  step4.appendChild(fields.firstMes.field);
+  if (fields.previewCard) step4.appendChild(fields.previewCard);
+
   const saveStatus = el('div', 'field__label');
-  const saveBtn = el('button', 'btn', 'Crear personaje');
+  const saveBtn = el('button', 'btn', 'Dar vida al companion');
   saveBtn.type = 'button';
-  step5.append(saveBtn, saveStatus);
+  saveBtn.style.marginTop = 'var(--space-4)';
+  step4.append(saveBtn, saveStatus);
 
-  const steps = [step1, step2, step3, step4, step5];
+  const steps = [step1, step2, step3, step4];
   node.append(...steps);
 
   // ---------- navegación ----------
@@ -794,11 +862,6 @@ function renderWizard(app, fields, ctx) {
 
   let stepIndex = 0;
 
-  // CCC-004: mientras el wizard está en un paso > 0, el botón/gesto "atrás" de Android debe retroceder un
-  // paso en vez de cerrar toda la hoja. Mismo patrón que `diag-running`/`companion:diag-back` en
-  // diagnostics.js: una clase en <body> + un evento de documento, que main.js intercepta antes de decidir
-  // qué hacer con "atrás". Se desactiva solo (clase quitada) al llegar al primer paso, así que ahí "atrás"
-  // vuelve a su comportamiento normal (cerrar la hoja = salir de la creación).
   function updateBackButtonHook() {
     document.body.classList.toggle('wizard-step-active', stepIndex > 0);
   }
@@ -815,12 +878,13 @@ function renderWizard(app, fields, ctx) {
   function goToStep(i) {
     stepIndex = Math.max(0, Math.min(steps.length - 1, i));
     steps.forEach((s, idx) => { s.hidden = idx !== stepIndex; });
-    const isArchetypeStep = stepIndex === 1;
     const isLastStep = stepIndex === steps.length - 1;
     backBtn.hidden = stepIndex === 0;
-    nextBtn.hidden = isArchetypeStep || isLastStep;
+    nextBtn.hidden = isLastStep;
     navRow.hidden = backBtn.hidden && nextBtn.hidden;
     progress.textContent = `Paso ${stepIndex + 1} de ${steps.length}`;
+    if (fields.updateIdentityPreview) fields.updateIdentityPreview();
+    renderTraitsGroups();
     updateBackButtonHook();
     const sheetCard = document.getElementById('sheet-card');
     if (sheetCard) sheetCard.scrollTop = 0;
@@ -858,12 +922,6 @@ function renderWizard(app, fields, ctx) {
   app.openSheet(node, { fullscreen: true });
 }
 
-/**
- * @param {{ openSheet: Function, closeSheet: Function, toast: Function, navigate: Function, confirmDialog: Function }} app
- * @param {{ character?: import('../state.js').Character, onSaved?: (updated: import('../state.js').Character) => void }} [opts]
- *   Sin `character`: crea uno nuevo con el wizard (al guardar, navega a sus chats). Con `character`: lo
- *   edita en la pantalla única de siempre (al guardar, avisa y llama a `onSaved`, sin navegar).
- */
 export function openCharacterEditor(app, opts = {}) {
   const editing = !!opts.character;
   const source = opts.character || null;

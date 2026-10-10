@@ -47,39 +47,35 @@
 }  
   
 :root{  
- /* Color */  
- --color-bg: #181924;  
- --color-surface: #20222f;  
- --color-surface-2: #2d2f40;  
- --color-line: #383b52;  
- --color-text: #f3f3f8;  
- --color-muted: #9b9eb8;  
- --color-accent: #8b1fe0;  
- --color-accent-2: #a24cf2;  
- --color-accent-soft: rgba(139, 31, 224, 0.16);  
- --color-danger: #f0566a;  
- --color-ok: #6ee7a8;  
- --color-overlay: rgba(6, 6, 12, 0.6);  
+ /* Color (UI-024 / Fase 21: alineado con la paleta editorial Penumbra Claude) */  
+ --color-bg: #1f1c19;  
+ --color-surface: #292521;  
+ --color-surface-2: #38322c;  
+ --color-line: #4a423a;  
+ --color-text: #f3ece2;  
+ --color-muted: #b3a695;  
+ --color-accent: #b3512f;  
+ --color-accent-2: #e08a66;  
+ --color-accent-soft: rgba(179, 81, 47, 0.2);  
+ --color-danger: #f0647c;  
+ --color-ok: #7ee0b0;  
+ --color-overlay: rgba(12, 9, 6, 0.65);  
  /* Texto en *asteriscos* sobre una superficie con acento (hoy: la burbuja  
- del usuario, --grad-user) en vez de sobre --color-surface-2. Blanco  
- atenuado en vez de un tono fijo: igual que --color-muted es más apagado  
- que --color-text sobre una superficie oscura, esto es más apagado que  
- el texto normal sobre CUALQUIER color de acento — se adapta solo si  
- --grad-user cambia (p. ej. entre skins), en vez de quedar pisado. */  
- --color-muted-on-accent: rgba(255, 255, 255, 0.72);  
+ del usuario, --grad-user) en vez de sobre --color-surface-2. */  
+ --color-muted-on-accent: #ffdfcc;  
   
- --grad-user: linear-gradient(135deg, #7a12d6, #9b3ff0);  
- --grad-avatar: linear-gradient(135deg, #5b1fa8, #c04bd6);  
+ --grad-user: linear-gradient(135deg, #a3462a, #b3522f);  
+ --grad-avatar: linear-gradient(135deg, #7a3520, #c9714f);  
   
  /* Tipografía */  
  --font: 'Source Serif 4', Georgia, 'Times New Roman', serif;  
  /* UI-023: tipografía del DIÁLOGO cuando "Tipografía dividida" está activa. Fuente de sistema (la misma pila que iMessage): sin  
  archivos que incluir ni licencias. La narración (cursiva) sigue con --font, la del skin. */  
- --font-dialogue: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;  
-  /* FASE 12: tipografía de sistema para controles, botones, etiquetas y metadatos (jerarquía dual) */  
+ --font-dialogue: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
+  /* FASE 12: tipografía de sistema para controles, botones, etiquetas y metadatos (jerarquía dual) */
   --font-ui: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;  
-  /* FASE 16: tipografía ágil, limpia y moderna para las burbujas de diálogo del chat (Benchmark Talkie/Nomi) */  
-  --font-chat: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;  
+  /* FASE 16: tipografía ágil, limpia y moderna para las burbujas de diálogo del chat (Benchmark Talkie/Nomi) */
+  --font-chat: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
  --fs-xs: 12px;  
  --fs-sm: 13px;  
  --fs-md: 15px;  
@@ -108,9 +104,9 @@
   
  /* Movimiento */  
  --dur-fast: 0.12s;  
- --dur: 0.18s;  
-  /* FASE 12: curvas de aceleración física (spring / natural ease-out) */  
-  --dur-spring: 0.22s;  
+ --dur: 0.18s;
+  /* FASE 12: curvas de aceleración física (spring / natural ease-out) */
+  --dur-spring: 0.22s;
   --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);  
   
  /* Áreas seguras (recalculadas por platform.js en tiempo real si aplica) */  

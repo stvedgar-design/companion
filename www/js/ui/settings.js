@@ -69,10 +69,10 @@ export function openSettings(app) {
         <div class="settings-row">
           <input class="inp" id="settings-model" type="text"
                  autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false"
-                 placeholder="meta-llama/llama-3.1-8b-instruct:free">
+                 placeholder="meta-llama/llama-3.1-8b-instruct">
           <button class="btn btn--ghost btn--sm" id="settings-free-model-btn" type="button" style="white-space:nowrap;">Gratis</button>
         </div>
-        <div class="field__hint">Modelo actual para dialogar. Puedes usar modelos gratuitos (terminados en :free) o cualquier modelo del catálogo.</div>
+        <div class="field__hint">Modelo actual para dialogar. Puedes usar modelos gratuitos (terminados en ) o cualquier modelo del catálogo.</div>
       </div>
     </div>
 
@@ -231,7 +231,7 @@ export function openSettings(app) {
 
   getSettings().then((settings) => {
     els.apiKey.value = settings.apiKey || '';
-    els.model.value = settings.model || 'meta-llama/llama-3.1-8b-instruct:free';
+    els.model.value = settings.model || 'meta-llama/llama-3.1-8b-instruct';
     els.user.value = settings.user;
     if (els.userAppearance) els.userAppearance.value = settings.userAppearance || '';
     els.mode.value = settings.mode;
@@ -387,15 +387,15 @@ export function openSettings(app) {
   });
 
   els.model.addEventListener('blur', () => {
-    const m = els.model.value.trim() || 'meta-llama/llama-3.1-8b-instruct:free';
+    const m = els.model.value.trim() || 'meta-llama/llama-3.1-8b-instruct';
     els.model.value = m;
     saveSettings({ model: m });
   });
 
   if (els.freeModelBtn) {
     els.freeModelBtn.addEventListener('click', () => {
-      els.model.value = 'meta-llama/llama-3.1-8b-instruct:free';
-      saveSettings({ model: 'meta-llama/llama-3.1-8b-instruct:free' });
+      els.model.value = 'meta-llama/llama-3.1-8b-instruct';
+      saveSettings({ model: 'meta-llama/llama-3.1-8b-instruct' });
       app.toast('Modelo configurado a Llama 3.1 8B (Gratis).');
     });
   }
@@ -406,7 +406,7 @@ export function openSettings(app) {
     els.test.disabled = true;
     try {
       const apiKey = els.apiKey.value.trim();
-      const model = els.model.value.trim() || 'meta-llama/llama-3.1-8b-instruct:free';
+      const model = els.model.value.trim() || 'meta-llama/llama-3.1-8b-instruct';
       const res = await connect({ apiKey, model });
       await saveSettings({ apiKey, model: res.model, ctx: res.ctx });
       els.status.className = 'status status--ok';

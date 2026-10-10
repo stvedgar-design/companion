@@ -222,6 +222,10 @@ export function openCharacterGallery(app, character, opts = {}) {
     saveNoteBtn.style.alignSelf = 'flex-start';
     saveNoteBtn.style.marginTop = 'var(--space-2, 8px)';
     saveNoteBtn.addEventListener('click', async () => {
+      if (app.confirmDialog) {
+        const ok = await app.confirmDialog('¿Guardar la nota personal de esta ilustración?', { confirmText: 'Guardar' });
+        if (!ok) return;
+      }
       saveNoteBtn.disabled = true;
       try {
         const cleanCaption = textarea.value.slice(0, GALLERY_CAPTION_MAX).trim();
@@ -247,6 +251,10 @@ export function openCharacterGallery(app, character, opts = {}) {
     const setBgBtn = el('button', 'btn btn--ghost', 'Usar como fondo de chat');
     setBgBtn.type = 'button';
     setBgBtn.addEventListener('click', async () => {
+      if (app.confirmDialog) {
+        const ok = await app.confirmDialog('¿Establecer esta ilustración como fondo de chat?', { confirmText: 'Aplicar' });
+        if (!ok) return;
+      }
       setBgBtn.disabled = true;
       try {
         const updated = await saveCharacterBackground(current.id, { chatBackground: item.dataUrl });
@@ -266,6 +274,10 @@ export function openCharacterGallery(app, character, opts = {}) {
     const setAvatarBtn = el('button', 'btn btn--ghost', 'Usar como avatar');
     setAvatarBtn.type = 'button';
     setAvatarBtn.addEventListener('click', async () => {
+      if (app.confirmDialog) {
+        const ok = await app.confirmDialog('¿Establecer esta ilustración como avatar del personaje?', { confirmText: 'Aplicar' });
+        if (!ok) return;
+      }
       setAvatarBtn.disabled = true;
       try {
         const updated = await saveCharacter({

@@ -657,6 +657,7 @@ input[type=range]:focus-visible{
   box-shadow: none;
 }
 .sheet__card{
+  position: relative;
   width: 100%;
   max-height: 92%;
   overflow-y: auto;
@@ -670,6 +671,17 @@ input[type=range]:focus-visible{
   backdrop-filter: var(--surface-backdrop, none);
   -webkit-backdrop-filter: var(--surface-backdrop, none);
   box-shadow: inset 0 1px 0 0 rgba(255, 238, 225, 0.08);
+}
+/* Indicador táctil superior (drag handle) para hojas modales inferiores */
+.sheet:not(.sheet--fullscreen) .sheet__card::before {
+  content: '';
+  display: block;
+  width: 36px;
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--color-line);
+  margin: calc(-1 * var(--space-3, 12px)) auto var(--space-3, 12px);
+  opacity: 0.8;
 }
 .sheet.is-open .sheet__card{
   transform: translateY(0);
@@ -1133,4 +1145,59 @@ input[type=range]:focus-visible{
   flex-direction: column;
   gap: var(--space-2);
   margin-top: var(--space-2);
+}
+
+/* FASE 21: Identity Core & Wizard Preview */
+.identity-preview-card {
+  padding: var(--space-4);
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  margin: var(--space-3) 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.identity-preview-card__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.identity-preview-card__name {
+  font-family: var(--font, serif);
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--color-text);
+}
+.identity-preview-card__nature {
+  display: inline-block;
+  font-size: var(--fs-xs);
+  color: var(--color-accent-2);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.identity-preview-card__traits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: var(--space-1) 0;
+}
+.identity-preview-card__body {
+  font-size: var(--fs-sm);
+  color: var(--color-muted);
+  line-height: 1.5;
+  border-left: 2px solid var(--color-accent);
+  padding-left: var(--space-2);
+  font-style: italic;
+}
+.traits-group {
+  margin-bottom: var(--space-3);
+}
+.traits-group__title {
+  font-size: var(--fs-xs);
+  color: var(--color-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: var(--space-1);
 }

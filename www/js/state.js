@@ -191,7 +191,7 @@ const ACTIVE_THEME = 'penumbra-claude';
 
 const DEFAULT_SETTINGS = Object.freeze({
   apiKey: '',
-  model: 'meta-llama/llama-3.1-8b-instruct:free',
+  model: 'meta-llama/llama-3.1-8b-instruct',
   url: 'https://openrouter.ai/api/v1',
   cpuUrl: '',
   user: '',

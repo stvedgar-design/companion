@@ -205,6 +205,10 @@ function openArchivedSheet(note = '') {
     restore.className = 'btn btn--sm';
     restore.textContent = 'Restaurar';
     restore.addEventListener('click', async () => {
+      const ok = await app.confirmDialog(`¿Restaurar el episodio "${chat.title || 'Sin título'}" a tu lista activa?`, {
+        confirmText: 'Restaurar',
+      });
+      if (!ok) return;
       restore.disabled = true;
       try {
         await saveChatArchive(chat.id, { archivedAt: 0, archivePendingAt: 0 });
@@ -262,8 +266,10 @@ function renderRow(chat) {
   rename.type = 'button';
   rename.setAttribute('aria-label', 'Renombrar episodio');
   rename.innerHTML = ICON_EDIT;
-  rename.addEventListener('click', (e) => {
+  rename.addEventListener('click', async (e) => {
     e.stopPropagation();
+    const ok = await app.confirmDialog(`¿Deseas renombrar el episodio "${chat.title || 'Sin título'}"?`, { confirmText: 'Renombrar' });
+    if (!ok) return;
     onRename(chat);
   });
 
@@ -320,6 +326,8 @@ function onRename(chat) {
   input.value = chat.title || '';
 
   saveBtn.addEventListener('click', async () => {
+    const ok = await app.confirmDialog('¿Guardar el nuevo título del episodio?', { confirmText: 'Guardar' });
+    if (!ok) return;
     saveBtn.disabled = true;
     try {
       await renameChat(chat.id, input.value.trim());

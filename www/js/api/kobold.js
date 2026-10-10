@@ -13,7 +13,7 @@ import { appearanceOf } from '../character-appearance.js';
 import { VARIETY_NOTE, varietyNeeded } from './variety.js';
 
 export const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
-export const DEFAULT_FREE_MODEL = 'meta-llama/llama-3.1-8b-instruct:free';
+export const DEFAULT_FREE_MODEL = 'meta-llama/llama-3.1-8b-instruct';
 
 const CONNECT_NETWORK_MSG =
   'No se pudo conectar con OpenRouter. Revisa tu conexión a internet y tu API Key.';

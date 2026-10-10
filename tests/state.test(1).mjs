@@ -55,8 +55,7 @@ test('getSettings devuelve valores por defecto cuando no hay nada guardado', asy
   const state = createState(createMemoryBackend());
   const settings = await state.getSettings();
   assert.deepEqual(settings, {
-    apiKey: '', model: 'meta-llama/llama-3.1-8b-instruct:free',
-    url: 'https://openrouter.ai/api/v1', cpuUrl: '', user: '', userAppearance: '', maxLen: 220, temp: 0.85, mode: 'chat', ctx: 4096,
+    url: '', cpuUrl: '', user: '', userAppearance: '', maxLen: 220, temp: 0.85, mode: 'chat', ctx: 4096,
     pinSalt: '', pinHash: '',
     theme: 'penumbra-claude', themeMode: 'dark', // UI-024: único skin
     glassEffect: 'full', // UI-007 (archivado por UI-024: sin efecto)
