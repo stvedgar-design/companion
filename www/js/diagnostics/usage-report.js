@@ -113,6 +113,11 @@ function characterSection(character, events) {
   const appearanceEdits = mine.filter((e) => e.type === 'appearance_edited').length;
   lines.push(`- Apariencia editada: ${appearanceEdits} veces.`);
 
+  const regens = mine.filter((e) => e.type === 'regenerate');
+  if (regens.length) {
+    lines.push(`- Respuestas regeneradas solicitadas: ${regens.length}.`);
+  }
+
   const replies = mine.filter((e) => e.type === 'reply_time' && Number.isFinite(e.totalMs));
   if (replies.length) {
     const avg = (field) => Math.round(sumField(replies, field) / replies.length);
@@ -222,6 +227,7 @@ export function buildUsageReport(raw) {
           relationshipLevelChanges: mine.filter((e) => e.type === 'relationship_level_changed').length,
           continuityUpdated: countBy(mine.filter((e) => e.type === 'continuity_updated'), (e) => e.cause),
           appearanceEdited: mine.filter((e) => e.type === 'appearance_edited').length,
+          regenerations: mine.filter((e) => e.type === 'regenerate').length,
           repliesMeasured: mine.filter((e) => e.type === 'reply_time' && Number.isFinite(e.totalMs)).length,
           avgReplyTotalMs: (() => {
             const r = mine.filter((e) => e.type === 'reply_time' && Number.isFinite(e.totalMs));

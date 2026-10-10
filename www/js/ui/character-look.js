@@ -96,7 +96,7 @@ export function openCharacterAppearance(app, character, onSaved) {
 
   const style = textField({
     label: 'Estilo de vestuario habitual (Inmutable)',
-    hint: 'La estética base que define cómo suele vestir (ej. bohemio, urbano, gótico, formal). Llama 3B en CPU la usa para adaptar la ropa según la escena.',
+    hint: 'La estética base que define cómo suele vestir (ej. bohemio, urbano, gótico, formal). Define cómo adaptar la ropa según la escena.',
     max: APPEARANCE_STYLE_MAX,
     rows: 2,
     value: saved.style || '',
@@ -148,19 +148,30 @@ export function openCharacterAppearance(app, character, onSaved) {
     }
   }
 
-  saveBtn.addEventListener('click', () =>
+  saveBtn.addEventListener('click', async () => {
+    if (app.confirmDialog) {
+      const ok = await app.confirmDialog(`¿Guardar los cambios de apariencia de ${character.name}?`, { confirmText: 'Guardar' });
+      if (!ok) return;
+    }
     save({
       fixed: fixed.input.value,
       style: style ? style.input.value : '',
       underwear: underwear.input.value,
       current: current.input.value,
       accessories: accessories.input.value,
-    })
-  );
+    });
+  });
 
-  clearBtn.addEventListener('click', () =>
-    save({ fixed: '', style: '', underwear: '', current: '', accessories: '' })
-  );
+  clearBtn.addEventListener('click', async () => {
+    if (app.confirmDialog) {
+      const ok = await app.confirmDialog('¿Eliminar todos los datos de apariencia del personaje? No podrás recuperarlos.', {
+        confirmText: 'Eliminar todo',
+        danger: true,
+      });
+      if (!ok) return;
+    }
+    save({ fixed: '', style: '', underwear: '', current: '', accessories: '' });
+  });
 
   app.openSheet(node);
 }

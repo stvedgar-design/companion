@@ -1,10 +1,9 @@
-import { buildChatDiagnosticsModel } from '../diagnostics/chat-diagnostics.js';
 // www/js/ui/chat.js
 // Pantalla de chat: burbujas, streaming, avatar en 3 modos, composer, menú.
 
-import { getChat, getChatMessages, saveChatMessages, getCharacter, getSettings, saveSettings, markChatExported, saveCharacterLorebook, markChatLorebookProgress, saveChatContinuity, sanitizeContinuity, sanitizeMessage, saveCharacterRelationship, saveCharacterIdentity, saveCharacterMood, saveCharacterMoment, saveCharacterFollowUps, saveCharacterLife, saveChatArchive, isChatArchived, isChatArchivePending, insertSceneBreak } from '../state.js';
+import { getChat, getChatMessages, saveChatMessages, getCharacter, getSettings, saveSettings, markChatExported, saveCharacterLorebook, markChatLorebookProgress, saveChatContinuity, sanitizeContinuity, sanitizeMessage, saveCharacterRelationship, saveCharacterIdentity, saveCharacterMood, saveCharacterMoment, saveCharacterFollowUps, saveCharacterLife, saveChatArchive, isChatArchived, isChatArchivePending } from '../state.js';
 import { generateReplyNonEmpty, completeOnce, completeChatOnce } from '../api/kobold.js';
-import { initialMessages, scenarioGreeting, estimateContextUsage, subMacros } from '../api/prompt.js';
+import { initialMessages, scenarioGreeting, estimateContextUsage } from '../api/prompt.js';
 import {
   createLoreUpdater,
   editLoreEntry,
@@ -34,21 +33,19 @@ import {
 import { appearanceOf } from '../character-appearance.js';
 import { identityForPrompt } from '../api/identity-synthesis.js';
 import { moodText } from '../api/mood.js';
-import { computeMood, moodHeadText, moodDisplayStatus, feelingDisplayStatus, planSplit, typingHoldMs } from '../api/presence.js';
+import { computeMood, moodHeadText, planSplit, typingHoldMs } from '../api/presence.js';
 import { momentCandidate, withMoment } from '../api/moments.js';
 import { detectFollowUps, detectUserDates, withFollowUps, withUserDates, markAsked, markDone } from '../api/followups.js';
 import { createFeelingUpdater, feelingDisplayText } from '../api/feeling.js';
 import { formatMessageTime, formatMessageFullTime } from '../msgtime.js';
 import { createContinuityUpdater, coveredCount, CONTINUITY_TOTAL_CHARS, CONTINUITY_ON_OPEN_DELAY_MS, cleanRecap, verifyRecap } from '../api/continuity.js';
 import { openCharacterSheet } from './character-sheet.js';
-import { haptics, setHapticsEnabled } from './haptics.js';
 import { archiveChat, archiveResultMessage, cancelBackgroundArchive } from './chat-archive.js';
 import { cancelBackgroundIdentity } from './identity.js';
 import { cancelBackgroundLife } from './life.js';
 import { withLifeMentioned } from '../api/life.js';
 import { cancelBackgroundMailbox, touchInteraction } from './mailbox.js';
 import { memoryDashboardModel, buildRelationshipHero, buildContinuityCard, buildMemoryCards, buildGroupedMemoryCards, buildIdentityCard } from './character-memory.js';
-import { buildMemoryRefinePrompt, buildMemoryRefinePlainPrompt, parseMemoryRefineResponse } from '../api/memory-clustering.js';
 import { acceptProposal, discardProposal, revertIdentity } from '../api/identity-synthesis.js';
 import { logEvent, TEL_EVENTS } from '../telemetry.js';
 import { formatMessage } from './format.js';
@@ -68,7 +65,7 @@ const ICON_SEND = '<svg viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></s
 const ICON_STOP = '<svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2.5"/></svg>';
 const ICON_DOWN = '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12l7 7 7-7"/></svg>';
 
-const NEAR_BOTTOM_PX = 200;
+const NEAR_BOTTOM_PX = 140;
 
 let root = null;
 let app = null;
@@ -95,22 +92,15 @@ export function init(rootEl, appApi) {
     <div class="topbar">
       <button class="ib" type="button" id="chat-back" aria-label="Volver">${ICON_BACK}</button>
       <div class="chat-head" id="chat-head">
-        <button class="chat-head__name" type="button" id="chat-head-name" aria-label="Ver ficha del personaje">
-          <div class="chat-head__avatar av" id="chat-head-avatar"></div>
-          <div class="chat-head__info">
-            <span class="chat-head__nm" id="chat-head-nm"></span>
-            <span class="chat-head__sub" id="chat-head-sub"></span>
-          </div>
-        </button>
+        <button class="chat-head__name" type="button" id="chat-head-name" aria-label="Ver ficha del personaje"><span class="chat-head__nm" id="chat-head-nm"></span><span class="chat-head__sub" id="chat-head-sub"></span></button>
       </div>
       <button class="ib" type="button" id="chat-menu" aria-label="Más">${ICON_MENU}</button>
     </div>
-    <div class="chat-bg" id="chat-bg" hidden>
-      <div class="chat-bg__fade" id="chat-bg-fade" hidden></div>
-    </div>
     <div class="chat-messageswrap">
+      <div class="chat-bg" id="chat-bg" hidden>
+        <div class="chat-bg__fade" id="chat-bg-fade" hidden></div>
+      </div>
       <div class="scroll chat-messages" id="chat-messages"></div>
-      <div class="chat-icebreakers" id="chat-icebreakers" hidden></div>
       <button class="chat-scrolldown" type="button" id="chat-scrolldown" aria-label="Ir al último mensaje" hidden>${ICON_DOWN}</button>
     </div>
     <div class="chat-archivedbar" id="chat-archivedbar" hidden>
@@ -126,14 +116,12 @@ export function init(rootEl, appApi) {
   els = {
     back: root.querySelector('#chat-back'),
     headName: root.querySelector('#chat-head-name'),
-    headAvatar: root.querySelector('#chat-head-avatar'),
     headNm: root.querySelector('#chat-head-nm'),
     headSub: root.querySelector('#chat-head-sub'),
     menu: root.querySelector('#chat-menu'),
     bg: root.querySelector('#chat-bg'),
     bgFade: root.querySelector('#chat-bg-fade'),
     messages: root.querySelector('#chat-messages'),
-    icebreakers: root.querySelector('#chat-icebreakers'),
     scrollDown: root.querySelector('#chat-scrolldown'),
     composer: root.querySelector('#chat-composer'),
     archivedBar: root.querySelector('#chat-archivedbar'),
@@ -153,7 +141,7 @@ export function init(rootEl, appApi) {
   els.restore.addEventListener('click', onRestoreEpisode);
   els.messages.addEventListener('click', onMessagesClick);
   els.messages.addEventListener('scroll', onMessagesScroll, { passive: true });
-  els.scrollDown.addEventListener('click', () => { haptics.tap(); scrollToBottom(true, true); });
+  els.scrollDown.addEventListener('click', () => scrollToBottom(true));
 
   // La hoja de fondo de chat (ui/chat-background.js) se abre encima de esta
   // vista, no la reemplaza — sin este evento, un cambio de fondo no se
@@ -230,16 +218,15 @@ export async function show({ chatId } = {}) {
   }
 
   settings = await getSettings();
-  setHapticsEnabled(settings && settings.hapticsEnabled !== false);
   touchInteraction(character.id); // PROACT-001: el usuario estuvo con este personaje (para saber cuánto estuvo ausente)
 
   let loaded = await getChatMessages(chat.id);
-  const isBrandNewScenarioChat = (!loaded || !loaded.length) && !!chat.scenario;
   if (!loaded) {
-    // FASE 15: si el chat tiene escenario propio, se inicializa vacío para que el LLM
-    // principal genere de inmediato el saludo/entrada a escena del personaje respondiendo al escenario.
-    loaded = isBrandNewScenarioChat
-      ? []
+    // Si el chat tiene un escenario propio, el first_mes de la card (escrito
+    // para el escenario por defecto) casi nunca encaja: se reemplaza por una
+    // nota de escenario en vez de un saludo desalineado.
+    loaded = chat.scenario
+      ? scenarioGreeting(character, settings, chat.scenario)
       : initialMessages(character, settings);
     try {
       await saveChatMessages(chat.id, loaded);
@@ -253,7 +240,6 @@ export async function show({ chatId } = {}) {
   abortCtl = null;
 
   els.headNm.textContent = character.name;
-  if (els.headAvatar) setAvatarEl(els.headAvatar, character);
   els.input.value = draftByChat.get(chat.id) || '';
   autosizeInput();
   syncSendButton();
@@ -261,10 +247,6 @@ export async function show({ chatId } = {}) {
   updateGlassTint();
   applyArchivedState();
   renderMessages();
-
-  if (isBrandNewScenarioChat && messages.length === 0) {
-    generate().catch((err) => console.error('Error generating opening scene:', err));
-  }
 
   attachViewportListeners();
   checkKeyboardFromVh();
@@ -309,7 +291,6 @@ function onOpenCharacterSheet() {
     onUpdated: (updated) => {
       character = updated;
       els.headNm.textContent = character.name;
-      if (els.headAvatar) setAvatarEl(els.headAvatar, character);
       renderMessages();
     },
     openMemories: () => openLorebookSheet(),
@@ -353,97 +334,6 @@ function checkKeyboardFromVh() {
   scrollToBottom(false);
 }
 
-/* ---------- rompehielos contextuales (Fase 13) ---------- */
-
-function getIcebreakerSuggestions() {
-  if (!character) return [];
-  const charName = character.name || 'tu acompañante';
-  const userName = settings?.userName || 'Tú';
-  const suggestions = [];
-
-  const alts = character.card?.data?.alternate_greetings;
-  if (Array.isArray(alts) && alts.length > 0) {
-    for (const alt of alts) {
-      if (typeof alt === 'string' && alt.trim()) {
-        const cleaned = subMacros(alt.trim(), charName, userName)
-          .replace(/^\*.*?\*\s*/, '')
-          .replace(/^["'«“]|["'»”]$/g, '')
-          .trim();
-        if (cleaned && cleaned.length <= 120 && !suggestions.includes(cleaned)) {
-          suggestions.push(cleaned);
-          if (suggestions.length >= 3) break;
-        }
-      }
-    }
-  }
-
-  if (suggestions.length < 2) {
-    const sc = character.card?.data?.scenario;
-    if (typeof sc === 'string' && sc.trim().length > 10) {
-      suggestions.push('Hola ' + charName + ', ¿en qué estabas pensando?');
-    }
-  }
-
-  const defaults = [
-    'Hola ' + charName + ', ¿cómo estás hoy?',
-    'Cuéntame de qué te gustaría hablar hoy.',
-    '¿Qué has estado haciendo últimamente?'
-  ];
-
-  for (const def of defaults) {
-    if (suggestions.length >= 3) break;
-    if (!suggestions.includes(def)) suggestions.push(def);
-  }
-
-  return suggestions.slice(0, 3);
-}
-
-function renderIcebreakers() {
-  if (!els.icebreakers) return;
-  const hasUserMessages = messages && messages.some((m) => m && m.role === 'user');
-  if (hasUserMessages || !character) {
-    els.icebreakers.hidden = true;
-    els.icebreakers.replaceChildren();
-    return;
-  }
-
-  const suggestions = getIcebreakerSuggestions();
-  if (!suggestions.length) {
-    els.icebreakers.hidden = true;
-    return;
-  }
-
-  els.icebreakers.classList.remove('chat-icebreakers--leaving');
-  els.icebreakers.hidden = false;
-  els.icebreakers.replaceChildren();
-
-  suggestions.forEach((text) => {
-    const pill = document.createElement('button');
-    pill.type = 'button';
-    pill.className = 'chat-icebreaker-pill';
-    pill.textContent = text;
-    pill.setAttribute('aria-label', 'Sugerencia: ' + text);
-    pill.addEventListener('click', () => {
-      haptics.tap();
-      els.input.value = text;
-      onInputChange();
-      els.input.focus();
-    });
-    els.icebreakers.appendChild(pill);
-  });
-}
-
-function hideIcebreakers() {
-  if (!els.icebreakers || els.icebreakers.hidden) return;
-  els.icebreakers.classList.add('chat-icebreakers--leaving');
-  setTimeout(() => {
-    if (els.icebreakers) {
-      els.icebreakers.hidden = true;
-      els.icebreakers.classList.remove('chat-icebreakers--leaving');
-    }
-  }, 180);
-}
-
 /* ---------- lista de mensajes ---------- */
 
 // UI-001: reconstrucción TOTAL de la lista. Solo al abrir el chat y en cambios estructurales (borrar, editar hasta vaciar,
@@ -464,7 +354,6 @@ function renderMessages() {
   els.messages.replaceChildren(frag);
   syncRetryButton();
   scrollToBottom(true);
-  renderIcebreakers();
 }
 
 // Caracteres por línea de burbuja en esta pantalla (para estimar la altura de las filas fuera de pantalla; ver chat.css).
@@ -545,21 +434,6 @@ function setBubbleContent(bubble, m) {
 }
 
 function buildMessageRow(m, i) {
-  if (m.kind === 'scene_break' || m.role === 'system') {
-    const row = document.createElement('div');
-    row.className = 'chat-row chat-row--scene-break';
-    row.dataset.index = String(i);
-    row.style.setProperty('--row-h', '44px');
-    const divider = document.createElement('div');
-    divider.className = 'chat-scene-break';
-    const textSpan = document.createElement('span');
-    textSpan.className = 'chat-scene-break__text';
-    textSpan.textContent = m.text || 'Corte de escena';
-    divider.appendChild(textSpan);
-    row.appendChild(divider);
-    return row;
-  }
-
   const isLast = i === messages.length - 1;
   const isChar = m.role === 'char';
   const row = document.createElement('div');
@@ -573,17 +447,33 @@ function buildMessageRow(m, i) {
   // `role` de un mensaje ya guardado); en el resto de la racha se reserva el mismo ancho con un div vacío,
   // para que todas las burbujas de la racha queden alineadas igual. Reutiliza `character.avatar` tal cual
   // (mismo data: URL en cada fila que lo usa, así el navegador decodifica la imagen una sola vez).
+  let body = row;
+  if (isChar) {
+    const startsStreak = i === 0 || messages[i - 1].role !== 'char';
+    const avatarSlot = document.createElement('div');
+    if (startsStreak) {
+      avatarSlot.className = 'chat-row__avatar av';
+      setAvatarEl(avatarSlot, character);
+    } else {
+      avatarSlot.className = 'chat-row__avatarspace';
+    }
+    row.appendChild(avatarSlot);
+    body = document.createElement('div');
+    body.className = 'chat-row__body';
+    row.appendChild(body);
+  }
+
   const bubble = document.createElement('div');
   bubble.className = 'chat-bubble';
   if (isChar && !m.text && busy && isLast) {
-    bubble.classList.add('chat-bubble--thinking');
     bubble.appendChild(buildDots());
   } else {
     setBubbleContent(bubble, m);
   }
-  row.appendChild(bubble);
+  body.appendChild(bubble);
 
-  // FASE 16: Línea bajo la burbuja ultra-limpia (solo marcapáginas, versiones y hora, sin etiquetas duplicadas)
+  // Línea bajo la burbuja: marcapáginas de memoria (UI-010), el selector de versiones de una respuesta regenerada (UI-017) y (MEM-011) el
+  // timestamp de TODOS los mensajes, con "sintiendo …" solo en respuestas que activaron 3 o más recuerdos y de las que hay una emoción clara.
   const loreState = loreIndicatorState(m);
   const showLore = loreState !== 'none' && !!m.text;
   const showVariants = isChar && variantCount(m) > 1 && !!m.text;
@@ -605,7 +495,7 @@ function buildMessageRow(m, i) {
     }
     if (showVariants) meta.appendChild(buildVariantNav(m, i)); // después del marcapáginas: este no cambia de sitio (UI-016)
     if (stampText) meta.appendChild(buildStamp(m, stampText));
-    row.appendChild(meta);
+    body.appendChild(meta);
   }
 
   return row;
@@ -621,6 +511,15 @@ function buildStamp(m, text) {
   time.title = formatMessageFullTime(m.ts);
   time.textContent = text;
   stamp.appendChild(time);
+  // MEM-015: la palabra que el propio personaje eligió manda; sin ella (ajuste apagado, sin
+  // servidor, sin palabra válida) se muestra el respaldo heurístico de MEM-011, sin llamar al modelo.
+  const mood = m.role === 'char' ? feelingDisplayText(m.feeling) || moodText(m.loreUsed) : '';
+  if (mood) {
+    const label = document.createElement('span');
+    label.className = 'chat-mood';
+    label.textContent = ' · ' + mood;
+    stamp.appendChild(label);
+  }
   return stamp;
 }
 
@@ -721,11 +620,7 @@ function runMessageAction(action) {
   const i = menuIndex;
   clearSelection(); // cierra el menú al ejecutar cualquier acción
   if (i < 0) return;
-  if (action === 'edit') {
-    const ok = await app.confirmDialog('¿Deseas editar este mensaje?', { confirmText: 'Editar' });
-    if (!ok) return;
-    openEditSheet(i);
-  }
+  if (action === 'edit') openEditSheet(i);
   else if (action === 'delete') deleteMessage(i);
   else if (action === 'copy') copyMessage(i);
   else if (action === 'regenerate') regenerate();
@@ -747,7 +642,7 @@ function buildRetryButton() {
   btn.setAttribute('aria-label', 'Reintentar respuesta');
   btn.title = 'Reintentar respuesta';
   btn.innerHTML = `<span class="chat-retry__icon">${ICON_RETRY}</span>`;
-  btn.addEventListener('click', () => { haptics.tap(); generate(); });
+  btn.addEventListener('click', () => generate());
   return btn;
 }
 
@@ -807,17 +702,8 @@ function openEditSheet(i) {
   saveBtn.addEventListener('click', async () => {
     const value = textarea.value.trim();
     if (!value) {
-      const ok = await app.confirmDialog('El texto está vacío. ¿Eliminar este mensaje? No podrás recuperarlo.', {
-        confirmText: 'Eliminar',
-        danger: true,
-      });
-      if (!ok) return;
       messages.splice(i, 1);
     } else {
-      const ok = await app.confirmDialog('¿Guardar los cambios en este mensaje?', {
-        confirmText: 'Guardar',
-      });
-      if (!ok) return;
       messages[i] = editActiveText(msg, value);
     }
     await persistChat();
@@ -831,12 +717,6 @@ function openEditSheet(i) {
 }
 
 async function deleteMessage(i) {
-  const ok = await app.confirmDialog('¿Eliminar este mensaje? No podrás recuperarlo.', {
-    confirmText: 'Eliminar',
-    danger: true,
-  });
-  if (!ok) return;
-  haptics.action();
   messages.splice(i, 1);
   await persistChat();
   renderMessages();
@@ -860,19 +740,15 @@ function isNearBottom() {
   return el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
 }
 
-function scrollToBottom(force, smooth) {
+function scrollToBottom(force) {
   if (force || atBottom) {
     // Con content-visibility las filas fuera de pantalla usan una altura estimada: al llegar abajo se miden las reales y el
     // final se corre un poco. Se repite (máx. 4 veces) hasta que el fondo deja de moverse.
     const el = els.messages;
-    if (smooth) {
-      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
-    } else {
-      for (let k = 0; k < 4; k++) {
-        const target = el.scrollHeight;
-        el.scrollTop = target;
-        if (el.scrollHeight === target) break;
-      }
+    for (let k = 0; k < 4; k++) {
+      const target = el.scrollHeight;
+      el.scrollTop = target;
+      if (el.scrollHeight === target) break;
     }
     atBottom = true;
   }
@@ -921,23 +797,9 @@ function autosizeInput() {
 // HUM-001: línea bajo el nombre: "escribiendo…" mientras responde; si no, el ánimo del momento ("ánimo tranquilo"). El ánimo mostrado es el
 // guardado más la hora y el día (sin lo que se escriba): el que se usa al responder lo recalcula `generateReply` con el mensaje nuevo.
 function headSubText() {
-  if (busy) return 'typing…';
+  if (busy) return 'escribiendo…';
   if (!character || !settings || settings.humanTouch !== true) return '';
-
-  const d = new Date();
-  const charHash = (character.id || character.name || 'char').split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
-  const seed = d.getHours() * 31 + d.getDate() * 7 + charHash;
-
-  // FASE 16: Si el último mensaje del personaje activó un sentimiento puntual, lo refleja prioritariamente:
-  const lastChar = [...(messages || [])].reverse().find((m) => m && m.role === 'char');
-  if (lastChar && lastChar.feeling) {
-    const rawF = typeof lastChar.feeling === 'string' ? lastChar.feeling : (lastChar.feeling.word || lastChar.feeling.id || '');
-    const feelStatus = feelingDisplayStatus(rawF.toLowerCase(), seed);
-    if (feelStatus) return feelStatus;
-  }
-
-  const moodId = computeMood({ prev: character.mood, characterId: character.id, tags: character.personalityTags, now: d }).id;
-  return moodDisplayStatus(moodId, seed) || moodHeadText(moodId);
+  return moodHeadText(computeMood({ prev: character.mood, characterId: character.id, tags: character.personalityTags }).id);
 }
 
 function syncHeadSub() {
@@ -993,10 +855,6 @@ function applyArchivedState() {
 
 async function onRestoreEpisode() {
   if (!chat || !isChatArchived(chat)) return;
-  const ok = await app.confirmDialog('¿Restaurar este episodio a tu lista activa?', {
-    confirmText: 'Restaurar',
-  });
-  if (!ok) return;
   els.restore.disabled = true;
   try {
     chat = await saveChatArchive(chat.id, { archivedAt: 0, archivePendingAt: 0 });
@@ -1008,65 +866,6 @@ async function onRestoreEpisode() {
   } finally {
     els.restore.disabled = false;
   }
-}
-
-// FASE 17 (PARETO-010): "Nuevo capítulo / Corte de escena" dentro del chat único continuo.
-function onNewSceneBreak() {
-  app.closeSheet();
-  const wrap = document.createElement('div');
-
-  const title = document.createElement('h3');
-  title.className = 'sheet__title';
-  title.textContent = 'Nuevo capítulo / Corte de escena';
-  wrap.appendChild(title);
-
-  const field = document.createElement('div');
-  field.className = 'field';
-  field.innerHTML = `
-    <label class="field__label" for="scene-break-title">Acontecimiento o salto temporal</label>
-    <input class="inp" id="scene-break-title" type="text" autocomplete="off" maxlength="80"
-      placeholder="Ej: A la mañana siguiente en la cafetería, Tres días después...">
-  `;
-  wrap.appendChild(field);
-
-  const scenField = document.createElement('div');
-  scenField.className = 'field';
-  scenField.innerHTML = `
-    <label class="field__label" for="scene-break-scenario">Nuevo escenario o situación (opcional)</label>
-    <textarea class="inp" id="scene-break-scenario" rows="3" maxlength="300"
-      placeholder="Orientación situacional para el companion en el nuevo momento."></textarea>
-  `;
-  wrap.appendChild(scenField);
-
-  const insertBtn = document.createElement('button');
-  insertBtn.type = 'button';
-  insertBtn.className = 'btn';
-  insertBtn.textContent = 'Insertar capítulo';
-  wrap.appendChild(insertBtn);
-
-  const titleInput = field.querySelector('#scene-break-title');
-  const scenInput = scenField.querySelector('#scene-break-scenario');
-
-  insertBtn.addEventListener('click', async () => {
-    const text = titleInput.value.trim() || 'Corte de escena';
-    const scenario = scenInput.value.trim();
-    insertBtn.disabled = true;
-    try {
-      const { message } = await insertSceneBreak(chat.id, { text, ...(scenario ? { scenario } : {}) });
-      if (scenario) chat.scenario = scenario;
-      messages.push(message);
-      appendMessageRow(messages.length - 1);
-      scrollToBottom(true);
-      haptics.tap();
-      app.closeSheet();
-    } catch (err) {
-      insertBtn.disabled = false;
-      app.toast('No se pudo insertar el capítulo.');
-    }
-  });
-
-  app.openSheet(wrap);
-  titleInput.focus();
 }
 
 // MEM-018: "Archivar este episodio". Fuerza recuerdos y resumen (api/chat-archive.js) y, si salió bien, vuelve a la pantalla anterior; si
@@ -1118,7 +917,6 @@ async function onSendClick() {
   }
   const text = els.input.value.trim();
   if (!text || !character || !chat) return;
-  hideIcebreakers();
   if (isReadOnlyChat()) return;
   // MEM-018: si el usuario retoma un episodio que estaba "pendiente de archivar", la intención ya no es esa: se cancela la marca.
   if (isChatArchivePending(chat)) {
@@ -1133,7 +931,6 @@ async function onSendClick() {
   draftByChat.delete(chat.id);
   autosizeInput();
   syncSendButton();
-  haptics.send();
 
   // Prioridad absoluta al chat: si hay una extracción de memoria en curso se
   // cancela ya, y `sendInFlight` impide que arranque otra entre el guardado
@@ -1275,29 +1072,6 @@ async function generate(opts = {}) {
     syncSendButton();
     finishStreamRow(idx);
     await persistChat();
-    if (reply.text && !wasAborted) {
-      haptics.receive();
-    }
-    // FASE 20: Refuerzo de evocacion y actualizacion de recencia (ACT-R / Stanford Generative Agents)
-    if (reply.text && !wasAborted && Array.isArray(reply.loreUsed) && reply.loreUsed.length && character && Array.isArray(character.lorebook)) {
-      const usedIds = new Set(reply.loreUsed.map((u) => u && u.id).filter(Boolean));
-      let touchedLore = false;
-      const nowTs = Date.now();
-      const nextLore = character.lorebook.map((entry) => {
-        if (!entry || !usedIds.has(entry.id)) return entry;
-        touchedLore = true;
-        return {
-          ...entry,
-          accessCount: (entry.accessCount || 0) + 1,
-          lastAccessed: nowTs
-        };
-      });
-      if (touchedLore) {
-        saveCharacterLorebook(character.id, nextLore)
-          .then((upd) => { if (upd && character && character.id === upd.id) character = upd; })
-          .catch(() => {});
-      }
-    }
     // HUM-001: el ánimo solo se escribe en el personaje cuando cambió (el registro lleva imágenes).
     if (moodResult && moodResult.changed && character && reply.text) {
       saveCharacterMood(character.id, { id: moodResult.id, updated: moodResult.updated })
@@ -1347,7 +1121,17 @@ function markFollowUp(info) {
 // HUM-003: detector sin modelo (api/moments.js). Calcula el candidato con el personaje que hay en pantalla y lo vuelve a verificar y escribe bajo el candado del
 // personaje con el registro RECIÉN leído (nunca pisa un guardado de memoria paralelo). Mejor esfuerzo: un fallo no se nota.
 function maybeSaveMoment(history) {
-  // Deprecado en Fase 21: los recuerdos se extraen conceptualmente sin transcripciones literales.
+  const characterId = character.id;
+  const candidate = momentCandidate({ messages: history, character, settings, now: Date.now() });
+  if (!candidate) return;
+  saveCharacterMoment(characterId, (fresh) => {
+    const again = momentCandidate({ messages: history, character: fresh, settings, now: Date.now() });
+    return again ? withMoment(fresh.lorebook, again, Date.now()) : null;
+  })
+    .then((updated) => {
+      if (updated && character && character.id === updated.id) character = updated;
+    })
+    .catch(() => {});
 }
 
 // HUM-001: la segunda mitad de una respuesta partida. Se guarda YA (nada se pierde si el usuario sale del chat) y se muestra tras una pausa
@@ -1372,7 +1156,6 @@ async function showContinuation(text) {
 // UI-001: al terminar la respuesta solo se rehace SU fila (o se quita, si quedó vacía); el resto de la lista no se toca.
 function finishStreamRow(idx) {
   const row = streamRow;
-  if (streamBubble) streamBubble.classList.remove('chat-bubble--thinking');
   streamRow = null;
   streamBubble = null;
   streamReply = null;
@@ -1409,10 +1192,8 @@ function paintStreamingBubble() {
     return;
   }
   if (streamReply.text) {
-    streamBubble.classList.remove('chat-bubble--thinking');
     setBubbleContent(streamBubble, streamReply);
   } else {
-    streamBubble.classList.add('chat-bubble--thinking');
     streamBubble.replaceChildren(buildDots());
   }
   followStreamToBottom();
@@ -1447,13 +1228,6 @@ function regenerate() {
       removeLastRow();
       const { cont: _cont, ...rest } = last;
       base = { ...before, text: `${before.text} ${rest.text}` };
-    }
-    if (character && chat) {
-      logEvent(TEL_EVENTS.REGENERATE, {
-        characterId: character.id,
-        chatId: chat.id,
-        count: (base && base.variants ? base.variants.length : 1) + 1,
-      });
     }
     generate({ previous: base });
   } else {
@@ -1501,7 +1275,9 @@ function logMessageEvent(role) {
 // REFORMA PARETO: si el usuario configuró una instancia secundaria en CPU (Settings.cpuUrl),
 // las tareas en segundo plano (memorias, resúmenes, relación) van a la CPU para no tocar la GPU ni su caché.
 function bgSettings(s) {
-  return s;
+  if (!s) return s;
+  const cpu = typeof s.cpuUrl === 'string' ? s.cpuUrl.trim() : '';
+  return cpu ? { ...s, url: cpu } : s;
 }
 
 const loreUpdater = createLoreUpdater({
@@ -1586,7 +1362,7 @@ const continuityUpdater = createContinuityUpdater({
 });
 
 function maybeUpdateContinuity() {
-  // Deprecado en Fase 21: con 10k de contexto y cortes de escena, no se fuerza resumen automático.
+  continuityUpdater.maybeRun().catch(() => {});
 }
 
 /* ---------- MEM-014: estado de la relación, escrito por el personaje ---------- */
@@ -1627,7 +1403,7 @@ const relationshipUpdater = createRelationshipUpdater({
 // función misma decide si de verdad cruzó de nivel; si no, no hace nada (mejor esfuerzo, sin red
 // de más). Nunca bloquea la acción que la dispara.
 function maybeUpdateRelationship() {
-  // Deprecado en Fase 21: la relación es orgánica y emerge de la memoria episódica.
+  relationshipUpdater.maybeRun().catch(() => {});
 }
 
 /* ---------- MEM-015: el personaje dice cómo se siente, en su voz (lista cerrada) ---------- */
@@ -1651,7 +1427,7 @@ const feelingUpdater = createFeelingUpdater({
 });
 
 function maybeUpdateFeeling(idx) {
-  // Deprecado en Fase 21: sin llamadas superfluas a segundo plano.
+  feelingUpdater.maybeRun(idx).catch(() => {});
 }
 
 // MEM-010: al ABRIR un chat tras una ausencia larga (ver `isLongAbsence`), si hacía falta actualizar el resumen se hace ya, en segundo plano,
@@ -1760,15 +1536,9 @@ function buildRelationshipBlock(character, model) {
     { name: character.card.name, redactedBy: character.card.name, source: rel.source, updatedAt: rel.updated || 0 },
     editable
       ? {
-          onEdit: async () => {
-            const ok = await app.confirmDialog('¿Editar el estado de la relación?', { confirmText: 'Editar' });
-            if (!ok) return;
-            openRelationshipEdit();
-          },
+          onEdit: () => openRelationshipEdit(),
           regenerateDisabled: relationshipUpdater.isRunning() || busy || sendInFlight,
           onRegenerate: async () => {
-            const ok = await app.confirmDialog('¿Regenerar el estado de la relación con el modelo?', { confirmText: 'Regenerar' });
-            if (!ok) return;
             const result = await relationshipUpdater.runNow();
             openLorebookSheet(
               result.kind === 'ok'
@@ -1876,13 +1646,16 @@ function openLorebookSheet(note = '') {
     wrap.appendChild(noteEl);
   }
 
-  const subtitle = loreEl(
-    'div',
-    'field__hint',
-    `Diario vivo de vivencias, acuerdos e hitos afectivos compartidos con ${character.name}. Se evocan de forma orgánica en la conversación según su relevancia y saliencia emocional.`
+  // (1) relación y (2) resumen
+  wrap.appendChild(buildRelationshipBlock(character, model));
+  wrap.appendChild(
+    buildIdentityCard(model, { name: character.name }, {
+      onAccept: () => changeIdentity(acceptProposal, 'Listo: a partir de ahora esto se suma a cómo se presenta ' + character.name + '.'),
+      onDiscard: () => changeIdentity(discardProposal, 'Propuesta descartada. Nada cambió.'),
+      onRevert: () => changeIdentity(revertIdentity, 'Hecho. Volvió a como estaba antes.'),
+    })
   );
-  subtitle.style.marginBottom = 'var(--space-3, 12px)';
-  wrap.appendChild(subtitle);
+  wrap.appendChild(buildContinuityCard(model, { onOpen: () => openContinuitySheet() }));
 
   // (3) recuerdos como tarjetas
   const all = character.lorebook || [];
@@ -1899,12 +1672,7 @@ function openLorebookSheet(note = '') {
       )
     );
   }
-  const cardHooks = {
-    onEdit: (id) => openLoreEdit(id),
-    onRefine: (id) => openLoreEdit(id, { autoRefine: true }),
-    onArchive: (id) => openLoreDeleteConfirm(id),
-    confirmDialog: (msg, opts) => app.confirmDialog(msg, opts),
-  };
+  const cardHooks = { onEdit: (id) => openLoreEdit(id), onArchive: (id) => openLoreDeleteConfirm(id) };
   if (all.length) {
     // MEM-004: "Siempre presentes" (van en cada respuesta, con tope) y "Por tema" (solo cuando sale una palabra clave).
     list.appendChild(loreEl('h5', 'mem-group__title', 'Siempre presentes'));
@@ -1941,45 +1709,28 @@ function openLorebookSheet(note = '') {
       modeBar.style.marginBottom = 'var(--space-3, 12px)';
       const btnGrouped = loreEl('button', 'btn btn--ghost btn--sm', 'Agrupados por asunto');
       const btnChrono = loreEl('button', 'btn btn--ghost btn--sm', 'Cronológico');
-      const btnOrderToggle = loreEl('button', 'btn btn--ghost btn--sm', '▼ Más recientes');
-      btnOrderToggle.type = 'button';
-      btnOrderToggle.style.marginLeft = 'auto';
-      btnOrderToggle.hidden = true;
       btnGrouped.type = 'button';
       btnChrono.type = 'button';
-      modeBar.append(btnGrouped, btnChrono, btnOrderToggle);
+      modeBar.append(btnGrouped, btnChrono);
       list.appendChild(modeBar);
-
-      // Botón de auditoría de recuerdos antiguos
-      const btnAudit = loreEl('button', 'btn btn--ghost btn--sm', 'Auditar recuerdos antiguos');
-      btnAudit.type = 'button';
-      btnAudit.style.width = '100%';
-      btnAudit.style.marginBottom = 'var(--space-3, 12px)';
-      btnAudit.addEventListener('click', () => openLoreAuditSheet());
-      list.appendChild(btnAudit);
 
       const cardsContainer = loreEl('div');
       list.appendChild(cardsContainer);
 
       let isGrouped = true;
-      let chronoAsc = false;
       const renderTopicCards = () => {
         btnGrouped.classList.toggle('btn--primary', isGrouped);
         btnChrono.classList.toggle('btn--primary', !isGrouped);
-        btnOrderToggle.hidden = isGrouped;
-        btnOrderToggle.textContent = chronoAsc ? '▲ Más antiguos' : '▼ Más recientes';
         cardsContainer.innerHTML = '';
         if (isGrouped) {
           cardsContainer.appendChild(buildGroupedMemoryCards(model.topic, cardHooks));
         } else {
-          const sorted = model.topic.slice().sort((a, b) => chronoAsc ? ((a.updated || 0) - (b.updated || 0)) : ((b.updated || 0) - (a.updated || 0)));
-          cardsContainer.appendChild(buildMemoryCards(sorted, cardHooks));
+          cardsContainer.appendChild(buildMemoryCards(model.topic, cardHooks));
         }
       };
 
       btnGrouped.addEventListener('click', () => { isGrouped = true; renderTopicCards(); });
       btnChrono.addEventListener('click', () => { isGrouped = false; renderTopicCards(); });
-      btnOrderToggle.addEventListener('click', () => { chronoAsc = !chronoAsc; renderTopicCards(); });
       renderTopicCards();
     } else {
       list.appendChild(loreEl('div', 'field__hint', 'Ninguno todavía.'));
@@ -2110,7 +1861,7 @@ function openLorebookSheet(note = '') {
   app.openSheet(wrap);
 }
 
-function openLoreEdit(entryId, opts = {}) {
+function openLoreEdit(entryId) {
   const entry = ((character && character.lorebook) || []).find((e) => e.id === entryId);
   if (!entry) {
     openLorebookSheet('Ese recuerdo ya no existe.');
@@ -2124,9 +1875,6 @@ function openLoreEdit(entryId, opts = {}) {
   content.maxLength = LOREBOOK_MAX_ENTRY_CHARS;
   content.rows = 3;
   content.setAttribute('aria-label', 'Recuerdo');
-
-
-
   const keys = loreEl('input', 'inp');
   keys.type = 'text';
   keys.value = (entry.keys || []).join(', ');
@@ -2162,8 +1910,6 @@ function openLoreEdit(entryId, opts = {}) {
   const saveBtn = loreEl('button', 'btn', 'Guardar');
   saveBtn.type = 'button';
   saveBtn.addEventListener('click', async () => {
-    const ok = await app.confirmDialog('¿Guardar los cambios en este recuerdo?', { confirmText: 'Guardar' });
-    if (!ok) return;
     try {
       const next = editLoreEntry(await freshLorebook(), entryId, {
         content: content.value,
@@ -2188,7 +1934,6 @@ function openLoreEdit(entryId, opts = {}) {
 
   wrap.append(content, keys, hint, alwaysRow, alwaysHint, error, saveBtn, cancelBtn);
   app.openSheet(wrap);
-
 }
 
 // Confirmaciones dentro de la propia hoja (en vez de `app.confirmDialog`, que
@@ -2257,122 +2002,6 @@ function openLoreDeleteConfirm(entryId) {
 }
 
 // MEM-016: vista de archivados (dentro de la misma pantalla de lorebook, un paso más adentro).
-
-function openLoreAuditSheet() {
-  if (!character) return;
-  const lore = (character.lorebook || []).slice();
-  const isRawAction = (txt) => /\b(made love|slept together|went to bed|fell asleep|undressed|kissed|cama|dormitorio|dormir|durmieron|hicieron el amor)\b/i.test(txt);
-  const candidates = lore.filter((e) => {
-    const text = e.content || '';
-    return text.includes('"') || /told\s+\w+:|asked\s+\w+:|said\s+to\s+\w+:/i.test(text) || isRawAction(text);
-  });
-
-  if (!candidates.length) {
-    app.toast('¡Tus recuerdos ya están limpios y en formato conceptual!');
-    return;
-  }
-
-  let index = 0;
-  const wrap = loreEl('div');
-  wrap.appendChild(loreEl('h3', 'sheet__title', 'Auditoría de recuerdos'));
-  wrap.appendChild(
-    loreEl(
-      'div',
-      'field__hint',
-      `Encontramos ${candidates.length} recuerdo${candidates.length === 1 ? '' : 's'} antiguos con comillas o transcripciones literales. Se propone una versión conceptual limpia. Tú decides si aceptas cada cambio.`
-    )
-  );
-
-  const container = loreEl('div');
-  container.style.marginTop = 'var(--space-4, 16px)';
-  wrap.appendChild(container);
-
-  async function renderCandidate() {
-    container.innerHTML = '';
-    if (index >= candidates.length) {
-      container.appendChild(loreEl('div', 'field__label', '¡Auditoría completada con éxito!'));
-      const doneBtn = loreEl('button', 'btn', 'Listo');
-      doneBtn.type = 'button';
-      doneBtn.addEventListener('click', () => openLorebookSheet('Recuerdos auditados.'));
-      container.appendChild(doneBtn);
-      return;
-    }
-
-    const currentEntry = candidates[index];
-    const header = loreEl('div', 'field__label', `Recuerdo #${index + 1} de ${candidates.length}`);
-    header.style.color = 'var(--color-accent-2)';
-    container.appendChild(header);
-
-    const origCard = loreEl('div', 'mem-card');
-    origCard.style.marginBottom = 'var(--space-3, 12px)';
-    origCard.appendChild(loreEl('div', 'field__hint', 'Texto original:'));
-    origCard.appendChild(loreEl('div', 'mem-card__text', currentEntry.content));
-    container.appendChild(origCard);
-
-    const propLabel = loreEl('div', 'field__label', 'Propuesta conceptual:');
-    const propText = loreEl('textarea', 'inp');
-    propText.rows = 3;
-    propText.value = 'Generando propuesta…';
-    propText.disabled = true;
-    container.append(propLabel, propText);
-
-    const actionRow = loreEl('div', 'settings-row');
-    actionRow.style.marginTop = 'var(--space-3, 12px)';
-    const btnAccept = loreEl('button', 'btn btn--sm', 'Aceptar cambio');
-    btnAccept.disabled = true;
-    const btnSkip = loreEl('button', 'btn btn--sm btn--ghost', 'Conservar original');
-    btnSkip.type = 'button';
-    const btnCancel = loreEl('button', 'btn btn--sm btn--ghost', 'Salir');
-    btnCancel.type = 'button';
-    actionRow.append(btnAccept, btnSkip, btnCancel);
-    container.appendChild(actionRow);
-
-    btnCancel.addEventListener('click', () => openLorebookSheet());
-    btnSkip.addEventListener('click', () => { index++; renderCandidate(); });
-
-    try {
-      const uName = (settings && settings.user) || 'the user';
-      const prompt = `Rewrite the following memory snippet into ONE short, concise, enduring emotional truth or value shared between ${character.name} and ${uName}. Do NOT describe immediate raw physical actions or dialogue. Focus on their underlying bond, feelings, or meaning. Do NOT use quotes. Output ONLY the rewritten sentence, nothing else.\n\nOriginal: ${currentEntry.content}\n\nRewritten:`;
-      const activeSettings = (await getSettings()) || settings;
-      const targetSettings = bgSettings(activeSettings);
-      const res = await completeOnce(prompt, targetSettings, {
-        temp: 0.2,
-        maxLen: 90,
-      });
-      const cleanProposal = res.replace(/["“”]/g, '').trim();
-      propText.value = cleanProposal || currentEntry.content;
-      propText.disabled = false;
-      btnAccept.disabled = false;
-
-      btnAccept.addEventListener('click', async () => {
-      haptics.action();
-        btnAccept.disabled = true;
-        currentEntry.content = propText.value.trim();
-        currentEntry.updated = Date.now();
-        currentEntry.source = 'manual';
-        await saveCharacterLorebook(character.id, character.lorebook);
-        index++;
-        renderCandidate();
-      });
-    } catch (err) {
-      propText.value = 'No se pudo conectar con el servidor. Puedes editarlo a mano si quieres.';
-      propText.disabled = false;
-      btnAccept.disabled = false;
-      btnAccept.addEventListener('click', async () => {
-        currentEntry.content = propText.value.trim();
-        currentEntry.updated = Date.now();
-        currentEntry.source = 'manual';
-        await saveCharacterLorebook(character.id, character.lorebook);
-        index++;
-        renderCandidate();
-      });
-    }
-  }
-
-  renderCandidate();
-  app.openSheet(wrap);
-}
-
 function openLoreArchiveSheet(note = '') {
   if (!character) return;
   const archive = (character.lorebookArchive || []).slice().sort((a, b) => (b.archivedAt || 0) - (a.archivedAt || 0));
@@ -2394,8 +2023,6 @@ function openLoreArchiveSheet(note = '') {
     const restoreBtn = loreEl('button', 'btn btn--sm', 'Restaurar');
     restoreBtn.type = 'button';
     restoreBtn.addEventListener('click', async () => {
-      const ok = await app.confirmDialog('¿Restaurar este recuerdo a la memoria activa?', { confirmText: 'Restaurar' });
-      if (!ok) return;
       restoreBtn.disabled = true;
       try {
         const fresh = await getCharacter(character.id);
@@ -2787,7 +2414,7 @@ function menuSection(title, items) {
   return section;
 }
 
-// Sección plegable con diagnóstico técnico forense avanzado.
+// Sección plegable, cerrada de entrada. El contenido se calcula la primera vez que se abre (mismos cálculos de siempre).
 function buildDiagnostics() {
   const wrap = document.createElement('div');
   wrap.className = 'menu-section';
@@ -2817,24 +2444,6 @@ function buildDiagnostics() {
       note.className = 'field__hint';
       note.textContent = 'Información técnica. No hace falta entenderla para usar la app.';
       body.append(note, buildUsageInfo(), buildLastReplyInfo());
-
-      // Botón para ver y copiar el informe forense completo
-      const diagBtn = document.createElement('button');
-      diagBtn.type = 'button';
-      diagBtn.className = 'btn btn--ghost btn--sm';
-      diagBtn.style.marginTop = 'var(--space-2, 8px)';
-      diagBtn.style.width = '100%';
-      diagBtn.textContent = '📋 Copiar reporte de diagnóstico técnico';
-      diagBtn.addEventListener('click', async () => {
-        try {
-          const report = buildChatDiagnosticsModel({ character, chat, messages, settings });
-          await navigator.clipboard.writeText(report.reportText);
-          app.toast('Reporte técnico copiado al portapapeles.');
-        } catch {
-          app.toast('No se pudo copiar el reporte.');
-        }
-      });
-      body.appendChild(diagBtn);
     }
     body.hidden = !open;
     toggle.setAttribute('aria-expanded', String(open));
@@ -2864,13 +2473,6 @@ function onMenu() {
   // foto", "Editar apariencia" y "Editar" (editor completo), respectivamente.
   // UI-032: "Fondo del chat" se quitó por el mismo motivo — también vive en la ficha ahora.
   wrap.appendChild(menuSection('Personaje y memoria', characterItems));
-
-  // FASE 17 (PARETO-010): Acción rápida para corte de escena / nuevo capítulo
-  wrap.appendChild(
-    menuSection('Continuidad y capítulos', [
-      menuItem('Nuevo capítulo / Corte de escena', () => onNewSceneBreak()),
-    ])
-  );
 
   // MEM-018: no tiene sentido archivar lo que ya está archivado.
   if (!isChatArchived(chat)) {

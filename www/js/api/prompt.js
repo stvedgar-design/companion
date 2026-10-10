@@ -251,6 +251,28 @@ export const IDENTITY_HEAD_LABEL = 'has grown so far';
 // Redactada en positivo (qué SÍ hace; nombrar lo que no se quiere lo hace más probable) y solo con el nombre, sin pronombres: sirve
 // igual para cualquier personaje, también tarjetas importadas y personajes creados con etiquetas. Estricto `=== true`: un
 // `settings` sin el campo (tests, llamadas sueltas) deja el prompt exactamente como antes; los Settings reales traen `true`.
+
+export function formatIdentityCoreBlock(identityCore, charName, userName) {
+  if (!identityCore || typeof identityCore !== 'object') return '';
+  const N = charName;
+  const U = userName;
+  const sub = (s) => subMacros(String(s || ''), N, U).replace(/\s+/g, ' ').trim();
+
+  const lines = [];
+  const nat = identityCore.natureLabel || identityCore.nature;
+  if (nat) lines.push(`- Nature: ${sub(nat)}`);
+  if (identityCore.worldview) lines.push(`- Worldview & Lens: ${sub(identityCore.worldview)}`);
+  if (Array.isArray(identityCore.traits) && identityCore.traits.length) {
+    lines.push(`- Core Temperament: ${identityCore.traits.join(', ')}`);
+  }
+  if (identityCore.vulnerability) lines.push(`- Inner Vulnerability: ${sub(identityCore.vulnerability)}`);
+  const dyn = identityCore.dynamic || identityCore.origin;
+  if (dyn) lines.push(`- Initial Dynamic with ${U}: ${sub(dyn)}`);
+  if (identityCore.currentStance) lines.push(`- Current Stance: ${sub(identityCore.currentStance)}`);
+
+  return lines.length ? `[Identity Core: ${N}]\n${lines.join('\n')}` : '';
+}
+
 export function formatPersonalityAdaptLine(charName, userName) {
   const N = charName;
   const U = userName;
@@ -272,7 +294,7 @@ export function formatPersonalityAdaptLine(charName, userName) {
 // '' si ninguna matcheó o el chat todavía no tiene lorebook. `relationship` = `{level, text}` de
 // MEM-014 (`relationshipForPrompt()`, api/relationship.js); ausente o sin `level` reconocido no
 // añade nada.
-function headBlock(card, settings, chatScenario, loreBlock, relationship = null, appearanceFixed = '', identity = '', appearanceStyle = '') {
+function headBlock(card, settings, chatScenario, loreBlock, relationship = null, appearanceFixed = '', identity = '', appearanceStyle = '', identityCore = null) {
   const N = card.name;
   const U = (settings && settings.user) || 'User';
   const sub = (s) => subMacros(s, N, U);
@@ -287,15 +309,21 @@ function headBlock(card, settings, chatScenario, loreBlock, relationship = null,
       `Stay grounded in the physical setting and distance established in the scene: if communicating remotely (such as a phone call, voice call or text), all actions must remain strictly on ${N}'s own physical side without impossible in-person contact (such as touching, kissing, or physical presence).`
   );
 
-  if (card.description) parts.push(`${N}'s description:\n${sub(card.description)}`);
-  if (card.personality) parts.push(`${N}'s personality: ${sub(card.personality)}`);
-  if (card.personality && settings && settings.personalityAdapts === true) parts.push(formatPersonalityAdaptLine(N, U));
+  const coreBlock = formatIdentityCoreBlock(identityCore, N, U);
+  if (coreBlock) {
+    parts.push(coreBlock);
+  } else {
+    if (card.description) parts.push(`${N}'s description:\n${sub(card.description)}`);
+    if (card.personality) parts.push(`${N}'s personality: ${sub(card.personality)}`);
+    if (card.personality && settings && settings.personalityAdapts === true) parts.push(formatPersonalityAdaptLine(N, U));
+  }
+
   // MEM-019: síntesis de identidad ACEPTADA por el usuario; se suma a la personalidad escrita, nunca la reemplaza. Vacía = nada.
   const identityText = String(identity || '').replace(/\s+/g, ' ').trim();
   if (identityText) parts.push(`${N} ${IDENTITY_HEAD_LABEL}: ${identityText}`);
 
   const scenarioLines = [];
-  if (card.scenario) scenarioLines.push(sub(card.scenario));
+  if (card.scenario && !coreBlock) scenarioLines.push(sub(card.scenario));
   if (chatScenario) scenarioLines.push(sub(chatScenario));
   if (scenarioLines.length) parts.push(`Scenario: ${scenarioLines.join('\n')}`);
 
@@ -307,7 +335,7 @@ function headBlock(card, settings, chatScenario, loreBlock, relationship = null,
   if (userAppearanceLine) parts.push(userAppearanceLine);
   if (loreBlock) parts.push(loreBlock);
 
-  if (card.mes_example) {
+  if (card.mes_example && !coreBlock) {
     parts.push(`Example dialogue:\n${sub(card.mes_example).replace(/<START>/gi, '').trim()}`);
   }
 
@@ -518,7 +546,7 @@ export function buildChatMessages(card, messages, settings, chatScenario = '', l
   const N = card.name;
   const U = (settings && settings.user) || 'User';
 
-  let head = headBlock(card, settings, chatScenario, loreBlock, extras && extras.relationship, extras && extras.appearance && extras.appearance.fixed, extras && extras.identity, extras && extras.appearance && extras.appearance.style);
+  let head = headBlock(card, settings, chatScenario, loreBlock, extras && extras.relationship, extras && extras.appearance && extras.appearance.fixed, extras && extras.identity, extras && extras.appearance && extras.appearance.style, extras && extras.identityCore);
   if (card.post_history_instructions) {
     head += '\n\n' + subMacros(card.post_history_instructions, N, U);
   }
@@ -587,7 +615,7 @@ export function buildChatMessages(card, messages, settings, chatScenario = '', l
 export function estimateContextUsage(card, messages, settings, chatScenario = '', loreBlock = '', topicReserveChars = 0, extras = {}) {
   const ctx = (settings && settings.ctx) || 4096;
   const maxLen = (settings && settings.maxLen) || 220;
-  const head = headBlock(card, settings, chatScenario, loreBlock, extras && extras.relationship, extras && extras.appearance && extras.appearance.fixed, extras && extras.identity, extras && extras.appearance && extras.appearance.style);
+  const head = headBlock(card, settings, chatScenario, loreBlock, extras && extras.relationship, extras && extras.appearance && extras.appearance.fixed, extras && extras.identity, extras && extras.appearance && extras.appearance.style, extras && extras.identityCore);
   const historyChars = messages.reduce((sum, m) => sum + String(m.text || '').length + LINE_OVERHEAD, 0);
   const approxTokens = Math.ceil((head.length + historyChars + Math.max(0, topicReserveChars || 0) + continuityBlockChars(extras && extras.continuity) + appearanceEndChars(extras && extras.appearance, card.name, (settings && settings.user) || 'User')) / CHARS_PER_TOKEN);
   const budgetTokens = Math.max(1, ctx - maxLen);

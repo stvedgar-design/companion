@@ -1,11 +1,9 @@
 // www/js/ui/home.js
 // Vista de lista de personajes: saludo según la hora con el estado de conexión, lista, búsqueda y carga de character cards.
 
-import { getSettings, listCharacters, listChats, deleteCharacter, activeChats, mergeCharacterChats } from '../state.js';
+import { getSettings, saveSettings, listCharacters, listChats, deleteCharacter, activeChats, mergeCharacterChats } from '../state.js';
 import { retryPendingArchives } from './chat-archive.js';
-import { maybeSynthesizeIdentities } from './identity.js';
 import { maybeWriteMailboxNotes, openMailbox, unreadCount } from './mailbox.js';
-import { maybeWriteLife } from './life.js';
 import { importCardFile } from '../cards/import.js';
 import { connect } from '../api/kobold.js';
 import { pickFiles } from '../platform.js';
@@ -40,7 +38,6 @@ export function init(root, appApi) {
     <div class="topbar">
       <span class="topbar__title">Chats</span>
       <button class="ib" id="home-search-toggle" aria-label="Buscar personaje">${ICON_SEARCH}</button>
-      <button class="ib" id="home-settings" aria-label="Ajustes">${ICON_SETTINGS}</button>
     </div>
     <div class="home-greeting">
       <h2 class="home-greeting__text" id="home-greeting"></h2>
@@ -86,7 +83,7 @@ export function init(root, appApi) {
     import: root.querySelector('#home-import'),
   };
 
-  els.settingsBtn.addEventListener('click', () => { haptics.tap(); openSettings(app); });
+  if (els.settingsBtn) els.settingsBtn.addEventListener('click', () => { haptics.tap(); openSettings(app); });
   const navSettings = root.querySelector('#home-nav-settings');
   if (navSettings) navSettings.addEventListener('click', () => { haptics.tap(); openSettings(app); });
   els.status.addEventListener('click', () => { haptics.tap(); openSettings(app); });
@@ -367,9 +364,12 @@ async function checkConnection(myToken) {
   if (myToken !== viewToken) return;
 
   try {
-    const { model } = await connect(settings.url);
+    const { model, ctx } = await connect({ apiKey: settings.apiKey, model: settings.model, url: settings.url });
     if (myToken !== viewToken) return;
     setStatus('ok', model);
+    if (ctx && ctx !== settings.ctx) {
+      await saveSettings({ ctx });
+    }
     // MEM-018: el servidor responde → se completan en segundo plano los episodios que quedaron "pendientes de archivar".
     retryPendingArchives()
       .then((r) => {
@@ -378,18 +378,8 @@ async function checkConnection(myToken) {
           refreshPreviews();
         }
       })
-      // MEM-019: una por una, después de lo anterior (el servidor atiende de a una petición). Sin aviso: la propuesta se ve al entrar a «Memoria de {Nombre}».
-      .then(() => maybeSynthesizeIdentities())
       // PROACT-001: notas del buzón para quien estuvo ausente un buen rato; sin aviso emergente ni notificación: se descubren por el indicador de la tarjeta.
-      .then(() => maybeWriteMailboxNotes())
-      // HUM-005: «su día» de hoy para quien no lo tenga (una llamada corta por personaje y día; sin aviso: se ve en la ficha y a veces en lo que cuenta).
-      .then(async (r) => { await maybeWriteLife(); return r; })
-      .then(async (r) => {
-        if (r && r.written.length && myToken === viewToken) {
-          characters = await listCharacters();
-          renderList();
-        }
-      });
+      .then(() => maybeWriteMailboxNotes());
   } catch {
     if (myToken !== viewToken) return;
     setStatus('err');

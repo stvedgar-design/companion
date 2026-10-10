@@ -60,7 +60,7 @@ export const LOREBOOK_EXTRACT_PREFILL = '[';
 // Tope de entradas guardadas por personaje (compartidas entre todos sus
 // chats) y de caracteres por entrada: evita que el lorebook crezca sin
 // límite y se coma el presupuesto de contexto.
-export const LOREBOOK_MAX_ENTRIES = 24;
+export const LOREBOOK_MAX_ENTRIES = 200;
 export const LOREBOOK_MAX_ENTRY_CHARS = 320;
 
 // Tope duro de caracteres inyectados en el prompt real por turno para las
@@ -222,6 +222,8 @@ export function buildExtractionPrompt(character, settings, windowMessages, exist
 const KEYS_FIELDS = ['keys', 'k', 'key', 'keywords'];
 const CONTENT_FIELDS = ['content', 'c', 'fact', 'text'];
 const TONE_FIELDS = ['t', 'tone'];
+const SALIENCE_FIELDS = ['s', 'salience', 'importance', 'score'];
+const TOPIC_FIELDS = ['top', 'topic', 'category', 'cat'];
 const WRAPPER_FIELDS = ['entries', 'lorebook', 'facts', 'items'];
 
 function pickField(obj, names) {
@@ -244,6 +246,10 @@ function collectEntries(value) {
     const entry = { keys: pickField(value, KEYS_FIELDS), content: pickField(value, CONTENT_FIELDS) };
     const tone = pickField(value, TONE_FIELDS); // HUM-003: solo si viene (sin él, la forma de siempre)
     if (tone !== undefined) entry.tone = tone;
+    const sal = pickField(value, SALIENCE_FIELDS);
+    if (sal !== undefined) entry.salience = sal;
+    const top = pickField(value, TOPIC_FIELDS);
+    if (top !== undefined) entry.topic = top;
     return [entry];
   }
   for (const w of WRAPPER_FIELDS) {
@@ -329,8 +335,19 @@ function rescueObjects(text) {
  * @returns {{keys: any, content: any}[]|null} null = respuesta no reconocible ("sin cambios").
  */
 export function parseExtractionResponse(rawText) {
-  const text = String(rawText || '').trim();
+  let text = String(rawText || '').trim();
   if (!text) return null;
+
+  // Qwen/DeepSeek/ChatML tolerance: quitar etiquetas de razonamiento <think>...</think>
+  text = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+
+  // Desempaquetar bloques de código markdown (```json ... ``` o ``` ... ```)
+  const mdMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (mdMatch) {
+    text = mdMatch[1].trim();
+  } else {
+    text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+  }
 
   try {
     const value = JSON.parse(text);
@@ -856,9 +873,28 @@ function normalizeIncoming(raw, names, allowMoments = false) {
   if (!Array.isArray(rawKeys)) return null;
   const keys = normalizeLoreKeys(rawKeys, content, { names });
   if (!keys.length) return null;
+  const rawSal = pickField(raw, SALIENCE_FIELDS);
+  let salience = undefined;
+  const numSal = Number(rawSal);
+  if (rawSal !== undefined && rawSal !== null && Number.isFinite(numSal)) {
+    salience = Math.max(1, Math.min(10, Math.round(numSal)));
+    if (salience < 6) return null; // FASE 20: Solo guardar hechos con saliencia >= 6
+  }
+
+  const rawTop = pickField(raw, TOPIC_FIELDS);
+  let topic = undefined;
+  if (typeof rawTop === 'string' && rawTop.trim()) {
+    topic = collapse(rawTop).slice(0, 40);
+  } else if (keys && keys[0]) {
+    topic = keys[0];
+  }
+
   // HUM-003: con un tono válido de la lista cerrada (y los momentos permitidos) es un MOMENTO; un tono inventado o con los momentos apagados la deja como hecho.
   const tone = allowMoments ? parseMomentTone(raw.tone) : '';
-  return tone ? { keys, content, kind: 'moment', tone } : { keys, content };
+  const out = tone ? { keys, content, kind: 'moment', tone } : { keys, content };
+  if (salience !== undefined) out.salience = salience;
+  if (topic !== undefined) out.topic = topic;
+  return out;
 }
 
 /**
@@ -967,13 +1003,23 @@ export function applyExtraction(previousEntries, incomingEntries, opts = {}) {
       match.content = byKey ? inc.content : moreInformative(match.content, inc.content, nameWords);
       const keys = normalizeLoreKeys([...match.keys, ...inc.keys], match.content, { names });
       if (keys.length) match.keys = keys;
+      if (inc.salience !== undefined) match.salience = Math.max(match.salience || 5, inc.salience);
+      if (inc.topic !== undefined) match.topic = inc.topic;
       match.updated = now;
       touched.add(match);
       updated++;
       continue;
     }
 
-    const entry = { id: newLoreId(), keys: inc.keys, content: inc.content, updated: now, source: 'auto' };
+    const entry = {
+      id: newLoreId(),
+      keys: inc.keys,
+      content: inc.content,
+      updated: now,
+      source: 'auto',
+      ...(inc.salience !== undefined ? { salience: inc.salience } : {}),
+      ...(inc.topic !== undefined ? { topic: inc.topic } : {}),
+    };
     entries.push(entry);
     touched.add(entry);
     addedIds.push(entry);
@@ -990,7 +1036,12 @@ export function applyExtraction(previousEntries, incomingEntries, opts = {}) {
   while (entries.length > LOREBOOK_MAX_ENTRIES) {
     const evictable = entries
       .filter((e) => e.source !== 'manual' && !touched.has(e))
-      .sort((a, b) => (a.updated || 0) - (b.updated || 0))[0];
+      .sort((a, b) => {
+        const salA = typeof a.salience === 'number' ? a.salience : 5;
+        const salB = typeof b.salience === 'number' ? b.salience : 5;
+        if (salA !== salB) return salA - salB;
+        return (a.updated || 0) - (b.updated || 0);
+      })[0];
     if (evictable) {
       entries.splice(entries.indexOf(evictable), 1);
       continue;
@@ -1349,14 +1400,16 @@ function keyInTokens(keyWords, tokens) {
  * @param {{ raw: string, folded: string, tokens: string[] }} haystack  Ver `prepareHaystack`.
  * @returns {boolean}
  */
+export function keyMatches(k, haystack) {
+  const key = String(k == null ? '' : k).toLowerCase().trim();
+  if (!key) return false;
+  if (hasNonLatinLetter(key)) return haystack.raw.includes(key);
+  return keyInTokens(foldText(key).split(WORD_SPLIT).filter(Boolean), haystack.tokens);
+}
+
 function entryMatches(entry, haystack) {
   if (!Array.isArray(entry.keys)) return false;
-  return entry.keys.some((k) => {
-    const key = String(k == null ? '' : k).toLowerCase().trim();
-    if (!key) return false;
-    if (hasNonLatinLetter(key)) return haystack.raw.includes(key);
-    return keyInTokens(foldText(key).split(WORD_SPLIT).filter(Boolean), haystack.tokens);
-  });
+  return entry.keys.some((k) => keyMatches(k, haystack));
 }
 
 function prepareHaystack(text) {
@@ -1376,12 +1429,49 @@ function prepareHaystack(text) {
  * @param {{ scanCount?: number, charBudget?: number }} [opts]
  * @returns {LoreEntry[]}
  */
+/**
+ * FASE 20 (PARETO-013): Puntuación cognitiva multidimensional para un recuerdo.
+ * Combina relevancia léxica (keys/topic), saliencia emocional (1..10) y recencia/acceso (Ebbinghaus / ACT-R).
+ * @param {LoreEntry} entry
+ * @param {string[]} matchedKeys
+ * @param {string} text
+ * @param {number} now
+ * @returns {number}
+ */
+export function scoreLoreEntry(entry, matchedKeys, text, now = Date.now()) {
+  if (!entry || !entry.content) return 0;
+
+  // 1. Relevancia léxica (0.1 .. 1.0)
+  const totalKeys = Math.max(1, (entry.keys || []).length);
+  const matchRatio = Math.min(1.0, (matchedKeys.length || 0) / totalKeys);
+  const foldedText = foldText(text);
+  const topicBonus = (entry.topic && foldedText.includes(foldText(entry.topic))) ? 0.25 : 0.0;
+  const relScore = Math.min(1.0, 0.4 + (0.45 * matchRatio) + topicBonus);
+
+  // 2. Saliencia emocional (1..10 -> 0.1 .. 1.0)
+  const salience = typeof entry.salience === 'number' && Number.isFinite(entry.salience)
+    ? Math.max(1, Math.min(10, entry.salience))
+    : 5;
+  const salScore = salience / 10;
+
+  // 3. Recencia y refuerzo de acceso (0.1 .. 1.0)
+  const refTime = entry.lastAccessed || entry.updated || now;
+  const hoursAgo = Math.max(0, (now - refTime) / (1000 * 60 * 60));
+  const decay = Math.max(0.1, 1 / (1 + (hoursAgo / 168))); // semivida ~7 días
+  const accessBonus = Math.min(0.2, ((entry.accessCount || 0) * 0.04));
+  const recScore = Math.min(1.0, decay + accessBonus);
+
+  // Ponderación cognitiva: Relevancia 40%, Saliencia 40%, Recencia 20%
+  return ((0.40 * relScore) + (0.40 * salScore) + (0.20 * recScore)) * 100;
+}
+
 export function selectLoreEntries(entries, recentMessages, opts = {}) {
   const list = Array.isArray(entries) ? entries : [];
   if (!list.length) return [];
 
   const scanCount = opts.scanCount || LOREBOOK_SCAN_LAST_MESSAGES;
   const budget = typeof opts.charBudget === 'number' ? opts.charBudget : LOREBOOK_INJECT_CHAR_BUDGET;
+  const now = typeof opts.now === 'number' ? opts.now : Date.now();
 
   const text = (recentMessages || [])
     .slice(-scanCount)
@@ -1390,18 +1480,44 @@ export function selectLoreEntries(entries, recentMessages, opts = {}) {
   if (!text.trim()) return [];
   const haystack = prepareHaystack(text);
 
-  const matched = list
-    .filter((e) => !e.always && entryMatches(e, haystack)) // las "siempre presentes" ya van aparte
-    .sort((a, b) => (b.updated || 0) - (a.updated || 0));
+  // FASE 20: Puntuación y ordenamiento cognitivo
+  const candidates = [];
+  for (const entry of list) {
+    if (entry.always) continue; // las "siempre presentes" ya van aparte
+    if (!entryMatches(entry, haystack)) continue;
 
+    const matchedKeys = (entry.keys || []).filter((k) => keyMatches(k, haystack));
+    const score = scoreLoreEntry(entry, matchedKeys, text, now);
+    candidates.push({ entry, score });
+  }
+
+  // Ordenar por score descendente; desempate por updated descendente
+  candidates.sort((a, b) => (b.score - a.score) || ((b.entry.updated || 0) - (a.entry.updated || 0)));
+
+  // Filtro de diversidad temática (anti-piling):
+  // Máximo 1 recuerdo por tema (o 2 si salience >= 9)
   const kept = [];
+  const topicCounts = new Map();
   let used = 0;
-  for (const entry of matched) {
+
+  for (const { entry } of candidates) {
+    const rawTopic = entry.topic || (entry.keys && entry.keys[0]) || 'general';
+    const topicKey = foldText(rawTopic);
+    const count = topicCounts.get(topicKey) || 0;
+    const maxAllowed = (entry.salience && entry.salience >= 9) ? 2 : 1;
+
+    // Solo saltear por diversidad si hay más candidatos que puedan entrar
+    if (count >= maxAllowed && candidates.length > kept.length + 1) {
+      continue;
+    }
+
     const cost = entry.content.length + 3; // aproxima "- " + salto de línea
     if (used + cost > budget && kept.length) break;
     used += cost;
     kept.push(entry);
+    topicCounts.set(topicKey, count + 1);
   }
+
   return kept;
 }
 

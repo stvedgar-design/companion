@@ -37,8 +37,8 @@ export function openSettings(app) {
     <div class="field__hint" id="settings-search-empty" hidden style="margin-bottom: var(--space-3, 12px);">No encontré nada con ese nombre.</div>
 
     <!-- TARJETA 1: TU PRESENCIA -->
-    <div class="settings-card" role="region" aria-label="Tu Presencia" style="border: 1px solid var(--color-line); border-radius: var(--radius-md, 12px); background: var(--color-surface); padding: var(--space-3, 12px) var(--space-4, 16px); margin-bottom: var(--space-3, 12px);">
-      <div class="menu-group" style="margin-top:0;padding-left:0;font-weight:600;color:var(--color-accent-2, var(--color-text));">Tu Presencia</div>
+    <div class="settings-card" role="region" aria-label="Tu Presencia">
+      <div class="menu-group">Tu Presencia</div>
       <div class="field">
         <label class="field__label" for="settings-user">Tu nombre en el chat</label>
         <input class="inp" id="settings-user" type="text" autocomplete="off" placeholder="Tu nombre">
@@ -50,34 +50,35 @@ export function openSettings(app) {
       </div>
     </div>
 
-    <!-- TARJETA 2: CONEXIONES Y SERVIDORES -->
-    <div class="settings-card" role="region" aria-label="Conexión y Servidores" style="border: 1px solid var(--color-line); border-radius: var(--radius-md, 12px); background: var(--color-surface); padding: var(--space-3, 12px) var(--space-4, 16px); margin-bottom: var(--space-3, 12px);">
-      <div class="menu-group" style="margin-top:0;padding-left:0;font-weight:600;color:var(--color-accent-2, var(--color-text));">Conexión y Servidores</div>
+    <!-- TARJETA 2: CONEXIÓN A OPENROUTER -->
+    <div class="settings-card" role="region" aria-label="Conexión OpenRouter">
+      <div class="menu-group">Conexión a OpenRouter</div>
       <div class="field">
-        <label class="field__label" for="settings-url">Servidor principal (GPU — Mahou 12B)</label>
+        <label class="field__label" for="settings-api-key">API Key de OpenRouter</label>
         <div class="settings-row">
-          <input class="inp" id="settings-url" type="url" inputmode="url"
-                 autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" placeholder="http://100.x.x.x:5001">
+          <input class="inp" id="settings-api-key" type="password"
+                 autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false"
+                 placeholder="sk-or-v1-...">
           <button class="btn btn--ghost btn--sm" id="settings-test" type="button">Probar</button>
         </div>
+        <div class="field__hint">Clave personal obtenida en openrouter.ai/settings/keys. Se guarda solo en este dispositivo.</div>
         <div class="status" id="settings-status"></div>
       </div>
       <div class="field">
-        <label class="field__label" for="settings-cpu-url">Servidor secundario (CPU — Llama 3B)</label>
+        <label class="field__label" for="settings-model">Modelo de IA en OpenRouter</label>
         <div class="settings-row">
-          <input class="inp" id="settings-cpu-url" type="url" inputmode="url"
+          <input class="inp" id="settings-model" type="text"
                  autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false"
-                 placeholder="Opcional (p. ej. http://100.x.x.x:5002)">
-          <button class="btn btn--ghost btn--sm" id="settings-cpu-test" type="button">Probar</button>
+                 placeholder="meta-llama/llama-3.1-8b-instruct:free">
+          <button class="btn btn--ghost btn--sm" id="settings-free-model-btn" type="button" style="white-space:nowrap;">Gratis</button>
         </div>
-        <div class="field__hint">Procesa recuerdos y resúmenes en segundo plano sin interrumpir ni quitarle memoria al modelo principal en GPU. Si se deja vacío, usa el servidor principal.</div>
-        <div class="status" id="settings-cpu-status"></div>
+        <div class="field__hint">Modelo actual para dialogar. Puedes usar modelos gratuitos (terminados en :free) o cualquier modelo del catálogo.</div>
       </div>
     </div>
 
     <!-- TARJETA 3: EXPERIENCIA DE CONVERSACIÓN -->
-    <div class="settings-card" role="region" aria-label="Conversación" style="border: 1px solid var(--color-line); border-radius: var(--radius-md, 12px); background: var(--color-surface); padding: var(--space-3, 12px) var(--space-4, 16px); margin-bottom: var(--space-3, 12px);">
-      <div class="menu-group" style="margin-top:0;padding-left:0;font-weight:600;color:var(--color-accent-2, var(--color-text));">Conversación</div>
+    <div class="settings-card" role="region" aria-label="Conversación">
+      <div class="menu-group">Conversación</div>
       <div class="field">
         <label class="field__label" for="settings-mode">Formato del prompt</label>
         <select class="inp" id="settings-mode">
@@ -110,8 +111,8 @@ export function openSettings(app) {
     </div>
 
     <!-- TARJETA 4: DISEÑO Y PANTALLA -->
-    <div class="settings-card" role="region" aria-label="Pantalla y Diseño" style="border: 1px solid var(--color-line); border-radius: var(--radius-md, 12px); background: var(--color-surface); padding: var(--space-3, 12px) var(--space-4, 16px); margin-bottom: var(--space-3, 12px);">
-      <div class="menu-group" style="margin-top:0;padding-left:0;font-weight:600;color:var(--color-accent-2, var(--color-text));">Pantalla y Diseño</div>
+    <div class="settings-card" role="region" aria-label="Pantalla y Diseño">
+      <div class="menu-group">Pantalla y Diseño</div>
       <div class="field">
         <div class="field__label">Tamaño del texto de los mensajes</div>
         <div class="appearance-skins" id="settings-fontsize">
@@ -143,8 +144,8 @@ export function openSettings(app) {
     </div>
 
     <!-- TARJETA 5: SEGURIDAD Y DATOS -->
-    <div class="settings-card" role="region" aria-label="Seguridad y Datos" style="border: 1px solid var(--color-line); border-radius: var(--radius-md, 12px); background: var(--color-surface); padding: var(--space-3, 12px) var(--space-4, 16px); margin-bottom: var(--space-3, 12px);">
-      <div class="menu-group" style="margin-top:0;padding-left:0;font-weight:600;color:var(--color-accent-2, var(--color-text));">Seguridad y Datos</div>
+    <div class="settings-card" role="region" aria-label="Seguridad y Datos">
+      <div class="menu-group">Seguridad y Datos</div>
       <div class="field">
         <label class="field__label">Bloqueo con PIN</label>
         <div id="settings-pin-body"></div>
@@ -160,8 +161,8 @@ export function openSettings(app) {
     </div>
 
     <!-- TARJETA 6: HERRAMIENTAS AVANZADAS Y DIAGNÓSTICO -->
-    <details class="settings-card" style="border: 1px solid var(--color-line); border-radius: var(--radius-md, 12px); background: var(--color-surface); padding: var(--space-3, 12px) var(--space-4, 16px); margin-bottom: var(--space-4, 16px);">
-      <summary class="menu-group" style="cursor:pointer;margin-top:0;padding-left:0;font-weight:600;color:var(--color-muted);list-style:none;">
+    <details class="settings-card">
+      <summary class="menu-group">
         <span style="display:flex;align-items:center;justify-content:space-between;">
           <span>Herramientas avanzadas y diagnóstico</span>
           <span style="font-size:12px;opacity:0.7;">▼</span>
@@ -200,12 +201,11 @@ export function openSettings(app) {
 
   const q = (sel) => node.querySelector(sel);
   const els = {
-    url: q('#settings-url'),
+    apiKey: q('#settings-api-key'),
+    model: q('#settings-model'),
+    freeModelBtn: q('#settings-free-model-btn'),
     test: q('#settings-test'),
     status: q('#settings-status'),
-    cpuUrl: q('#settings-cpu-url'),
-    cpuTest: q('#settings-cpu-test'),
-    cpuStatus: q('#settings-cpu-status'),
     user: q('#settings-user'),
     userAppearance: q('#settings-user-appearance'),
     mode: q('#settings-mode'),
@@ -230,8 +230,8 @@ export function openSettings(app) {
   };
 
   getSettings().then((settings) => {
-    els.url.value = settings.url;
-    els.cpuUrl.value = settings.cpuUrl || '';
+    els.apiKey.value = settings.apiKey || '';
+    els.model.value = settings.model || 'meta-llama/llama-3.1-8b-instruct:free';
     els.user.value = settings.user;
     if (els.userAppearance) els.userAppearance.value = settings.userAppearance || '';
     els.mode.value = settings.mode;
@@ -382,43 +382,35 @@ export function openSettings(app) {
     openAppearance(app);
   });
 
-  els.cpuUrl.addEventListener('blur', () => {
-    saveSettings({ cpuUrl: els.cpuUrl.value.trim() });
+  els.apiKey.addEventListener('blur', () => {
+    saveSettings({ apiKey: els.apiKey.value.trim() });
   });
 
-  els.cpuTest.addEventListener('click', async () => {
-    els.cpuStatus.className = 'status';
-    els.cpuStatus.textContent = 'Conectando…';
-    els.cpuTest.disabled = true;
-    try {
-      const val = els.cpuUrl.value.trim();
-      if (!val) {
-        await saveSettings({ cpuUrl: '' });
-        els.cpuStatus.className = 'status';
-        els.cpuStatus.textContent = 'Servidor secundario desactivado (usa el principal).';
-        return;
-      }
-      const { url, model } = await connect(val);
-      await saveSettings({ cpuUrl: url });
-      els.cpuStatus.className = 'status status--ok';
-      els.cpuStatus.textContent = 'Conectado (CPU): ' + model;
-    } catch (err) {
-      els.cpuStatus.className = 'status status--err';
-      els.cpuStatus.textContent = err.message;
-    } finally {
-      els.cpuTest.disabled = false;
-    }
+  els.model.addEventListener('blur', () => {
+    const m = els.model.value.trim() || 'meta-llama/llama-3.1-8b-instruct:free';
+    els.model.value = m;
+    saveSettings({ model: m });
   });
+
+  if (els.freeModelBtn) {
+    els.freeModelBtn.addEventListener('click', () => {
+      els.model.value = 'meta-llama/llama-3.1-8b-instruct:free';
+      saveSettings({ model: 'meta-llama/llama-3.1-8b-instruct:free' });
+      app.toast('Modelo configurado a Llama 3.1 8B (Gratis).');
+    });
+  }
 
   els.test.addEventListener('click', async () => {
     els.status.className = 'status';
-    els.status.textContent = 'Conectando…';
+    els.status.textContent = 'Conectando con OpenRouter…';
     els.test.disabled = true;
     try {
-      const { url, model, ctx } = await connect(els.url.value);
-      await saveSettings({ url, ctx });
+      const apiKey = els.apiKey.value.trim();
+      const model = els.model.value.trim() || 'meta-llama/llama-3.1-8b-instruct:free';
+      const res = await connect({ apiKey, model });
+      await saveSettings({ apiKey, model: res.model, ctx: res.ctx });
       els.status.className = 'status status--ok';
-      els.status.textContent = 'Conectado: ' + model;
+      els.status.textContent = 'Conectado: ' + res.model;
     } catch (err) {
       els.status.className = 'status status--err';
       els.status.textContent = err.message;

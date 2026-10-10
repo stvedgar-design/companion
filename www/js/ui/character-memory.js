@@ -148,14 +148,24 @@ export function buildRelationshipHero(model, info, hooks = {}) {
       if (hooks.onEdit) {
         const edit = el('button', 'btn btn--sm btn--ghost', 'Editar');
         edit.type = 'button';
-        edit.addEventListener('click', hooks.onEdit);
+        edit.addEventListener('click', async () => {
+          if (hooks.confirmDialog) {
+            const ok = await hooks.confirmDialog('¿Editar el estado de la relación?', { confirmText: 'Editar' });
+            if (!ok) return;
+          }
+          hooks.onEdit();
+        });
         actions.appendChild(edit);
       }
       if (hooks.onRegenerate) {
         const regen = el('button', 'btn btn--sm btn--ghost', 'Regenerar');
         regen.type = 'button';
         regen.disabled = !!hooks.regenerateDisabled;
-        regen.addEventListener('click', () => {
+        regen.addEventListener('click', async () => {
+          if (hooks.confirmDialog) {
+            const ok = await hooks.confirmDialog('¿Regenerar el estado de la relación con el modelo?', { confirmText: 'Regenerar' });
+            if (!ok) return;
+          }
           regen.disabled = true;
           hooks.onRegenerate();
         });
@@ -294,24 +304,32 @@ export function buildMemoryCard(entry, hooks) {
   const meta = el('div', 'mem-card__meta');
   const momentText = momentCardLabel(entry);
   if (momentText) meta.appendChild(el('span', 'chip chip--moment', momentText)); // HUM-003: «Momento · tristeza · 3 oct 2026»
+  if (entry.salience) meta.appendChild(el('span', 'chip chip--salience', "Saliencia " + entry.salience + "/10"));
+  if (entry.topic) meta.appendChild(el('span', 'chip chip--topic', entry.topic));
   if (entry.always) meta.appendChild(el('span', 'chip', 'Siempre presente'));
-  else for (const key of entry.keys || []) meta.appendChild(el('span', 'chip', key));
+  else for (const key of entry.keys || []) {
+    if (key !== entry.topic) meta.appendChild(el('span', 'chip', key));
+  }
   card.appendChild(meta);
   const dateStr = entry.updated ? formatDateOnly(entry.updated) : 'Histórico';
   card.appendChild(el('div', 'field__hint', `${entry.source === 'manual' ? 'Escrito o editado por ti' : 'Automático'} · ${dateStr}`));
   const actions = el('div', 'mem-actions');
-  if (hooks && hooks.onRefine) {
-    const refine = el('button', 'btn btn--sm btn--ghost', '✨ Pulir');
-    refine.type = 'button';
-    refine.addEventListener('click', () => hooks.onRefine(entry.id));
-    actions.appendChild(refine);
-  }
   const edit = el('button', 'btn btn--sm btn--ghost', 'Editar');
   edit.type = 'button';
-  edit.addEventListener('click', () => hooks.onEdit(entry.id));
+  edit.addEventListener('click', async () => {
+    if (hooks && hooks.confirmDialog) {
+      const ok = await hooks.confirmDialog('¿Editar este recuerdo?', { confirmText: 'Editar' });
+      if (!ok) return;
+    }
+    hooks.onEdit(entry.id);
+  });
   const archive = el('button', 'btn btn--sm btn--ghost', 'Archivar');
   archive.type = 'button';
-  archive.addEventListener('click', () => {
+  archive.addEventListener('click', async () => {
+    if (hooks && hooks.confirmDialog) {
+      const ok = await hooks.confirmDialog('¿Archivar este recuerdo?', { confirmText: 'Archivar' });
+      if (!ok) return;
+    }
     card.classList.add('is-leaving');
     setTimeout(() => hooks.onArchive(entry.id), 120);
   });
@@ -361,7 +379,9 @@ export function groupMemoriesByTopic(entries) {
   const groups = new Map();
   for (const entry of (entries || [])) {
     let key = 'Varios';
-    if (entry.kind === 'moment' && entry.tone) {
+    if (entry.topic) {
+      key = entry.topic;
+    } else if (entry.kind === 'moment' && entry.tone) {
       key = 'Momento · ' + momentToneLabel(entry.tone);
     } else if (Array.isArray(entry.keys) && entry.keys.length > 0) {
       key = entry.keys[0];

@@ -7,10 +7,9 @@
 // para las entradas. Pura lectura de memoria/relación: no cambia lorebook ni relationship.js.
 
 import { saveCharacter, getCharacter } from '../state.js';
-import { relationshipDisplayText, relationshipSummary } from '../api/relationship.js';
-import { defaultIdentity, sanitizeIdentity } from '../api/identity-synthesis.js';
+import { defaultIdentity } from '../api/identity-synthesis.js';
+import { defaultLife } from '../api/life.js';
 import { defaultFollowUps } from '../api/followups.js';
-import { defaultLife, lifeToday, lifeSheetText } from '../api/life.js';
 import { defaultMailbox, unreadCount, sanitizeMailbox } from '../api/mailbox.js';
 import { openMailbox, touchInteraction } from './mailbox.js';
 import { sanitizeAppearance } from '../character-appearance.js';
@@ -109,21 +108,20 @@ export function characterSheetModel(character) {
   const appearance = appearanceRaw.fixed || appearanceRaw.current ? appearanceRaw : null;
 
   const description = (typeof card.description === 'string' && card.description.trim()) || '';
-  const memoriesCount = relationshipSummary((character && character.lorebook) || []).total;
+  const memoriesCount = Array.isArray(character && character.lorebook)
+    ? character.lorebook.filter((e) => e && typeof e.content === 'string' && e.content.trim()).length
+    : 0;
 
   return {
     name,
     initial: name.charAt(0).toUpperCase(),
     heroSrc: (character && (character.avatarLarge || character.avatar)) || '',
-    relationshipText: relationshipDisplayText(character),
     traits,
     createdText: formatDateOnly(character && character.created),
     description,
     appearance,
     memoriesCount,
     galleryCount: Array.isArray(character && character.gallery) ? character.gallery.length : 0,
-    identityProposal: !!sanitizeIdentity(character && character.identity).proposal, // MEM-019: hay una propuesta esperando respuesta
-    lifeToday: lifeSheetText(lifeToday(character && character.life, new Date()), name), // HUM-005: «Luna regó las plantas…» o '' si hoy no hay
     mailboxUnread: unreadCount(character), // PROACT-001: notas del buzón sin abrir
     mailboxCount: sanitizeMailbox(character && character.mailbox).notes.filter((n) => n.status !== 'dismissed').length,
   };
@@ -180,7 +178,11 @@ export function openCharacterSheet(app, character, opts = {}) {
     nameRow.appendChild(el('h2', 'char-sheet__name', m.name));
     const editBtn = el('button', 'btn btn--ghost btn--sm', 'Editar');
     editBtn.type = 'button';
-    editBtn.addEventListener('click', () => {
+    editBtn.addEventListener('click', async () => {
+      if (app.confirmDialog) {
+        const ok = await app.confirmDialog(`¿Deseas editar los datos de ${m.name}?`, { confirmText: 'Editar' });
+        if (!ok) return;
+      }
       openCharacterEditor(app, {
         character: current,
         onSaved: (updated) => {
@@ -194,6 +196,10 @@ export function openCharacterSheet(app, character, opts = {}) {
     const duplicateBtn = el('button', 'btn btn--ghost btn--sm', 'Duplicar');
     duplicateBtn.type = 'button';
     duplicateBtn.addEventListener('click', async () => {
+      if (app.confirmDialog) {
+        const ok = await app.confirmDialog(`¿Duplicar a ${m.name} como un personaje nuevo e independiente?`, { confirmText: 'Duplicar' });
+        if (!ok) return;
+      }
       duplicateBtn.disabled = true;
       try {
         const saved = await saveCharacter(duplicateCharacterData(current));
@@ -209,8 +215,7 @@ export function openCharacterSheet(app, character, opts = {}) {
     nameRow.appendChild(nameActions);
     node.appendChild(nameRow);
 
-    // ---------- 3. relación (MEM-014; nunca se toca, solo se lee) ----------
-    node.appendChild(field('Relación', el('div', '', m.relationshipText)));
+
 
     // ---------- 4. rasgos ----------
     if (m.traits) {
@@ -229,12 +234,7 @@ export function openCharacterSheet(app, character, opts = {}) {
       node.appendChild(field('Creada', el('div', '', m.createdText)));
     }
 
-    // ---------- 5b. su día (HUM-005): el texto de hoy tal cual lo escribió el modelo, solo si existe ----------
-    if (m.lifeToday) {
-      const lifeField = field('Su día', el('div', '', m.lifeToday));
-      lifeField.dataset.role = 'life-today';
-      node.appendChild(lifeField);
-    }
+
 
     // ---------- 6. descripción y apariencia ----------
     if (m.description) {
@@ -250,7 +250,11 @@ export function openCharacterSheet(app, character, opts = {}) {
     // ---------- 6b. editar apariencia (UI-031: antes vivía en el menú ⋮ del chat, junto a "Cambiar avatar") ----------
     const appearanceBtn = el('button', 'menu-item', 'Editar apariencia');
     appearanceBtn.type = 'button';
-    appearanceBtn.addEventListener('click', () => {
+    appearanceBtn.addEventListener('click', async () => {
+      if (app.confirmDialog) {
+        const ok = await app.confirmDialog(`¿Deseas editar la apariencia de ${m.name}?`, { confirmText: 'Editar' });
+        if (!ok) return;
+      }
       openCharacterAppearance(app, current, (updated) => {
         current = updated;
         if (opts.onUpdated) opts.onUpdated(updated);
@@ -304,9 +308,8 @@ export function openCharacterSheet(app, character, opts = {}) {
       node.appendChild(mailBtn);
     }
 
-    // ---------- 7. recuerdos ----------
-    // MEM-017: la entrada única a "Memoria de {Nombre}" (relación + resumen + recuerdos + archivados).
-    const memBtn = el('button', 'menu-item', `Memoria de ${m.name} · ${m.memoriesCount} recuerdo${m.memoriesCount === 1 ? '' : 's'}${m.identityProposal ? ' · propuesta nueva' : ''}`);
+    // ---------- 7. recuerdos (Fase 21: Diario de Recuerdos limpio) ----------
+    const memBtn = el('button', 'menu-item', `Diario de recuerdos de ${m.name} · ${m.memoriesCount} recuerdo${m.memoriesCount === 1 ? '' : 's'}`);
     memBtn.type = 'button';
     memBtn.addEventListener('click', () => {
       if (opts.openMemories) opts.openMemories();

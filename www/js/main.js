@@ -287,7 +287,7 @@ async function boot() {
     await lockView.show({ salt: settings.pinSalt, hash: settings.pinHash });
   }
 
-  const initial = settings && settings.url ? 'home' : 'setup';
+  const initial = (settings && settings.apiKey) ? 'home' : 'setup';
 
   currentView = initial;
   currentParams = undefined;

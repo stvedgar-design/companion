@@ -190,7 +190,9 @@ import { sanitizeMomentFields } from './api/moment-tones.js';
 const ACTIVE_THEME = 'penumbra-claude';
 
 const DEFAULT_SETTINGS = Object.freeze({
-  url: '',
+  apiKey: '',
+  model: 'meta-llama/llama-3.1-8b-instruct:free',
+  url: 'https://openrouter.ai/api/v1',
   cpuUrl: '',
   user: '',
   userAppearance: '',
@@ -287,7 +289,9 @@ function sanitizeSettings(raw) {
   const src = (raw && typeof raw === 'object') ? raw : {};
   const merged = { ...DEFAULT_SETTINGS, ...src };
   return {
-    url: typeof merged.url === 'string' ? merged.url : DEFAULT_SETTINGS.url,
+    apiKey: typeof merged.apiKey === 'string' ? merged.apiKey.trim() : (DEFAULT_SETTINGS.apiKey || ''),
+    model: typeof merged.model === 'string' && merged.model.trim() ? merged.model.trim() : DEFAULT_SETTINGS.model,
+    url: typeof merged.url === 'string' && merged.url.trim() ? merged.url.trim() : DEFAULT_SETTINGS.url,
     cpuUrl: typeof merged.cpuUrl === 'string' ? merged.cpuUrl.trim() : DEFAULT_SETTINGS.cpuUrl,
     user: typeof merged.user === 'string' ? merged.user : DEFAULT_SETTINGS.user,
     userAppearance: typeof merged.userAppearance === 'string' ? merged.userAppearance.replace(/\s+/g, ' ').trim().slice(0, 180) : DEFAULT_SETTINGS.userAppearance,
@@ -394,7 +398,7 @@ function previewLast(messages) {
 // guardado por una versión anterior, o al importar un backup ajeno).
 // Descarta lo que no tenga la forma esperada en vez de dejar pasar basura
 // al prompt real.
-function sanitizeLoreEntry(raw) {
+export function sanitizeLoreEntry(raw) {
   if (!raw || typeof raw !== 'object') return null;
   const content = typeof raw.content === 'string' ? raw.content.trim() : '';
   if (!content) return null;
@@ -404,6 +408,19 @@ function sanitizeLoreEntry(raw) {
   // anteriores no lo traen y cargan idénticas), y una entrada `always` es siempre
   // `manual`: la vía automática nunca la modifica ni la borra.
   const always = raw.always === true;
+  const salience = (typeof raw.salience === 'number' && Number.isFinite(raw.salience))
+    ? Math.max(1, Math.min(10, Math.round(raw.salience)))
+    : undefined;
+  const topic = (typeof raw.topic === 'string' && raw.topic.trim())
+    ? raw.topic.trim().slice(0, 40)
+    : undefined;
+  const accessCount = (typeof raw.accessCount === 'number' && Number.isFinite(raw.accessCount) && raw.accessCount > 0)
+    ? Math.round(raw.accessCount)
+    : undefined;
+  const lastAccessed = (typeof raw.lastAccessed === 'number' && Number.isFinite(raw.lastAccessed) && raw.lastAccessed > 0)
+    ? raw.lastAccessed
+    : undefined;
+
   return {
     id: typeof raw.id === 'string' && raw.id ? raw.id : ('l' + Math.random().toString(36).slice(2, 10)),
     keys,
@@ -411,6 +428,10 @@ function sanitizeLoreEntry(raw) {
     updated: Number.isFinite(raw.updated) ? raw.updated : Date.now(),
     source: always || raw.source === 'manual' ? 'manual' : 'auto',
     ...(always ? { always: true } : {}),
+    ...(salience !== undefined ? { salience } : {}),
+    ...(topic !== undefined ? { topic } : {}),
+    ...(accessCount !== undefined ? { accessCount } : {}),
+    ...(lastAccessed !== undefined ? { lastAccessed } : {}),
     ...sanitizeMomentFields(raw), // HUM-003: `kind:'moment'` + `tone` (lista cerrada) + `at`; sin ellos (o inválidos) es un hecho, como todo recuerdo anterior
   };
 }
@@ -486,6 +507,32 @@ export function sanitizeGallery(raw) {
   return raw.map(sanitizeGalleryItem).filter(Boolean);
 }
 
+
+export function sanitizeIdentityCore(raw) {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const worldview = typeof raw.worldview === 'string' ? raw.worldview.trim().slice(0, 500) : '';
+  const vulnerability = typeof raw.vulnerability === 'string' ? raw.vulnerability.trim().slice(0, 500) : '';
+  const origin = typeof raw.origin === 'string' ? raw.origin.trim().slice(0, 500) : '';
+  const dynamic = typeof raw.dynamic === 'string' ? raw.dynamic.trim().slice(0, 500) : '';
+  const traits = Array.isArray(raw.traits)
+    ? raw.traits.map((t) => String(t || '').trim()).filter(Boolean).slice(0, 8)
+    : [];
+  const nature = typeof raw.nature === 'string' ? raw.nature.trim().slice(0, 80) : '';
+  const natureLabel = typeof raw.natureLabel === 'string' ? raw.natureLabel.trim().slice(0, 100) : '';
+  if (!worldview && !vulnerability && !traits.length && !origin && !dynamic && !nature) return undefined;
+  return {
+    worldview,
+    traits,
+    vulnerability,
+    origin: origin || dynamic,
+    dynamic: dynamic || origin,
+    nature: nature || '',
+    natureLabel: natureLabel || '',
+    stage: ['early', 'growing', 'established'].includes(raw.stage) ? raw.stage : 'early',
+    updated: Number.isFinite(raw.updated) ? raw.updated : Date.now()
+  };
+}
+
 function sanitizeCharacterExtras(raw) {
   if (!raw || typeof raw !== 'object') return raw;
   const lorebook = Array.isArray(raw.lorebook) ? raw.lorebook.map(sanitizeLoreEntry).filter(Boolean) : [];
@@ -519,6 +566,7 @@ function sanitizeCharacterExtras(raw) {
     personalityTags,
     gender,
     gallery: sanitizeGallery(raw.gallery),
+    ...(raw.identityCore ? { identityCore: sanitizeIdentityCore(raw.identityCore) } : {}),
   };
 }
 

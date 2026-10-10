@@ -1,4 +1,3 @@
-import { buildChatDiagnosticsModel } from '../diagnostics/chat-diagnostics.js';
 // www/js/ui/chat.js
 // Pantalla de chat: burbujas, streaming, avatar en 3 modos, composer, menú.
 
@@ -1448,13 +1447,6 @@ function regenerate() {
       const { cont: _cont, ...rest } = last;
       base = { ...before, text: `${before.text} ${rest.text}` };
     }
-    if (character && chat) {
-      logEvent(TEL_EVENTS.REGENERATE, {
-        characterId: character.id,
-        chatId: chat.id,
-        count: (base && base.variants ? base.variants.length : 1) + 1,
-      });
-    }
     generate({ previous: base });
   } else {
     generate();
@@ -2787,7 +2779,7 @@ function menuSection(title, items) {
   return section;
 }
 
-// Sección plegable con diagnóstico técnico forense avanzado.
+// Sección plegable, cerrada de entrada. El contenido se calcula la primera vez que se abre (mismos cálculos de siempre).
 function buildDiagnostics() {
   const wrap = document.createElement('div');
   wrap.className = 'menu-section';
@@ -2817,24 +2809,6 @@ function buildDiagnostics() {
       note.className = 'field__hint';
       note.textContent = 'Información técnica. No hace falta entenderla para usar la app.';
       body.append(note, buildUsageInfo(), buildLastReplyInfo());
-
-      // Botón para ver y copiar el informe forense completo
-      const diagBtn = document.createElement('button');
-      diagBtn.type = 'button';
-      diagBtn.className = 'btn btn--ghost btn--sm';
-      diagBtn.style.marginTop = 'var(--space-2, 8px)';
-      diagBtn.style.width = '100%';
-      diagBtn.textContent = '📋 Copiar reporte de diagnóstico técnico';
-      diagBtn.addEventListener('click', async () => {
-        try {
-          const report = buildChatDiagnosticsModel({ character, chat, messages, settings });
-          await navigator.clipboard.writeText(report.reportText);
-          app.toast('Reporte técnico copiado al portapapeles.');
-        } catch {
-          app.toast('No se pudo copiar el reporte.');
-        }
-      });
-      body.appendChild(diagBtn);
     }
     body.hidden = !open;
     toggle.setAttribute('aria-expanded', String(open));

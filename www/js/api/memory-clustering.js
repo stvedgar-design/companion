@@ -115,6 +115,30 @@ export function parseConsolidationResponse(raw, fallback = '') {
 /**
  * Mantenido por retrocompatibilidad.
  */
-export function applyClusterConsolidation(character) {
-  return character;
+export function applyClusterConsolidation(character, oldEntryIds, consolidatedText, keys, now = Date.now()) {
+  const ids = new Set(Array.isArray(oldEntryIds) ? oldEntryIds : []);
+  const lorebook = Array.isArray(character.lorebook) ? character.lorebook : [];
+  const toArchive = lorebook.filter((e) => ids.has(e.id));
+  const remaining = lorebook.filter((e) => !ids.has(e.id));
+
+  const newEntry = {
+    id: 'c' + Math.random().toString(36).slice(2, 10),
+    keys: Array.isArray(keys) ? keys : ['consolidado'],
+    content: consolidatedText,
+    updated: now,
+    source: 'manual',
+  };
+
+  const archive = Array.isArray(character.lorebookArchive) ? character.lorebookArchive.slice() : [];
+  for (const entry of toArchive) {
+    archive.push({ ...entry, archivedAt: now });
+  }
+
+  return {
+    ...character,
+    lorebook: [...remaining, newEntry],
+    lorebookArchive: archive,
+    lorebookPrevious: lorebook.slice(),
+    lorebookPreviousAt: now,
+  };
 }
