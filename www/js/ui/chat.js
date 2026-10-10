@@ -717,7 +717,7 @@ function openMessageMenu(row) {
   menuOpenScrollTop = els.messages.scrollTop;
 }
 
-function runMessageAction(action) {
+async function runMessageAction(action) {
   const i = menuIndex;
   clearSelection(); // cierra el menú al ejecutar cualquier acción
   if (i < 0) return;
