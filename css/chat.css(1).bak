@@ -1,0 +1,524 @@
+/* www/css/chat.css — pantalla de chat. Solo prefijo "chat-".
+   Usa variables de tokens.css y clases de base.css; no redefine base.css,
+   no usa la unidad vh (solo la variable --vh) y no usa position: fixed. */
+
+/* --- barra superior: limpia, sin avatar propio (UI-028) — solo el nombre, que abre la ficha (UI-027) --- */
+.chat-head {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* UI-027: el nombre abre la ficha del personaje; la flechita es el "indicio discreto" de que se puede tocar. */
+.chat-head__name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column; /* HUM-001: el nombre y, debajo, el ánimo ("escribiendo…" mientras responde) */
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  min-height: 44px;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-md);
+  font-weight: 500;
+  font-size: var(--fs-lg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chat-head__nm {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
+}
+.chat-head__nm::after {
+  content: '›';
+  color: var(--color-muted);
+  font-weight: 400;
+  margin-left: 2px;
+}
+/* HUM-001: ánimo del personaje bajo el nombre, discreto; "escribiendo…" va un poco más vivo. */
+.chat-head__sub {
+  font-size: var(--fs-xs, 12px);
+  font-weight: 400;
+  line-height: 1.1;
+  color: var(--color-muted);
+}
+.chat-head__sub[hidden] { display: none; }
+.chat-head__sub--typing { color: var(--color-accent-2, var(--color-muted)); }
+.chat-head__name:active { background: var(--color-surface-2); transform: scale(0.98); transition: transform 0.08s ease; }
+.chat-head__name:focus-visible { outline: 2px solid var(--color-accent-2); outline-offset: 2px; }
+
+/* --- fondo de chat personalizado (opcional, ver ui/appearance.js) --- */
+.chat-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  pointer-events: none;
+}
+.chat-bg[hidden] { display: none; }
+.chat-bg__fade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0) 45%, rgba(0, 0, 0, .88) 100%);
+}
+.chat-bg__fade[hidden] { display: none; }
+
+/* --- lista de mensajes --- */
+.chat-messageswrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  /* FASE 12 / REFINAMIENTO TALKIE: máscara GPU que difumina suavemente los mensajes antiguos hacia arriba sin ensuciar el rostro del companion */
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    transparent 36%,
+    rgba(0, 0, 0, 0.05) 39%,
+    rgba(0, 0, 0, 0.35) 44%,
+    rgba(0, 0, 0, 0.75) 49%,
+    black 55%,
+    black 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    transparent 36%,
+    rgba(0, 0, 0, 0.05) 39%,
+    rgba(0, 0, 0, 0.35) 44%,
+    rgba(0, 0, 0, 0.75) 49%,
+    black 55%,
+    black 100%
+  );
+  scroll-padding-bottom: calc(var(--composer-h, 60px) + var(--sab, 0px));
+}
+.chat-messages {
+  position: relative;
+  z-index: 1;
+  padding: max(44vh, 280px) var(--space-4) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 100%;
+  scroll-padding-top: max(44vh, 280px);
+  scroll-padding-bottom: calc(var(--composer-h, 60px) + var(--sab, 0px));
+}
+/* FASE 12 (Efecto Talkie): ancla los mensajes en el tercio inferior cuando son pocos */
+.chat-messages::before {
+  content: '';
+  margin-top: auto;
+}
+.chat-row {
+  display: flex;
+  flex-direction: column;
+  max-width: 88%;
+}
+/* UI-001: el navegador no calcula ni pinta las filas fuera de pantalla (el costo pasa a ser proporcional a lo visible, no al total
+   del chat). `auto` en contain-intrinsic-size recuerda la altura real de cada fila ya vista, para que la barra de scroll no salte. */
+@supports (content-visibility: auto) {
+  .chat-row {
+    content-visibility: auto;
+    contain-intrinsic-size: auto var(--row-h, 84px); /* --row-h: estimación por fila puesta desde chat.js (según el largo del texto) */
+    flex-shrink: 0; /* sin esto, con la contención las filas (hijas de una columna flex con scroll) se encogen a 0 px */
+  }
+}
+.chat-row--user { align-self: flex-end; align-items: flex-end; }
+/* UI-028: la fila del personaje pasa a ser una fila horizontal (avatar + burbuja), alineada arriba. El
+   max-width crece EXACTAMENTE lo que ocupan el avatar y el hueco entre avatar y burbuja, así la burbuja en
+   sí conserva el mismo ancho útil que antes (88 % del contenedor) en vez de perder ese espacio — el hueco
+   que se "gasta" es el margen vacío que antes quedaba sin usar a la derecha, nunca el de la burbuja. */
+/* UI-038: el tamaño de la foto se mide en veces el tamaño del texto (--msg-font-size), así escala junto con él:
+   Pequeño 2× (34 px con el texto Mediano, el tamaño de antes), Mediano 2,6× (44 px) y Grande 3,3× (56 px). La
+   elección (Ajustes → Apariencia) es global y viaja en `<html data-chat-avatar>` (shell.js). */
+:root {
+  --char-avatar-k: 2.6;
+  --char-avatar-size: calc(var(--msg-font-size, 17px) * var(--char-avatar-k));
+}
+:root[data-chat-avatar="small"] { --char-avatar-k: 2; }
+:root[data-chat-avatar="large"] { --char-avatar-k: 3.3; }
+.chat-row--char {
+  align-self: flex-start;
+  align-items: flex-start;
+  flex-direction: row;
+  gap: var(--space-2);
+  /* min(100%, …): con la foto Grande en una pantalla angosta, la fila nunca se sale del chat (la burbuja cede
+     unos píxeles de ancho en vez de desbordar). */
+  max-width: min(100%, calc(88% + var(--char-avatar-size) + var(--space-2)));
+}
+.chat-row__avatar,
+.chat-row__avatarspace {
+  flex: none;
+  width: var(--char-avatar-size);
+  height: var(--char-avatar-size);
+}
+.chat-row__avatar { font-size: calc(var(--char-avatar-size) * 0.38); } /* la inicial, cuando el personaje no tiene foto */
+.chat-row__body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0; /* para que el texto siga envolviendo/recortando bien dentro de la fila flex */
+}
+
+.chat-bubble {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  font-size: var(--msg-font-size, 17px);
+  line-height: 1.5;
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+  backdrop-filter: var(--surface-backdrop, none);
+  -webkit-backdrop-filter: var(--surface-backdrop, none);
+  box-shadow: var(--bubble-edge, none); /* UI-009: borde fino de luz de Penumbra; `none` en los demás skins */
+}
+.chat-row--char .chat-bubble {
+  background: var(--color-surface-2);
+  border-bottom-left-radius: var(--radius-sm);
+}
+.chat-row--user .chat-bubble {
+  background: var(--grad-user);
+  color: var(--color-on-user, var(--color-text)); /* UI-008: cada skin define el texto que se lee sobre su burbuja */
+  border-bottom-right-radius: var(--radius-sm);
+}
+.chat-row--char { --em-color: var(--color-em, var(--color-muted)); }
+/* UI-039 (pedido directo del usuario): opacidad de las burbujas, por personaje (Character.bubbleOpacity, ajustada junto al
+   brillo del fondo). Las burbujas pintan su fondo con un degradado de un token, así que `opacity` en la burbuja
+   desvanecería también el texto: en su lugar el fondo pasa a una capa detrás del texto (::before) y solo esa capa se
+   desvanece. La clase `.chat--translucent` solo se pone con menos de 100 %: con burbujas opacas (lo de siempre) estas reglas
+   no existen para ninguna burbuja y el costo es cero. */
+.chat--translucent .chat-bubble { background: none; position: relative; isolation: isolate; }
+.chat--translucent .chat-bubble::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  opacity: var(--bubble-opacity, 1);
+  pointer-events: none;
+}
+.chat--translucent .chat-row--char .chat-bubble::before { background: var(--color-surface-2); }
+.chat--translucent .chat-row--user .chat-bubble::before { background: var(--grad-user); }
+.chat-row--user { --em-color: var(--color-muted-on-accent); }
+.chat-bubble em { color: var(--em-color); font-style: italic; }
+/* Regla directa de respaldo además de la variable --em-color, por si el navegador tiene algún problema
+   heredando la variable CSS. UI-008: antes forzaba rgba(255,255,255,.72) en TODOS los skins e ignoraba
+   --color-muted-on-accent; ahora respeta el token de cada skin (el valor de la derecha es solo el respaldo). */
+.chat-row--user .chat-bubble em { color: var(--color-muted-on-accent, rgba(255, 255, 255, 0.72)); }
+.chat-bubble strong { font-weight: 600; }
+/* UI-023 (experimental, apagado por defecto): con "Tipografía dividida" (html[data-split-font="on"]), el texto normal (diálogo) de
+   los mensajes del PERSONAJE que traen acciones en cursiva usa --font-dialogue (sans); la cursiva sigue con la del skin (--font).
+   `chat.js` marca con `.chat-bubble--split` solo las burbujas que contienen <em>, así que un personaje sin cursiva (Ani) nunca cambia. */
+[data-split-font="on"] .chat-row--char .chat-bubble--split { font-family: var(--font-dialogue); }
+[data-split-font="on"] .chat-row--char .chat-bubble--split em { font-family: var(--font); }
+
+/* --- UI-010: indicador de memoria usada (gris = ningún recuerdo, acento del skin = usó alguno) --- */
+.chat-row__meta { margin-top: 2px; display: flex; align-items: center; gap: var(--space-2); }
+
+/* --- MEM-011: timestamp bajo cada burbuja y "sintiendo …" (solo mensajes con memoria densa) --- */
+.chat-stamp { color: var(--color-muted); font-size: var(--fs-xs); line-height: 1.3; white-space: nowrap; }
+.chat-mood { font-style: italic; }
+.chat-row--user .chat-row__meta { justify-content: flex-end; }
+
+/* --- UI-017: selector de versiones de una respuesta regenerada (‹ 2/3 ›) --- */
+.chat-variants { display: inline-flex; align-items: center; color: var(--color-muted); font-size: var(--fs-sm); }
+.chat-variants__btn {
+  min-width: 40px;
+  min-height: 32px;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: inherit;
+  font-size: 22px;
+  line-height: 1;
+}
+.chat-variants__btn:disabled { opacity: 0.3; }
+.chat-variants__btn:not(:disabled):active { color: var(--color-text); }
+.chat-variants__btn:focus-visible { outline: 2px solid var(--color-accent-2); outline-offset: 2px; }
+.chat-variants__count { min-width: 3ch; text-align: center; font-variant-numeric: tabular-nums; }
+.chat-lore {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 32px;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--color-muted);
+  opacity: 0.55;
+}
+.chat-lore svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.chat-lore--active { color: var(--color-accent-2); opacity: 1; }
+.chat-lore--active svg { fill: currentColor; }
+.chat-lore:focus-visible { outline: 2px solid var(--color-accent-2); outline-offset: 2px; }
+
+/* --- acciones al tocar un mensaje --- */
+.chat-row__actions {
+  display: none;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+}
+.chat-row--selected .chat-row__actions { display: flex; }
+.chat-actionbtn {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 var(--space-3); /* UI-016: los 4 botones caben en UNA línea (antes "Regenerar" saltaba a una segunda y el menú medía 96 px) */
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-sm);
+  color: var(--color-muted);
+  backdrop-filter: var(--surface-backdrop, none);
+  -webkit-backdrop-filter: var(--surface-backdrop, none);
+}
+.chat-actionbtn[hidden] { display: none; } /* UI-006: el menú es único; "Regenerar" solo se muestra en el último mensaje del personaje */
+.chat-actionbtn:active { color: var(--color-text); }
+.chat-actionbtn:focus-visible { outline: 2px solid var(--color-accent-2); outline-offset: 2px; }
+
+/* --- reintentar respuesta (UI-022: ícono discreto, área táctil de 44 px) --- */
+.chat-retry {
+  align-self: flex-end;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  margin-right: var(--space-2);
+  color: var(--color-muted);
+}
+.chat-retry__icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-line);
+  backdrop-filter: var(--surface-backdrop, none);
+  -webkit-backdrop-filter: var(--surface-backdrop, none);
+  transition: background var(--dur-fast) ease, color var(--dur-fast) ease;
+}
+.chat-retry svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.chat-retry:active .chat-retry__icon { color: var(--color-text); }
+.chat-retry:focus-visible { outline: 2px solid var(--color-accent-2); outline-offset: -2px; border-radius: 50%; }
+
+/* --- puntos de "escribiendo" --- */
+.chat-dots { display: inline-flex; gap: 6px; padding: 6px 4px; align-items: center; }
+.chat-dots i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-accent, #c96b44);
+  animation: chat-blink 1.25s infinite ease-in-out;
+}
+.chat-dots i:nth-child(2) { animation-delay: .18s; }
+.chat-dots i:nth-child(3) { animation-delay: .36s; }
+@keyframes chat-blink {
+  0%, 80%, 100% { opacity: .28; transform: translateY(0) scale(0.9); }
+  40% { opacity: 1; transform: translateY(-3px) scale(1.1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-dots i { animation: none; opacity: .7; transform: none; }
+}
+
+/* --- FASE 11: pulsación cálida de actividad / pensamiento previo al primer fragmento --- */
+.chat-bubble--thinking {
+  box-shadow: 0 0 16px -2px rgba(201, 107, 68, 0.28), 0 2px 8px rgba(0, 0, 0, 0.12);
+  border: 1px solid rgba(201, 107, 68, 0.38);
+  animation: chat-bubble-breathe 2.2s infinite ease-in-out;
+}
+
+@keyframes chat-bubble-breathe {
+  0%, 100% {
+    box-shadow: 0 0 10px -3px rgba(201, 107, 68, 0.16), 0 2px 6px rgba(0, 0, 0, 0.1);
+    border-color: rgba(201, 107, 68, 0.28);
+  }
+  50% {
+    box-shadow: 0 0 22px 1px rgba(201, 107, 68, 0.45), 0 3px 12px rgba(0, 0, 0, 0.18);
+    border-color: rgba(201, 107, 68, 0.7);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-bubble--thinking { animation: none; border-color: rgba(201, 107, 68, 0.38); }
+}
+
+/* --- botón flotante "volver abajo" (absolute, no fixed) --- */
+.chat-scrolldown {
+  position: absolute;
+  /* UI-008: en la esquina inferior derecha y algo translúcido, para no tapar el texto de los mensajes */
+  right: var(--space-3);
+  bottom: var(--space-3);
+  opacity: 0.72;
+  z-index: 2;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-line);
+  color: var(--color-text);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, .35);
+  backdrop-filter: var(--surface-backdrop, none);
+  -webkit-backdrop-filter: var(--surface-backdrop, none);
+}
+.chat-scrolldown[hidden] { display: none; }
+.chat-scrolldown:active { opacity: 1; }
+.chat-scrolldown:focus-visible { outline: 2px solid var(--color-accent-2); outline-offset: 2px; }
+.chat-scrolldown svg {
+  width: 22px;
+  height: 22px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* --- MEM-018: barra de un episodio archivado (solo lectura) --- */
+.chat-archivedbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4) calc(var(--sab) + var(--space-3));
+  flex: none;
+  font-size: var(--fs-sm);
+  color: var(--color-muted);
+  border-top: 1px solid var(--color-line);
+}
+.chat-archivedbar[hidden] { display: none; }
+.chat-composer[hidden] { display: none; }
+.chat--archived .chat-retry { display: none; }
+
+/* --- composer --- */
+.chat-composer {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3) calc(var(--sab) + var(--space-2));
+  flex: none;
+  background: linear-gradient(to top, rgba(18, 16, 14, 0.92) 0%, rgba(18, 16, 14, 0.45) 60%, transparent 100%);
+  backdrop-filter: var(--bars-backdrop, none);
+  -webkit-backdrop-filter: var(--bars-backdrop, none);
+}
+.chat-composer__input {
+  flex: 1;
+  min-width: 0;
+  resize: none;
+  max-height: 140px;
+  line-height: 1.35;
+}
+/* UI-008: `textarea.inp` (base.css) fija min-height: 90px, que gana por especificidad. El compositor empieza con la
+   altura de UNA línea (48px, igual que el botón de enviar) y crece con el texto hasta max-height (autosizeInput). */
+textarea.chat-composer__input { min-height: 48px; }
+.chat-send {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  flex: none;
+  background: var(--color-surface-2);
+  color: var(--color-muted);
+  transition: background var(--dur-fast), color var(--dur-fast);
+  backdrop-filter: var(--surface-backdrop, none);
+  -webkit-backdrop-filter: var(--surface-backdrop, none);
+}
+.chat-send--ready, .chat-send--stop { background: var(--color-accent); color: #fff; }
+.chat-send--stop svg { fill: currentColor; stroke: none; }
+.chat-send svg {
+  width: 22px;
+  height: 22px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.chat-send:focus-visible { outline: 2px solid var(--color-accent-2); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .chat-send { transition: none; }
+}
+
+/* --- hoja: editar mensaje --- */
+.chat-editsheet { display: flex; flex-direction: column; gap: var(--space-3); }
+.chat-editsheet textarea { min-height: 140px; resize: vertical; line-height: 1.5; }
+
+
+/* --- rompehielos contextuales para chats nuevos (Fase 13) --- */
+.chat-icebreakers {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  padding: var(--space-2, 8px) var(--space-4, 16px) var(--space-3, 12px);
+  z-index: 2;
+  transition: opacity var(--dur, 0.18s) ease, transform var(--dur, 0.18s) ease;
+}
+.chat-icebreakers[hidden] {
+  display: none;
+}
+.chat-icebreakers--leaving {
+  opacity: 0;
+  transform: translateY(8px);
+  pointer-events: none;
+}
+.chat-icebreaker-pill {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  max-width: 92%;
+  padding: 8px 14px;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-pill);
+  color: var(--color-text);
+  font-family: var(--font-ui, -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif);
+  font-size: var(--fs-sm, 13px);
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 0 rgba(255, 238, 225, 0.06);
+  transition: background var(--dur-fast) ease, border-color var(--dur-fast) ease, transform 0.1s var(--ease-spring);
+  -webkit-user-select: none;
+  user-select: none;
+}
+.chat-icebreaker-pill:active {
+  background: var(--color-surface);
+  transform: scale(0.97);
+}
+.chat-icebreaker-pill:focus-visible {
+  outline: 2px solid var(--color-accent-2);
+  outline-offset: 2px;
+}
+.chat-icebreaker-pill::before {
+  content: '✨';
+  font-size: 12px;
+  flex-shrink: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-icebreakers,
+  .chat-icebreaker-pill {
+    transition: none !important;
+  }
+}

@@ -1,0 +1,69 @@
+/*  
+ * themes.css — Companion  
+ * UI-024 (2026-09-26): la app tiene UN solo skin, "Penumbra Claude", en claro y oscuro. Cada combinación (skin, modo) es un  
+ * bloque [data-theme="x"][data-mode="y"] que SOLO redefine tokens de tokens.css — nunca clases de componentes. Los atributos  
+ * los pone ui/shell.js (applyTheme/applyThemeMode) en <html>. Los componentes (base.css/chat.css/home.css) solo leen tokens,  
+ * así que agregar o quitar un skin nunca los toca. Los skins Nomi, Glass, iMessage y Penumbra (y el efecto de vidrio) están  
+ * archivados en css/themes-archived.css (no se carga; ver su cabecera para reactivarlos).  
+ *  
+ * Tokens que hacen de bisagra con los componentes sin que ellos conozcan ningún skin:  
+ * --app-bg fondo de .app (ver base.css) — por defecto cae en --color-bg; Penumbra Claude lo redefine con su resplandor.  
+ * --surface-backdrop / --bars-backdrop valor de `backdrop-filter`: `none` aquí (burbujas OPACAS, sin blur); solo Glass (archivado) usaba blur.  
+ * --bubble-edge borde fino de luz de las burbujas (chat.css lo aplica como box-shadow).  
+ */  
+  
+/* ---------- Penumbra Claude (UI-009) ---------- */  
+/* Burbujas OPACAS con un degradado sutil (--color-surface-2 y --grad-user aceptan degradados: solo se usan en `background`).  
+ Terracota, crema y carbón cálido, inspirada solo en la paleta de color de la interfaz de Claude (sin logotipo ni elementos de  
+ marca). Tipografía (UI-015): Source Serif 4, incluida en la app. Contraste calculado desde el diseño: ver  
+ tests/contrast.test.mjs y docs/HISTORIAL.md. */  
+  
+[data-theme="penumbra-claude"][data-mode="dark"] {  
+ --color-bg: #1f1c19;  
+ --color-surface: #292521;  
+ --color-surface-2: linear-gradient(160deg, #38322c, #302b26);  
+ --color-line: #4a423a;  
+ --color-text: #f3ece2;  
+ --color-muted: #b3a695;  
+ --color-accent: #b3512f;  
+ --color-accent-2: #e08a66;  
+ --color-accent-soft: rgba(179, 81, 47, 0.2);  
+ --color-danger: #f0647c;  
+ --color-ok: #7ee0b0;  
+ --color-overlay: rgba(12, 9, 6, 0.65);  
+ --color-muted-on-accent: #ffdfcc;  
+ --color-on-user: #ffffff;  
+ --color-em: #e5a07c;  
+ --grad-user: linear-gradient(135deg, #944020, #aa4d26);  
+ --grad-avatar: linear-gradient(135deg, #7a3520, #c9714f);  
+ --font: 'Source Serif 4', Georgia, 'Times New Roman', serif;  
+ --surface-backdrop: none;  
+ --bars-backdrop: none;  
+ --bubble-edge: inset 0 0 0 1px rgba(255, 236, 220, 0.09);  
+ --app-bg: radial-gradient(circle at 50% -15%, rgba(200, 110, 70, 0.16), transparent 60%), #1f1c19;  
+}  
+  
+[data-theme="penumbra-claude"][data-mode="light"] {  
+ --color-bg: #f5f0e8;  
+ --color-surface: #fbf7f0;  
+ --color-surface-2: linear-gradient(160deg, #ece3d3, #e6dccb);  
+ --color-line: #d9ccb8;  
+ --color-text: #2b2620;  
+ --color-muted: #665c4e;  
+ --color-accent: #a94a29;  
+ --color-accent-2: #c8694a;  
+ --color-accent-soft: rgba(169, 74, 41, 0.12);  
+ --color-danger: #c9304f;  
+ --color-ok: #1f9d63;  
+ --color-overlay: rgba(40, 25, 12, 0.32);  
+ --color-muted-on-accent: #ffdfcc;  
+ --color-on-user: #ffffff;  
+ --color-em: #9a4424;  
+ --grad-user: linear-gradient(135deg, #944020, #aa4d26);  
+ --grad-avatar: linear-gradient(135deg, #d9a58a, #e6c3ab);  
+ --font: 'Source Serif 4', Georgia, 'Times New Roman', serif;  
+ --surface-backdrop: none;  
+ --bars-backdrop: none;  
+ --bubble-edge: inset 0 0 0 1px rgba(255, 255, 255, 0.75), 0 1px 2px rgba(80, 50, 30, 0.1);  
+ --app-bg: radial-gradient(circle at 50% -15%, rgba(225, 160, 120, 0.3), transparent 60%), #f5f0e8;  
+}  
